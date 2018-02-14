@@ -1,0 +1,23 @@
+## Running tests
+
+To run the tests, go into each of the libraries, and do: go test
+
+For the api, specifically, do: go test -nodeloc=[nodeloc]
+
+You do not need to host the actual static node.
+
+Also, in your gopath you need to create a symbolic link named _ that points to /. Also, add a symbolic link 'aether-core' to the actual directory so that the imports will resolve.
+
+## Code coverage
+
+If you want to run code coverage tests (not regular tests, those run normally) You should cd into gopath, and reach out to the folder from there. 
+
+./run-tests.sh
+
+Actually, you don't even need to cd to the gopath any more. I added the cd into the bash script so it does that for you, too.
+
+## FAQ
+
+Why is this called 'public_readme'? Is there a private one?
+
+No. It's the same thing on my local computer, just named differently, because it's easier to keep the commands already baked in with my own computer's file structure in the private one (as opposed to general directions in this file). 
