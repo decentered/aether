@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>API - Mim Protocol Documentation</title>
+  
+
+  <link rel="shortcut icon" href="../img/favicon.ico">
+
+  
+  <link href='https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700' rel='stylesheet' type='text/css'>
+
+  <link rel="stylesheet" href="../css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../css/theme_extra.css" type="text/css" />
+  <link rel="stylesheet" href="../css/highlight.css">
+
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "API";
+  </script>
+  
+  <script src="../js/jquery-2.1.1.min.js"></script>
+  <script src="../js/modernizr-2.8.3.min.js"></script>
+  <script type="text/javascript" src="../js/highlight.pack.js"></script>
+  <script src="../js/theme.js"></script> 
+
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+      <div class="wy-side-nav-search">
+        <a href=".." class="icon icon-home"> Mim Protocol Documentation</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+        <ul class="current">
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="..">Home</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../entity_concepts/">Entity Concepts</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../objects/">Entities</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 current">
+        <a class="current" href="./">API</a>
+        
+            <ul>
+            
+                <li class="toctree-l3"><a href="#api">API</a></li>
+                
+                    <li><a class="toctree-l4" href="#methods">Methods</a></li>
+                
+                    <li><a class="toctree-l4" href="#responses">Responses</a></li>
+                
+                    <li><a class="toctree-l4" href="#filters">Filters</a></li>
+                
+                    <li><a class="toctree-l4" href="#minimum-results-policy">Minimum Results Policy</a></li>
+                
+                    <li><a class="toctree-l4" href="#endpoints">Endpoints</a></li>
+                
+            
+            </ul>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../endpoints/">Endpoints</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../flows/">Common Flows</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../examples/">Usage Examples</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../faq/">FAQ</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../about/">About</a>
+        
+    </li>
+<li>
+          
+        </ul>
+      </div>
+      &nbsp;
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="..">Mim Protocol Documentation</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="..">Docs</a> &raquo;</li>
+    
+      
+    
+    <li>API</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="api">API</h1>
+<p>This is the API you can use to speak to other nodes. This document gives you a comprehensive understanding of the core concepts of speaking to Mim nodes.</p>
+<ul>
+<li><strong>Methods</strong></li>
+<li><strong>Responses</strong></li>
+<li><strong>Filters</strong></li>
+<li><strong>Minimum Results Policy</strong></li>
+<li><strong>Endpoints</strong></li>
+</ul>
+<h2 id="methods">Methods</h2>
+<p>You can use the two HTTP verbs to be able to communicate with Mim nodes.</p>
+<h3 id="get">GET</h3>
+<p>When you do a get request to an endpoint of the node, you cannot ask for any specific object. The node will determine what you will receive. The node is can to serve you a truncated result, or a cached one to reduce its own CPU or bandwidth usage, or not do any of thethose things.</p>
+<h3 id="post">POST</h3>
+<p>When you do a post request, you identify yourself as a Mim node by sending your ID and connection address. This makes you 'join' the network, and other people will start to connect to you, should they want to do so. Doing this on any endpoint (and therefore providing your address for others to connect to) gives you the ability to request specific entities, timestamps, etc.</p>
+<h2 id="responses">Responses</h2>
+<p>The response is be paginated if needed, and in JSON format. Besides the response body, you receive a HTTP status code. There are three codes possible.</p>
+<h3 id="http-200-ok">HTTP 200 OK</h3>
+<p>Returned when your request succeeds. The body of this request should be the answer you requested.</p>
+<h3 id="http-400-bad-request">HTTP 400 Bad request</h3>
+<p>You will receive this if your request is malformed, or otherwise unserviceable.</p>
+<h3 id="http-404-not-found">HTTP 404 Not found</h3>
+<p>Returned when the content you requested isn't available.</p>
+<p>If you get a 404 trying to get a new page of the result, you have reached to the end of the content provided by pagination. If the reply you have received had 18 pages, and you are trying to reach the 19th page, you will receive an 204 on the 19th page, because the answer will be empty.</p>
+<h3 id="http-405-method-not-allowed">HTTP 405 Method not allowed</h3>
+<p>You will receive this if you try to do a POST request on a node that does not support it, such as static nodes.</p>
+<h3 id="http-429-too-many-requests">HTTP 429 Too many requests</h3>
+<p>You can receive this on any endpoint if the remote node becomes too busy.</p>
+<h2 id="filters">Filters</h2>
+<p>For certain endpoints, you can request the result to be filtered (modified) in a certain way. This is what allows you to request a specific object by fingerprint, or keep in sync with incremental updates and else.</p>
+<p>Given below are the filters. If an endpoint supports any of those, it will be noted in the documentation for that endpoint.</p>
+<h3 id="get_1">GET</h3>
+<h4 id="cache">Cache</h4>
+<p>All Mim nodes keep (or generate at the point of request) a series of caches to provide other nodes with pre-packaged answers to common queries. This allows nodes to conserve their CPU cycles.</p>
+<p>The way you bootstrap (work yourself up to the most up-to-date state) in Mim is that you seek caches of objects from nodes. There are three types of caches.</p>
+<p>Every endpoint (board, thread, post, etc.) will have their result cached every day, and retains last 7 copies of these. Each of these days' caches contain the entities that were created or updated that day. When a cache becomes more than 7 days old, the node does no longer have a responsibility to carry that cache, though it might decide to keep a longer duration of past caches if it chooses to do so. These caches are not modified after they are created. Each cache includes a link to the past cache, and if you do a GET on any entity endpoint, you will get the most current cache.</p>
+<!-- 2) There is one 7-day-cache that is special to the Index endpoint. This keeps an index of all fingerprints of all objects available in the node for the last 7 days. This endpoint, unlike others, are updated every day. -->
+
+<p>All in all, with the current 7 endpoints, 7 caches each means 49 caches will be kept, plus one weekly cache for index, bringing it to 50 total caches. The first 49 caches are never modified after creation up until the point they are deleted, while the remaining one is updated every day.</p>
+<p>The cache filter allows the asking node to specify which day's cache it wants.</p>
+<h3 id="post_1">POST</h3>
+<h4 id="timestamp">Timestamp</h4>
+<p>If you provide a timestamp, you will receive the objects that were added or updated after the timestamp. Can only be used if the <em>fingerprints</em> filter is not provided.</p>
+<h4 id="fingerprints">Fingerprints</h4>
+<p>If you provide a fingerprint, or an array of fingerprints, you will receive the objects you have requested, so long as the objects are available on the remote node. Can only be used if the <em>timestamp</em> filter is not provided.</p>
+<h4 id="embeds">Embeds</h4>
+<p>Certain things can be embedded into endpoint results under certain conditions. For example, in Boards endpoint, you can ask threads and keys for these threads to be embedded. Can either be used with a <em>timestamp</em> or with a <em>fingerprints</em> filter.</p>
+<p>By default, these values are only provided as fingerprints on the endpoint. If you embed these values, they will be provided as full objects. These embedded objects are not actually inserted into the main object, rather, they are provided as their own objects and they will count against the standard results policy.</p>
+<h2 id="minimum-results-policy">Minimum Results Policy</h2>
+<p>If an endpoint returns objects, the standard policy of all unfiltered results are that they provide last 7 days' worth of objects ordered by most recent. Minimum response is 10,000 objects or 7 days, whichever is more.</p>
+<p>For example, if there were 2400 new or updated (mutable fields changing is considered an update) objects in the last 7 days, the response will still be 10,000 objects, but the remaining 7600 of them will be older than 7 days. The only way you can get an answer that is less than 10,000 objects is that the remote does not have 10,000 objects in its store, in total.</p>
+<p>If an endpoint returns embedded objects, the object embeds are provided as their own objects. Embeds are based on certain criteria (i.e. boards endpoint with keys embed will only return keys which are used in the boards that are being provided), so there are no minimum or maximums on the amount of embeds provided.</p>
+<p>Index has a special minimum results policy, since it only provides an index, and not the object bodies. At a minimum, index should provide, a week's worth of or 10,000 boards, threads and posts each, and a week's worth of, or 5000 for votes, keys, addresses and truststates each, whichever is more.</p>
+<p>The policy provided here is a guidance, and is merely the default settings. These values below should be able to be set by the end user within reasonable limits. There are certain cases where having a lower minimum entity response count makes sense, such as a mobile device.</p>
+<p>However, be courteous: if your program does not 'play nice', the other nodes are free to block you out, too. You should be contributing to the network by providing objects when requested in a reasonable quantity and depth.</p>
+<p>The spec requires that the nodes communicate how many results they are returning in each type at the beginning of the response.</p>
+<h2 id="endpoints">Endpoints</h2>
+<p><a href="../endpoints/">Relevant page</a></p>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../endpoints/" class="btn btn-neutral float-right" title="Endpoints"/>Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+        <a href="../objects/" class="btn btn-neutral" title="Entities"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="http://www.mkdocs.org">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+	  
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+<div class="rst-versions" role="note" style="cursor: pointer">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href="../objects/" style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+        <span style="margin-left: 15px"><a href="../endpoints/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
+    </span>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Mim Protocol Documentation</title>
+  
+
+  <link rel="shortcut icon" href="./img/favicon.ico">
+
+  
+  <link href='https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700' rel='stylesheet' type='text/css'>
+
+  <link rel="stylesheet" href="./css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="./css/theme_extra.css" type="text/css" />
+  <link rel="stylesheet" href="./css/highlight.css">
+
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "None";
+  </script>
+  
+  <script src="./js/jquery-2.1.1.min.js"></script>
+  <script src="./js/modernizr-2.8.3.min.js"></script>
+  <script type="text/javascript" src="./js/highlight.pack.js"></script>
+  <script src="./js/theme.js"></script> 
+
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+      <div class="wy-side-nav-search">
+        <a href="." class="icon icon-home"> Mim Protocol Documentation</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="./search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+        <ul class="current">
+          
+            <li>
+    <li class="toctree-l1 current">
+        <a class="current" href=".">Home</a>
+        
+            <ul>
+            
+                <li class="toctree-l3"><a href="#mim-protocol-v01">Mim Protocol v0.1</a></li>
+                
+                    <li><a class="toctree-l4" href="#features">Features</a></li>
+                
+                    <li><a class="toctree-l4" href="#philosophy">Philosophy</a></li>
+                
+                    <li><a class="toctree-l4" href="#how-to-use-this-document">How to use this document</a></li>
+                
+                    <li><a class="toctree-l4" href="#contents">Contents</a></li>
+                
+            
+            </ul>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="entity_concepts/">Entity Concepts</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="objects/">Entities</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="apigeneral/">API</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="endpoints/">Endpoints</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="flows/">Common Flows</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="examples/">Usage Examples</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="faq/">FAQ</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="about/">About</a>
+        
+    </li>
+<li>
+          
+        </ul>
+      </div>
+      &nbsp;
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href=".">Mim Protocol Documentation</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".">Docs</a> &raquo;</li>
+    
+      
+    
+    <li>Home</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="mim-protocol-v01">Mim Protocol v0.1</h1>
+<p>Mim is a distributed, peer-to-peer network protocol that distributes text. It's the protocol underlying Aether, which is the reference implementation of the Mim protocol.</p>
+<p>Mim, at a very basic level, can be likened to a more decentralised Usenet where everyone is their own Usenet server. Building on that base platform, Mim adds modern features we've come to expect from our tools of communication.</p>
+<h2 id="features">Features</h2>
+<p>Mim provides, in a peer-to-peer fashion:</p>
+<ul>
+<li>The ability to freely create boards, threads and posts within them</li>
+<li>Upvoting, downvoting posts and thus provide community moderation</li>
+<li>Admin-moderating the communities you have created,</li>
+<li>But also the right for your communities to reject your moderation</li>
+<li>Add and remove moderators for admins</li>
+<li>And also the ability to have unmoderated communities that rely completely on community moderation</li>
+<li>Spam and sybil protection with proof-of-work, blocking and a reputation system</li>
+<li>Unique identities and usernames with cryptographic signatures (optional)</li>
+<li>On the other side, posting without a signature, thus remaining anonymous</li>
+<li>An extensible protocol that can accommodate new object types, and proper structure to declare extensions.</li>
+<li>In addition, it provides static nodes, which are static websites that can be used as containers of information available for everyone</li>
+</ul>
+<p>Mim does not require need infrastructure, and is completely independent of anything except a working Internet connection. Nodes bootstrap off of each other when they join the network. The only thing you need to know is an IP and a Port that is a Mim node. In most practical cases, Mim client applications come with their own bootstrap nodes.</p>
+<h2 id="philosophy">Philosophy</h2>
+<p>The aim of the author is to create an underlying common-language between computers for human discussion that is ubiquitous and free.</p>
+<p>"Mim" name is a reference to <em>mime</em>, the <em>technique of suggesting action, character, or emotion without words, using only gesture, expression, and movement.</em></p>
+<p>In a semi-cheeky fashion, <em>Mim</em> handles everything else; the words, however, are yours to add.</p>
+<h2 id="how-to-use-this-document">How to use this document</h2>
+<p>This document provides everything you need to write your own Mim-speaking program that can communicate with other Mim clients.</p>
+<h2 id="contents">Contents</h2>
+<ul>
+<li>Entities: Basic protocol objects</li>
+<li>API: Information on how to use and query other Mim clients</li>
+<li>Endpoints: Building and targeting queries for other clients, and the answer format</li>
+<li>Common flow: The most common series of actions that you will likely need to implement</li>
+<li>Usage examples: Example requests and responses</li>
+<li>FAQ</li>
+<li>About</li>
+</ul>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="entity_concepts/" class="btn btn-neutral float-right" title="Entity Concepts"/>Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="http://www.mkdocs.org">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+	  
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+<div class="rst-versions" role="note" style="cursor: pointer">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+      
+        <span style="margin-left: 15px"><a href="entity_concepts/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
+    </span>
+</div>
+
+</body>
+</html>
+
+<!--
+MkDocs version : 0.14.0
+Build Date UTC : 2016-06-18 06:43:51.383001
+-->

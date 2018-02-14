@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Entity Concepts - Mim Protocol Documentation</title>
+  
+
+  <link rel="shortcut icon" href="../img/favicon.ico">
+
+  
+  <link href='https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700' rel='stylesheet' type='text/css'>
+
+  <link rel="stylesheet" href="../css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../css/theme_extra.css" type="text/css" />
+  <link rel="stylesheet" href="../css/highlight.css">
+
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "Entity Concepts";
+  </script>
+  
+  <script src="../js/jquery-2.1.1.min.js"></script>
+  <script src="../js/modernizr-2.8.3.min.js"></script>
+  <script type="text/javascript" src="../js/highlight.pack.js"></script>
+  <script src="../js/theme.js"></script> 
+
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+      <div class="wy-side-nav-search">
+        <a href=".." class="icon icon-home"> Mim Protocol Documentation</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+        <ul class="current">
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="..">Home</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 current">
+        <a class="current" href="./">Entity Concepts</a>
+        
+            <ul>
+            
+                <li class="toctree-l3"><a href="#fingerprints-cryptographic-signatures-and-proof-of-work">Fingerprints, Cryptographic Signatures and Proof of Work</a></li>
+                
+                    <li><a class="toctree-l4" href="#nulling-out-fields">Nulling out fields</a></li>
+                
+                    <li><a class="toctree-l4" href="#order-of-processing">Order of processing</a></li>
+                
+                    <li><a class="toctree-l4" href="#signature">Signature</a></li>
+                
+                    <li><a class="toctree-l4" href="#proof-of-work">Proof of Work</a></li>
+                
+                    <li><a class="toctree-l4" href="#fingerprint">Fingerprint</a></li>
+                
+                    <li><a class="toctree-l4" href="#updatesignatures-and-updateproofofwork">UpdateSignatures and UpdateProofOfWork</a></li>
+                
+            
+            </ul>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../objects/">Entities</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../apigeneral/">API</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../endpoints/">Endpoints</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../flows/">Common Flows</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../examples/">Usage Examples</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../faq/">FAQ</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../about/">About</a>
+        
+    </li>
+<li>
+          
+        </ul>
+      </div>
+      &nbsp;
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="..">Mim Protocol Documentation</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="..">Docs</a> &raquo;</li>
+    
+      
+    
+    <li>Entity Concepts</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="fingerprints-cryptographic-signatures-and-proof-of-work">Fingerprints, Cryptographic Signatures and Proof of Work</h1>
+<p>Fingerprints are how objects refer to other. A fingerprint is a SHA256 hash of the object. Signatures are how objects are linked to their creators. A signature is an ECDSA signature with the user's private key, and can only be created by the user creating the object. Signatures are optional, it's OK to be anonymous and thus have no key and no signatures. Proof of Work provides protection against spam and DDoS by creation of objects computationally expensive enough to make bulk creation infeasible.</p>
+<p>All entities except Address have the fields of Proof of Work, Signature, and Fingerprint. When creating objects, proof of work happens first, signature happens second, and fingerprint happens last. When verifying, fingerprint is verified first, signature is verified second, and PoW is verified last. Failure of any of these checks should cause the object to be thrown out with no further processing.</p>
+<p>Fingerprint is only done on the immutable parts of an object. Signatures and PoWs are done for immutable and mutable parts of the objects, separately. If you are creating an object with mutable parts, you will be creating one fingerprint, but two signatures and two PoWs. For both of those, the first one signs and PoWs the immutable part, and the second one the mutable part. This allows mutable part to change without invalidating the immutable parts' fingerprints, signatures and PoWs which are used in referring to the object, thus should remain valid and nonchanging.</p>
+<h3 id="nulling-out-fields">Nulling out fields</h3>
+<p>Creating proofs of work, signatures and fingerprints require emptying out certain fields in the object you are working on while you are generating them.</p>
+<ul>
+<li>The empty state for string fields is "".</li>
+<li>The empty state for number fields is 0.</li>
+<li>The empty state for array fields is [].</li>
+</ul>
+<p>Emptying out does not mean actually changing the objects in any persistent. It means removing data from the in-memory objects, so that the calculations can be performed correctly. The creation steps provided below should <em>never</em> remove data, though it can add data to the object. Verification steps should <em>never</em> modify the object in a persistent way.</p>
+<h3 id="order-of-processing">Order of processing</h3>
+<p>The order in which you should generate these is this:</p>
+<p>1) Signature</p>
+<p>2) Proof of Work (In the last step of PoW, PoW signs itself with the user's key. See "Why?" below for the reason.)</p>
+<p>3) Fingerprint</p>
+<h4 id="why">Why?</h4>
+<p>Signature provides identification. PoW provides a guaranteed cost to the sender to prevent spam. Fingerprint provides addressability. If you have PoW before signature (the order being, Signature, PoW, Fingerprint), then signature itself will not be covered under the guarantee of PoW. A spammer can generate many users and use the same proof of work without expending the effort PoW attempts to enforce.</p>
+<p>If we do the reverse (the order being, PoW, Signature, Fingerprint), and have signature before proof of work, then the proof of work can be replaced by third parties. A third party can generate another proof of work for the signed post, generate a new fingerprint, and release it as a new post that was created by the owner of the signature. This post would have to be the same, however, it would still be a different post with a different fingerprint (because of the different proof of work).</p>
+<p>This post could be used to split votes to a post by generating hundreds of copies of the same post. Assuming a post would generate 200 upvotes and be visible as such, copying the same post 20 times and distributing it would generate 10 upvotes for each of the posts, all of which would be visible as a post with 10 upvotes, not 200. This could be used to effectively 'kill' posts.</p>
+<p>The solution to this is to have the PoW sign itself with the private key, as part of the PoW process. This authenticates the PoW as generated by the original owner, and renders any posts with unsigned or malsigned PoW invalid.</p>
+<h2 id="signature">Signature</h2>
+<p>Signature is the thing that makes the object be associated with you. If you are an anonymous user, you will not have a key, so you will not have signatures on any objects. If you do have a key (i.e. if you decided to pick an username) this is how other nodes verify that the objects are actually coming from you (more specifically, signed by a key that is only in your possession).</p>
+<p>It's perfectly okay for an object to have no signature, however, clients can elect to not show or communicate anonymous posts due to end user preferences. On the other hand, not transmitting or showing objects with low proof-of-work levels and no keys are great ways to make sure the quality of objects shown is high.</p>
+<p>The signature algorithm is ECDSA. The specific curve is given at the 'type' field of the key object, but is usually secp521r1.</p>
+<p>Mind that different libraries of cryptography aren't necessarily interoperable, they sometimes provide outputs in different formats. Make sure that the library you are using is able to operate within what's available in the protocol, and can provide results that can be processed by others.</p>
+<p>Signature length will vary based on the algorithm, but here is an example of an 256 bit signature:</p>
+<pre><code>3066023100d97a621fe650b9574bf5d0cd4c8981fff88f0679e86512be5b3abb59d3bfa8efa7df7fc32bfc588018f4f0acd36060a9023100ed28e6b0d513d227a3a186044dc3cad8872968bc72ee09e0dd0dcfed29f960e5ccacb8c55e1c77a8e276b2be09339400
+</code></pre>
+
+<p>In your objects, the update signatures are verified against the key of the original signature so that the update cannot be made by a different key.</p>
+<p>If you end up with a signature failure, just throw out the object. You should not block the key owner, because the failures could be due to modification by someone else.</p>
+<h3 id="creating-signatures">Creating signatures</h3>
+<p>1) Convert your object to JSON</p>
+<p>2) Empty out the Fingerprint, Hashcash, and all mutable fields (these should already be empty as they are not created yet at this stage)</p>
+<p>3) Run Signature algorithm over the stringified version of the JSON object</p>
+<p>4) Save it to the appropriate field of the object you just created the signature for.</p>
+<h3 id="verifying-signatures">Verifying signatures</h3>
+<p>1) Convert your object to JSON</p>
+<p>2) Empty out the Fingerprint, Hashcash, <strong>Signature</strong>, and all mutable fields</p>
+<p>3) Stringify your JSON object</p>
+<p>5) Run the algorithm to verify</p>
+<h2 id="proof-of-work">Proof of Work</h2>
+<p>Every entity in Mim allows the local computer to prove that it has spent a certain amount of CPU power to create it. The amount of work to be proved is variable and can be set by the end user. The remote computer has the right to refuse or not take into consideration objects that it deems insufficiently proven of work, so try to keep this as high as you can tolerate. This is a measure that makes it too expensive for spammers to create posts in bulk and DDoS the network.</p>
+<p>Proof of Work in Mim uses Hashcash method, and is optional.</p>
+<p>The proof of work function in Mim is SHA256 x 3.</p>
+<p>Mind that an empty proof of work field is a valid object, but a false proof-of-work field in an object is not. If your object has empty proof of work, you can continue processing it and show / not show, or communicate / not communicate (to other nodes) based on your preferences. But if you receive a PoW that does not successfully verify, you have a malformed object, and you should throw it out without any further consideration.</p>
+<p>The nodes can have different proof of work requirements for different objects and states.</p>
+<p>An example signed proof of work would be this:</p>
+<pre><code>[version]:[difficulty]:[date]:[input]:[extension]:[salt]:[counter]:[signature]
+</code></pre>
+
+<p>An example unsigned proof of work would be this:</p>
+<pre><code>[version]:[difficulty]:[date]:[input]:[extension]:[salt]:[counter]:
+</code></pre>
+
+<p>(The trailing ":" needs to be present.)</p>
+<p>As you can see above, while Mim uses the Hashcash PoW. However, Mim Hashcash declares itself by declaring the version as <code>MIM1</code>. It also omits the fields of <code>date</code>, <code>input</code>, and <code>extension</code>. This is because Hashcash format includes redundant data fields that are already expressed in other fields of a Mim object.</p>
+<h3 id="creating-proof-of-work">Creating proof of work</h3>
+<p>1) convert your object to JSON</p>
+<p>2) Empty out the Fingerprint, and all mutable fields</p>
+<p>3) Run Hashcash over the stringified version of the JSON object</p>
+<p>4) After getting the hashcash result, get the private key, sign the result. Add the signature to the end of the hashcash result.</p>
+<p>5) Save it to the appropriate field of the object you just created the PoW for.</p>
+<h3 id="verifying-proof-of-work">Verifying proof of work</h3>
+<p>1) Convert your object to JSON</p>
+<p>2) Empty out the Fingerprint, <strong>Proof of Work</strong> and all mutable fields</p>
+<p>3) Stringify your JSON object</p>
+<p>4) Verify the PoW itself by running it through the signature validation process.</p>
+<p>4) Remove the latter portion of your PoW field starting with the ":", including the ":". This part was the signature.</p>
+<p>5) Run Hashcash Verify.</p>
+<h2 id="fingerprint">Fingerprint</h2>
+<p>This is relatively straightforward. Fingerprints are SHA256 hashes of the entire JSON of the object except mutable fields, and it is how objects refer to each other. If you have a thread, it will have the fingerprint of the parent board in its board field. You should always check to make sure fingerprint matches the object first before doing anything else with the object. If the fingerprint (hash) does not match, the object is malformed either in transit or intentionally. You should throw out the object with no further processing.</p>
+<h3 id="creating-fingerprints">Creating fingerprints</h3>
+<p>1) Convert your object to JSON</p>
+<p>2) Empty out all mutable fields</p>
+<p>3) Run SHA256 hash algorithm over the stringified version of the JSON object</p>
+<p>4) Save it to the appropriate field of the object you just created the signature for.</p>
+<h3 id="verifying-fingerprints">Verifying fingerprints</h3>
+<p>1) Convert your object to JSON</p>
+<p>2) Empty out the <strong>Fingerprint</strong> and all mutable fields</p>
+<p>3) Stringify your JSON object</p>
+<p>4) Run the algorithm to verify</p>
+<h2 id="updatesignatures-and-updateproofofwork">UpdateSignatures and UpdateProofOfWork</h2>
+<p>These fields are only available on objects which have mutable fields. These fields provide PoW and Signatures for the mutable fields of the object, and computed using <strong>all</strong> fields of the objects. In other words, the normal variations of Signature and ProofOfWork fields provide coverage for only the immutable fields, but UpdateSignature and UpdateProofOfWork provide coverage for both immutable and mutable fields.</p>
+<p>Every time you change any mutable fields, you should be generating a new timestamp for the LastUpdate field, and creating new UpdateProofOfWork and UpdateSignature fields. Other nodes will apply the latest timestamped update onto the object they have, provided that your new PoW satisfies their minimum PoW requirements and the signature verifies. The reason there is a PoW on updates is to prevent any key holder from spamming the network with updates.</p>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../objects/" class="btn btn-neutral float-right" title="Entities"/>Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+        <a href=".." class="btn btn-neutral" title="Home"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="http://www.mkdocs.org">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+	  
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+<div class="rst-versions" role="note" style="cursor: pointer">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href=".." style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+        <span style="margin-left: 15px"><a href="../objects/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
+    </span>
+</div>
+
+</body>
+</html>

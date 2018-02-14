@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Entities - Mim Protocol Documentation</title>
+  
+
+  <link rel="shortcut icon" href="../img/favicon.ico">
+
+  
+  <link href='https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700' rel='stylesheet' type='text/css'>
+
+  <link rel="stylesheet" href="../css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../css/theme_extra.css" type="text/css" />
+  <link rel="stylesheet" href="../css/highlight.css">
+
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "Entities";
+  </script>
+  
+  <script src="../js/jquery-2.1.1.min.js"></script>
+  <script src="../js/modernizr-2.8.3.min.js"></script>
+  <script type="text/javascript" src="../js/highlight.pack.js"></script>
+  <script src="../js/theme.js"></script> 
+
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+      <div class="wy-side-nav-search">
+        <a href=".." class="icon icon-home"> Mim Protocol Documentation</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+        <ul class="current">
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="..">Home</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../entity_concepts/">Entity Concepts</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 current">
+        <a class="current" href="./">Entities</a>
+        
+            <ul>
+            
+                <li class="toctree-l3"><a href="#entities">Entities</a></li>
+                
+                    <li><a class="toctree-l4" href="#board">Board</a></li>
+                
+                    <li><a class="toctree-l4" href="#thread">Thread</a></li>
+                
+                    <li><a class="toctree-l4" href="#post">Post</a></li>
+                
+                    <li><a class="toctree-l4" href="#vote">Vote</a></li>
+                
+                    <li><a class="toctree-l4" href="#address">Address</a></li>
+                
+                    <li><a class="toctree-l4" href="#key">Key</a></li>
+                
+                    <li><a class="toctree-l4" href="#truststate">TrustState</a></li>
+                
+            
+            </ul>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../apigeneral/">API</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../endpoints/">Endpoints</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../flows/">Common Flows</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../examples/">Usage Examples</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../faq/">FAQ</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../about/">About</a>
+        
+    </li>
+<li>
+          
+        </ul>
+      </div>
+      &nbsp;
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="..">Mim Protocol Documentation</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="..">Docs</a> &raquo;</li>
+    
+      
+    
+    <li>Entities</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="entities">Entities</h1>
+<p>These are the root level protocol objects that have their own endpoints.</p>
+<ul>
+<li><strong>Board</strong></li>
+<li><strong>Thread</strong></li>
+<li><strong>Post</strong></li>
+<li><strong>Vote</strong></li>
+<li><strong>Address</strong></li>
+<li><strong>Key</strong></li>
+<li><strong>TrustState</strong></li>
+</ul>
+<p>These are the sub-level protocol objects that do not have their endpoints, and only provided integrated to the objects encapsulating them. You cannot query them on their own.</p>
+<ul>
+<li>BoardOwner (sub-entity of Board)</li>
+<li>Protocol (sub-entity of Address)</li>
+<li>Client (sub-entity of Address)</li>
+<li>CurrencyAddress (sub-entity of Key)</li>
+</ul>
+<hr />
+<h2 id="board">Board</h2>
+<p>Boards are the Terminal top-level elements of the architecture. All posts belong to a board and a thread. Think of these as subreddits. They can have an owner, which is the person that created the board. This is the permanent moderator of the board. The permanent moderator can assign moderators for a limited timespan.</p>
+<h3 id="board-object">Board Object</h3>
+<p>This is the spec of the standard Board entity a Mim node will provide you. The order of these fields are undefined, it can come in any order.</p>
+<ul>
+<li>Fingerprint (64 characters, ASCII string)</li>
+<li>Name (Min 2, Max 255 characters, Unicode string)</li>
+<li>Creation (Unix Epoch Time, UTC, int64)</li>
+<li>ProofOfWork (Min 0, Max 1024 characters, ASCII string)</li>
+<li>Signature (Min 0, Max 512 characters, ASCII string)</li>
+<li>BoardOwners (<strong>Mutable</strong>, Min 0 array of BoardOwner objects, max 100)</li>
+<li>Description (<strong>Mutable</strong>, Min 0, Max 65535 characters, Unicode string)</li>
+<li>LastUpdate (<strong>Mutable</strong>, Unix Epoch Time, UTC, int64)</li>
+<li>UpdateProofOfWork (<strong>Mutable</strong>, Min 0, Max 1024 characters, ASCII string)</li>
+<li>UpdateSignature (<strong>Mutable</strong>, Min 0, Max 512 characters, ASCII string)</li>
+</ul>
+<h4 id="mutable-fields-in-board-object">Mutable fields in Board Object</h4>
+<p>'BoardOwners', 'Description', 'LastUpdate', 'UpdateProofOfWork', 'UpdateSignature'</p>
+<h4 id="maximum-uncompressed-theoretical-size">Maximum uncompressed theoretical size</h4>
+<p>~280 Kilobytes, assuming 100 (max) board owners, and assuming 65535 (max) characters on description, all characrers 4 bytes each (unicode max). On average, boards will likely have 1-2 owners, and 500-600 characters description. If average, ~20 kilobytes. Variance is moderate, but be ready to handle extreme cases.</p>
+<h4 id="board-example">Board Example</h4>
+<pre><code>{
+  &quot;fingerprint&quot;: &quot;ea7d8e81e18e3791e0e89a4ebaba64c92c3f0f3c03c3057e2ef5e9fcb7f13891&quot;,
+  &quot;name&quot;: &quot;My awesome board&quot;,
+  &quot;creation&quot;: 1442040412,
+  &quot;proof_of_work&quot;: &quot;1:23:1509120719:[mimdata]::xUEBZA89/o7EZwtg:000000000000000000000000000000000GHiK&quot;,
+  &quot;signature&quot;: &quot;30450221008829563cc1ac75659c440e9d737fb81d5a8f3f60cda48d041ed71c61adfcb5cb022026fbd30a651433778d4d94d774082ba66acd7dd1d43d8263e36972aba98c6a79&quot;,
+  &quot;board_owners&quot;: [
+    {
+      &quot;key_fingerprint&quot;: &quot;f1c4f90dd4a45bdb83b47e04e158065b9c7c867ffd44ea925c1301ad6134f2bd&quot;,
+      &quot;expiry&quot;: &quot;&quot;,
+      &quot;level&quot;: 2
+    }
+  ],
+  &quot;description&quot;: &quot;This is where you get to explain what your board is about.&quot;,
+  &quot;last_update&quot;: 1442044141,
+  &quot;update_proof_of_work&quot;: &quot;1:24:1509120749:[mimdata]::hyVUb0vRzJsxkZ4Q:0001tD3/&quot;,
+  &quot;update_signature&quot;: &quot;3046022100ce06189f3aea609a095aebb2a8ff4115af18c15abc0e84ff07ee7ba5687a3502022100bc7676c71e81208e179afc7fe0302ac1433ce22527d673ed291dd0965d4e5e58&quot;
+}
+</code></pre>
+
+<h4 id="board-index-form-example">Board Index Form Example</h4>
+<p>This form is the compressed form of the full object. It is provided in the index so as to allow the requester to decide whether it wants to request this object or not. If the requester thinks this object is useful, it needs to request the full object to be able to do anything with it.</p>
+<pre><code>{
+  &quot;fingerprint&quot;: &quot;edb4e3da4e8f1e99aba3743fc3de5a84f73e4fd32f5883759e743582a25cb466&quot;,
+  &quot;creation&quot;: 1442041028,
+  &quot;last_update&quot;: 1442099904,
+  &quot;page_number&quot;: 0 // Only appears on index form. Allows for faster queries.
+}
+</code></pre>
+
+<h4 id="fields">Fields</h4>
+<h5 id="fingerprint"><em>Fingerprint</em></h5>
+<p>SHA256 hash of the entirety of the object. See entity concepts for how to come up and how to verify this.</p>
+<p>Of all the three calculations (proof of work, signature, fingerprint), this should happen last.</p>
+<h5 id="name"><em>Name</em></h5>
+<p>User-visible portion of the board. Between 2 and 255 unicode characters. Do not assume this always means 255 bytes! A unicode character can be and is often larger than a byte.</p>
+<h5 id="creation"><em>Creation</em></h5>
+<p>Creation date and time in UTC as an int64. This is the standard UNIX Epoch Time.</p>
+<h5 id="proofofwork"><em>ProofOfWork</em></h5>
+<p>This field provides proof of work. To see how to create and verify this, see the relevant section in the Entity Concepts topic.</p>
+<h5 id="signature"><em>Signature</em></h5>
+<p>This field provides signatures. To see how to create and verify this, see the relevant section in the Entity Concepts topic.</p>
+<p>Of all the three calculations (proof of work, signature, fingerprint), this should happen second.</p>
+<h5 id="boardowners"><em>BoardOwners</em></h5>
+<p>An array of BoardOwner objects. Can be empty. Updatable.</p>
+<p>When you convert this to a string, concat everything without any sort of delineation.</p>
+<h5 id="description"><em>Description</em></h5>
+<p>Description of the board. Admin of the board can update this.</p>
+<h5 id="lastupdate"><em>LastUpdate</em></h5>
+<p>Update date and time in UTC as an int64. This is the standard UNIX Epoch Time.</p>
+<h5 id="updateproofofwork"><em>UpdateProofOfWork</em></h5>
+<p>This field provides proof of work. To see how to create and verify this, see the relevant section in the Entity Concepts topic.</p>
+<h5 id="updatesignature"><em>UpdateSignature</em></h5>
+<p>This field provides signatures. To see how to create and verify this, see the relevant section in the Entity Concepts topic.</p>
+<hr />
+<h3 id="boardowner-sub-entity-of-board">BoardOwner (sub-entity of Board)</h3>
+<p>BoardOwner entities go into the updatable 'BoardOwners' field of a board. They are not distributed separately, but embedded into 'Board' objects. There is no upper limit on how many owners a board can have. A board can also have no owners, in which case it is not moderated by mods but by community by means of voting.</p>
+<h4 id="boardowner-object">BoardOwner Object</h4>
+<ul>
+<li>KeyFingerprint (64 characters, ASCII string)</li>
+<li>Expiry (Unix Epoch Time, UTC, int64, or empty)</li>
+<li>Level (uint8. A number between 0-255)</li>
+</ul>
+<h4 id="fields_1">Fields</h4>
+<h5 id="keyfingerprint"><em>KeyFingerprint</em></h5>
+<p>This is the fingerprint of the key the ownership is associated to.</p>
+<h5 id="expiry"><em>Expiry</em></h5>
+<p>When the ownership expires. Can be empty. If empty, ownership lasts until revoked by the admin of the board.</p>
+<h5 id="level"><em>Level</em></h5>
+<p>A number between 0 and 255. Values are given below:</p>
+<p>2: Admin. Can add and remove mods. Can remove itself. Can moderate.</p>
+<p>1: Mod. Cannot add or remove mods. Cannot remove itself. Can moderate.</p>
+<p>0: Abdicated admin. If an admin wants to remove itself, he or she sets his own level value to 0. Abdication is irrevocable.</p>
+<h2 id="thread">Thread</h2>
+<p>Threads are a collection of posts. They have a header, which is the name of the thread. They can either be text-based, in which the user writes some text as the discussion starter, or link-based, in which the thread is a link to an external page.</p>
+<h3 id="thread-object">Thread Object</h3>
+<ul>
+<li>Fingerprint (64 characters, ASCII string)</li>
+<li>Board (64 characters, ASCII string)</li>
+<li>Name (Min 2, Max 255 characters, Unicode string)</li>
+<li>Body (Min 0, Max 65535 characters, Unicode string)</li>
+<li>Link (Min 0, Max 5000 characters, Unicode string)</li>
+<li>Owner (0 or 64 characters, ASCII string)</li>
+<li>Creation (Unix Epoch Time, UTC, int64)</li>
+<li>ProofOfWork (Min 0, Max 1024 characters, ASCII string)</li>
+<li>Signature (Min 0, Max 512 characters, ASCII string)</li>
+</ul>
+<h4 id="maximum-uncompressed-theoretical-size_1">Maximum uncompressed theoretical size</h4>
+<p>~280 Kilobytes, assuming 65535 (max) characters on body, 255 on name, and 5000 on link, all characrers 4 bytes each (unicode max). This wildly varies, be ready to handle extreme cases.</p>
+<h4 id="thread-example">Thread Example</h4>
+<pre><code>{
+  &quot;fingerprint&quot;: &quot;ea7d8e81e18e3791e0e89a4ebaba64c92c3f0f3c03c3057e2ef5e9fcb7f13891&quot;,
+  &quot;board&quot;: &quot;14fc9b8593050a15ebdf2ebae13150315fa9b14e4e921b03f9912c6a2560b8f2&quot;,
+  &quot;name&quot;: &quot;My awesome thread&quot;,
+  &quot;body&quot;: &quot;This is the body of the thread.&quot;,
+  &quot;link&quot;: &quot;http://www.zombo.com&quot;,
+  &quot;owner&quot;: &quot;f1c4f90dd4a45bdb83b47e04e158065b9c7c867ffd44ea925c1301ad6134f2bd&quot;,
+  &quot;creation&quot;: 1442040412,
+  &quot;proof_of_work&quot;: &quot;1:23:1509120719:[mimdata]::xUEBZA89/o7EZwtg:000000000000000000000000000000000GHiK&quot;,
+  &quot;signature&quot;: &quot;30450221008829563cc1ac75659c440e9d737fb81d5a8f3f60cda48d041ed71c61adfcb5cb022026fbd30a651433778d4d94d774082ba66acd7dd1d43d8263e36972aba98c6a79&quot;,
+}
+</code></pre>
+
+<h4 id="thread-index-form-example">Thread Index Form Example</h4>
+<pre><code>{
+  &quot;fingerprint&quot;: &quot;edb4e3da4e8f1e99aba3743fc3de5a84f73e4fd32f5883759e743582a25cb466&quot;,
+  &quot;board&quot;: &quot;71f12bb2278e400d7fec0a40c1944df32fbd0c6e91d10c7ec5e6bbf194b0f4e8&quot;,
+  &quot;creation&quot;: 1442041028,
+  &quot;page_number&quot;: 0 // Only appears on index form. Allows for faster queries.
+}
+</code></pre>
+
+<h4 id="fields_2">Fields</h4>
+<h5 id="fingerprint_1"><em>Fingerprint</em></h5>
+<p>SHA256 hash of the entirety of the object. To come up with the fingerprint, convert all the fields except itself into and unicode string and run SHA256 hash over it.</p>
+<p>Of all the three calculations (proof of work, signature, fingerprint), this should happen last.</p>
+<h5 id="board_1"><em>Board</em></h5>
+<p>Fingerprint of the board this thread belongs to.</p>
+<h5 id="name_1"><em>Name</em></h5>
+<p>Name of the thread. Between 2 and 255 unicode characters.</p>
+<h5 id="body"><em>Body</em></h5>
+<p>Main text. Between 0 and 65535 characters unicode string. Can be empty.</p>
+<h5 id="link"><em>Link</em></h5>
+<p>The address the thread links to. Between 0 and 65535 characters unicode string. Can be empty.</p>
+<h5 id="owner"><em>Owner</em></h5>
+<p>Fingerprint of a Key that owns this. Can be empty.</p>
+<h5 id="creation_1"><em>Creation</em></h5>
+<p>See Board &gt; Creation field.</p>
+<h5 id="proofofwork_1"><em>ProofOfWork</em></h5>
+<p>This field provides a a Hashcash token and its signature. To generate the string that goes into Hashcash, convert all fields except 'Fingerprint' and itself to a unicode string, concatenate them, and run Hashcash over with the configuration options. See 'Entity Concepts' section for more info.</p>
+<h5 id="signature_1"><em>Signature</em></h5>
+<p>ECDSA signature of all fields except 'Fingerprint' and itself. Can be empty. For the exact ECDSA signature algorithm, please read on. [todo]</p>
+<hr />
+<h2 id="post">Post</h2>
+<p>Posts are comments written by users of the protocol. They can be replies directly to the thread, or to another post.</p>
+<h3 id="post-object">Post Object</h3>
+<ul>
+<li>Fingerprint (64 characters, ASCII string)</li>
+<li>Board (64 characters, ASCII string)</li>
+<li>Thread (64 characters, ASCII string)</li>
+<li>Parent (64 characters, ASCII string)</li>
+<li>Body (Min 0, Max 65535 characters, Unicode string)</li>
+<li>Owner (0 or 64 characters, ASCII string)</li>
+<li>Creation (Unix Epoch Time, UTC, int64)</li>
+<li>ProofOfWork (Min 0, Max 1024 characters, ASCII string)</li>
+<li>Signature (Min 0, Max 512 characters, ASCII string)</li>
+</ul>
+<h4 id="maximum-uncompressed-theoretical-size_2">Maximum uncompressed theoretical size</h4>
+<p>~280 Kilobytes, assuming 65535 (max) characters on body, all characters 4 bytes each (unicode max). This wildly varies, so while average post length is 1000~ characters and is mostly ASCII (1 bytes), be ready to handle extreme cases.</p>
+<h4 id="post-example">Post Example</h4>
+<pre><code>{
+  &quot;fingerprint&quot;: &quot;ea7d8e81e18e3791e0e89a4ebaba64c92c3f0f3c03c3057e2ef5e9fcb7f13891&quot;,
+  &quot;board&quot;: &quot;64c74b58966274583ebe2e177e8f53da090cecf91a8d21d173e1af48d3ea3f21&quot;,
+  &quot;thread&quot;: &quot;f1c4f90dd4a45bdb83b47e04e158065b9c7c867ffd44ea925c1301ad6134f2bd&quot;,
+  &quot;parent&quot;: &quot;f1c4f90dd4a45bdb83b47e04e158065b9c7c867ffd44ea925c1301ad6134f2bd&quot;, // if same as board, it's a direct post to the thread.
+  &quot;body&quot;: &quot;This is my post.&quot;,
+  &quot;owner&quot;: &quot;623429db9c6e9bd441b5d6ceaaeeb80a1066f4a0cdbc83722bb970f67700b22f&quot;,
+  &quot;creation&quot;: 1442040412,
+  &quot;proof_of_work&quot;: &quot;1:23:1509120719:[mimdata]::xUEBZA89/o7EZwtg:000000000000000000000000000000000GHiK&quot;,
+  &quot;signature&quot;: &quot;30450221008829563cc1ac75659c440e9d737fb81d5a8f3f60cda48d041ed71c61adfcb5cb022026fbd30a651433778d4d94d774082ba66acd7dd1d43d8263e36972aba98c6a79&quot;,
+}
+</code></pre>
+
+<h4 id="post-index-form-example">Post Index Form Example</h4>
+<pre><code>{
+  &quot;fingerprint&quot;: &quot;edb4e3da4e8f1e99aba3743fc3de5a84f73e4fd32f5883759e743582a25cb466&quot;,
+  &quot;board&quot;: &quot;71f12bb2278e400d7fec0a40c1944df32fbd0c6e91d10c7ec5e6bbf194b0f4e8&quot;,
+  &quot;thread&quot;: &quot;81b3c8d7ae3fa2b971e811834e61e4d6a30c246fb04ac309b267c1dc369cb902&quot;,
+  &quot;creation&quot;: 1442041028,
+  &quot;page_number&quot;: 0 // Only appears on index form. Allows for faster queries.
+}
+</code></pre>
+
+<h4 id="fields_3">Fields</h4>
+<h5 id="fingerprint_2"><em>Fingerprint</em></h5>
+<p>See Thread &gt; Fingerprint field.</p>
+<h5 id="board_2"><em>Board</em></h5>
+<p>Fingerprint of the board this post belongs to.</p>
+<h5 id="thread_1"><em>Thread</em></h5>
+<p>Fingerprint of the thread this post belongs to.</p>
+<h5 id="parent"><em>Parent</em></h5>
+<p>Fingerprint of the entity that is the ancestor to this post.</p>
+<h5 id="body_1"><em>Body</em></h5>
+<p>See Thread &gt; Body field.</p>
+<h5 id="owner_1"><em>Owner</em></h5>
+<p>See Thread &gt; Owner field.</p>
+<h5 id="creation_2"><em>Creation</em></h5>
+<p>See Board &gt; Creation field.</p>
+<h5 id="proofofwork_2"><em>ProofOfWork</em></h5>
+<p>See Thread &gt; ProofOfWork field.</p>
+<h5 id="signature_2"><em>Signature</em></h5>
+<p>See Thread &gt; Signature field.</p>
+<hr />
+<h2 id="vote">Vote</h2>
+<p>Vote objects are emitted when people vote on threads or posts. These are signed by user's private keys, so the user can vote only once on a certain entity. If user's vote changes, his or her vote will update accordingly across the network.</p>
+<h3 id="vote-object">Vote Object</h3>
+<ul>
+<li>Fingerprint (64 characters, ASCII string)</li>
+<li>Board (64 characters, ASCII string)</li>
+<li>Thread (64 characters, ASCII string)</li>
+<li>Target (64 characters, ASCII string)</li>
+<li>Owner (64 characters, ASCII string)</li>
+<li>Creation (Unix Epoch Time, UTC, int64)</li>
+<li>ProofOfWork (Min 0, Max 1024 characters, ASCII string)</li>
+<li>Signature (Min 0, Max 512 characters, ASCII string)</li>
+<li>Type (<strong>Mutable</strong>, uint8. A number between 0-255)</li>
+<li>LastUpdate (<strong>Mutable</strong>, Unix Epoch Time, UTC, int64)</li>
+<li>UpdateProofOfWork (<strong>Mutable</strong>, Min 0, Max 1024 characters, ASCII string)</li>
+<li>UpdateSignature (<strong>Mutable</strong>, Min 0, Max 512 characters, ASCII string)</li>
+</ul>
+<h4 id="mutable-fields-in-vote-object">Mutable fields in Vote Object</h4>
+<p>'Type', 'LastUpdate', 'UpdateProofOfWork', 'UpdateSignature'</p>
+<h4 id="maximum-uncompressed-theoretical-size_3">Maximum uncompressed theoretical size</h4>
+<p>~1 Kilobytes.</p>
+<h4 id="vote-example">Vote Example</h4>
+<pre><code>{
+  &quot;fingerprint&quot;: &quot;ea7d8e81e18e3791e0e89a4ebaba64c92c3f0f3c03c3057e2ef5e9fcb7f13891&quot;,
+  &quot;board&quot;: &quot;64c74b58966274583ebe2e177e8f53da090cecf91a8d21d173e1af48d3ea3f21&quot;,
+  &quot;thread&quot;: &quot;f1c4f90dd4a45bdb83b47e04e158065b9c7c867ffd44ea925c1301ad6134f2bd&quot;,
+  &quot;target&quot;: &quot;f1c4f90dd4a45bdb83b47e04e158065b9c7c867ffd44ea925c1301ad6134f2bd&quot;,
+  &quot;owner&quot;: &quot;623429db9c6e9bd441b5d6ceaaeeb80a1066f4a0cdbc83722bb970f67700b22f&quot;,
+  &quot;creation&quot;: 1442040412,
+  &quot;proof_of_work&quot;: &quot;1:23:1509120719:[mimdata]::xUEBZA89/o7EZwtg:000000000000000000000000000000000GHiK&quot;,
+  &quot;signature&quot;: &quot;30450221008829563cc1ac75659c440e9d737fb81d5a8f3f60cda48d041ed71c61adfcb5cb022026fbd30a651433778d4d94d774082ba66acd7dd1d43d8263e36972aba98c6a79&quot;,
+  &quot;type&quot;: 1,
+  &quot;last_update&quot;: 1442044141,
+  &quot;update_proof_of_work&quot;: &quot;1:24:1509120749:[mimdata]::hyVUb0vRzJsxkZ4Q:0001tD3/&quot;,
+  &quot;update_signature&quot;: &quot;3046022100ce06189f3aea609a095aebb2a8ff4115af18c15abc0e84ff07ee7ba5687a3502022100bc7676c71e81208e179afc7fe0302ac1433ce22527d673ed291dd0965d4e5e58&quot;
+}
+</code></pre>
+
+<h4 id="vote-index-form-example">Vote Index Form Example</h4>
+<pre><code>{
+  &quot;fingerprint&quot;: &quot;edb4e3da4e8f1e99aba3743fc3de5a84f73e4fd32f5883759e743582a25cb466&quot;,
+  &quot;board&quot;: &quot;71f12bb2278e400d7fec0a40c1944df32fbd0c6e91d10c7ec5e6bbf194b0f4e8&quot;,
+  &quot;thread&quot;: &quot;81b3c8d7ae3fa2b971e811834e61e4d6a30c246fb04ac309b267c1dc369cb902&quot;,
+  &quot;target&quot;: &quot;81b3c8d7ae3fa2b971e811834e61e4d6a30c246fb04ac309b267c1dc369cb902&quot;,
+  &quot;creation&quot;: 1442041028,
+  &quot;last_update&quot;: 1442099904,
+  &quot;page_number&quot;: 0 // Only appears on index form. Allows for faster queries.
+}
+</code></pre>
+
+<h4 id="fields_4">Fields</h4>
+<h5 id="fingerprint_3"><em>Fingerprint</em></h5>
+<p>See Board &gt; Fingerprint field.</p>
+<h5 id="board_3"><em>Board</em></h5>
+<p>See Post &gt; Board field.</p>
+<h5 id="thread_2"><em>Thread</em></h5>
+<p>See Post &gt; Thread field.</p>
+<h5 id="target"><em>Target</em></h5>
+<p>The target of this vote. Can be post or a thread.</p>
+<h5 id="owner_2"><em>Owner</em></h5>
+<p>See Post &gt; Owner field.</p>
+<h5 id="creation_3"><em>Creation</em></h5>
+<p>See Post &gt; Creation field.</p>
+<h5 id="proofofwork_3"><em>ProofOfWork</em></h5>
+<p>See Post &gt; ProofOfWork field.</p>
+<h5 id="signature_3"><em>Signature</em></h5>
+<p>See Post &gt; Signature field.</p>
+<h5 id="type"><em>Type</em></h5>
+<p>A value between 0 and 255. (uint8)</p>
+<h5 id="type-values">Type values</h5>
+<p>0: Neutral vote. This is assumed if no vote is available. If you see this, this was reverted back from some other type of vote.</p>
+<p>1: Upvote (Applicable to Posts, Threads)</p>
+<p>2: Downvote (Applicable to Posts, Threads)</p>
+<p>3: Pinned (Applicable to Posts, Threads)</p>
+<p>4: Blocked (Applicable to Posts, Threads, Boards)</p>
+<h5 id="lastupdate_1"><em>LastUpdate</em></h5>
+<p>See Board &gt; LastUpdate field.</p>
+<h5 id="updateproofofwork_1"><em>UpdateProofOfWork</em></h5>
+<p>See Board &gt; UpdateProofOfWork field.</p>
+<h5 id="updatesignature_1"><em>UpdateSignature</em></h5>
+<p>See Board &gt; UpdateSignature field.</p>
+<hr />
+<h2 id="address">Address</h2>
+<p>Address objects are IP addresses running a Mim client. They can be of a certain type, or be running a protocol extension. You decide whether to connect to these with protocol version and with the extensions they are running.</p>
+<h3 id="address-object">Address Object</h3>
+<ul>
+<li>Location (Max 2500 characters ASCII string)</li>
+<li>Sublocation (Max 2500 characters ASCII string)</li>
+<li>LocationType (6 or 4 or 3, single integer)</li>
+<li>Port (uint16. A number between 0-65535)</li>
+<li>Type (<strong>Mutable</strong>, uint8. A number between 0-255)</li>
+<li>LastOnline (<strong>Mutable</strong>, Unix Epoch Time, UTC, int64)</li>
+<li>Protocol (<strong>Mutable</strong>, Protocol object)</li>
+<li>Client (<strong>Mutable</strong>, Client object)</li>
+</ul>
+<h4 id="mutable-fields-in-address-object">Mutable fields in Address Object</h4>
+<p>Address fields are mutable only when directly connected to that address. In other words, addresses are collected from the network only once. An update based on the data coming from another node which is not at the address is not permitted. This is so as to mitigate an attack vector in which the attacker cuts off or encourages the connections (DDoS) to an address by changing the details used to make dispatch decisions on other nodes.</p>
+<p>'Type', 'LastOnline', 'Protocol', 'Client'</p>
+<h4 id="maximum-uncompressed-theoretical-size_4">Maximum uncompressed theoretical size</h4>
+<p>~8 Kilobytes, assuming 100 (max) extensions each 64 characters ASCII (max), 255 characters unicode as client name (max). Average number of extensions is likely 0-1. Average length of client name is likely 7-10 bytes. If average, ~0.5 Kilobytes.</p>
+<h4 id="address-example">Address Example</h4>
+<pre><code>{
+  &quot;location&quot;: &quot;1.2.3.4&quot;,
+  &quot;sublocation&quot;: &quot;&quot;,
+  &quot;location_type&quot;: 4,
+  &quot;port&quot;: 23432,
+  &quot;type&quot;: 2,
+  &quot;last_online&quot;: 1442044141,
+  &quot;protocol&quot;: {
+    &quot;version_major&quot;: 0,
+    &quot;version_minor&quot;: 1,
+    &quot;extensions&quot;: []
+  },
+  &quot;client&quot;: {
+    &quot;version_major&quot;: 2,
+    &quot;version_minor&quot;: 0,
+    &quot;version_patch&quot;: 0,
+    &quot;name&quot;: &quot;Aether&quot;
+  }
+}
+</code></pre>
+
+<h4 id="address-index-form-example">Address Index Form Example</h4>
+<p>The index form of address is the address entity itself.</p>
+<pre><code>{
+  &quot;location&quot;: &quot;1.2.3.4&quot;,
+  &quot;sublocation&quot;: &quot;&quot;,
+  &quot;location_type&quot;: 4,
+  &quot;port&quot;: 23432,
+  &quot;type&quot;: 2,
+  &quot;last_online&quot;: 1442044141,
+  &quot;protocol&quot;: {
+    &quot;version_major&quot;: 0,
+    &quot;version_minor&quot;: 1,
+    &quot;extensions&quot;: []
+  },
+  &quot;client&quot;: {
+    &quot;version_major&quot;: 2,
+    &quot;version_minor&quot;: 0,
+    &quot;version_patch&quot;: 0,
+    &quot;name&quot;: &quot;Aether&quot;
+  }
+}
+</code></pre>
+
+<h4 id="fields_5">Fields</h4>
+<h5 id="location"><em>Location</em></h5>
+<p>Ip address, v4 or v6 (127.0.0.1) or root URL. (http://www.example.com)</p>
+<h5 id="sublocation"><em>Sublocation</em></h5>
+<p>If location is URL, this is the non-root part. i.e. (my_awesome_static_node)</p>
+<p>Combined with the root URL above, this means the node is at http://www.example.com/my_awesome_static_node</p>
+<h5 id="locationtype"><em>LocationType</em></h5>
+<p>The type of IP address. It can either be 4 or 6 or 3. 3 means it's a URL.</p>
+<h5 id="port"><em>Port</em></h5>
+<p>The Mim port of the address. An uint16 number between 0-65535.</p>
+<h5 id="type_1"><em>Type</em></h5>
+<p>Mim type of the address.</p>
+<h5 id="type-values_1">Type values</h5>
+<p>0: Static. This node is 'frozen'. It will not respond to filter queries, just to show all requests. An example of this node is a static website.</p>
+<p>1: Ephemeral. This node is likely not going to be there when asked back. This is useful for a computing device to declare itself as ephemeral. An example of an ephemeral computing device would be a phone, or a tablet. These devices just pull data, read, and leave. They can write, so if a 'new content' signal is received from that node, it should be acted upon as soon as possible. How this signal will change the behaviour of the remote computer is left to the client implementation.</p>
+<p>2: Live. This is a normal computer that stays online for durations longer than a few minutes. This is the default setting.</p>
+<h5 id="lastonline"><em>LastOnline</em></h5>
+<p>The date this node was last connected to.</p>
+<h5 id="protocol"><em>Protocol</em></h5>
+<p>Protocol object which declares the protocol the address is running.</p>
+<hr />
+<h3 id="protocol-sub-entity-of-address">Protocol (sub-entity of Address)</h3>
+<p>Defines the protocol version and extensions the client is running. Protocol extensions are extensions to the Mim protocol where additional features and entities can be added.</p>
+<h4 id="protocol-object">Protocol Object</h4>
+<ul>
+<li>VersionMajor (uint8)</li>
+<li>VersionMinor (uint16)</li>
+<li>Extensions (array of strings, max 64 characters long each, ASCII max 100 extensions)</li>
+</ul>
+<h4 id="fields_6">Fields</h4>
+<h5 id="versionmajor"><em>VersionMajor</em></h5>
+<p>Major version of the Mim protocol running on this address.</p>
+<h5 id="versionminor"><em>VersionMinor</em></h5>
+<p>Minor version of the Mim protocol running on this address.</p>
+<h5 id="extensions"><em>Extensions</em></h5>
+<p>The array of strings, each of which define an extension to the Mim protocol. Max 100 extensions. Each string is maximum 64 characters ASCII.</p>
+<hr />
+<h3 id="client-sub-entity-of-address">Client (sub-entity of Address)</h3>
+<p>Defines the client that is running on this address. This object is empty if the node is static.</p>
+<h4 id="client-object">Client Object</h4>
+<ul>
+<li>VersionMajor (uint8)</li>
+<li>VersionMinor (uint16)</li>
+<li>VersionPatch (uint16)</li>
+<li>ClientName (Max 255 characters Unicode)</li>
+</ul>
+<h4 id="fields_7">Fields</h4>
+<h5 id="versionmajor_1"><em>VersionMajor</em></h5>
+<p>Major version of the client running on this address.</p>
+<h5 id="versionminor_1"><em>VersionMinor</em></h5>
+<p>Minor version of the client running on this address.</p>
+<h5 id="versionpatch"><em>VersionPatch</em></h5>
+<p>Minor version of the client running on this address.</p>
+<h5 id="clientname"><em>ClientName</em></h5>
+<p>Name of the client running on this node. Max 255 characters Unicode.</p>
+<hr />
+<h2 id="key">Key</h2>
+<p>Keys represent unique users. Having a key is optional, i.e. you can write posts anonymously. However, the nodes might reject to receive these posts written in such a manner. If you do not have a key, you cannot vote.</p>
+<h3 id="key-object">Key Object</h3>
+<ul>
+<li>Fingerprint  (64 characters, ASCII string)</li>
+<li>Type (256 characters, ASCII String)</li>
+<li>Key (Max 65536 characters ASCII string)</li>
+<li>Name (Max 64 characters Unicode)</li>
+<li>Creation (Unix Epoch Time, UTC, int64)</li>
+<li>ProofOfWork (Min 0, Max 1024 characters, ASCII string)</li>
+<li>Signature (Min 0, Max 512 characters, ASCII string)</li>
+<li>CurrencyAddresses (<strong>Mutable</strong>, Array of CurrencyAddress, Max 10.)</li>
+<li>Info (<strong>Mutable</strong>, Max 1024 characters Unicode.)</li>
+<li>LastUpdate (<strong>Mutable</strong>, Unix Epoch Time, UTC, int64)</li>
+<li>UpdateProofOfWork (<strong>Mutable</strong>, Min 0, Max 1024 characters, ASCII string)</li>
+<li>UpdateSignature (<strong>Mutable</strong>, Min 0, Max 512 characters, ASCII string)</li>
+</ul>
+<h4 id="mutable-fields-in-key-object">Mutable fields in Key Object</h4>
+<p>'CurrencyAddresses', 'Info', 'LastUpdate', 'UpdateProofOfWork', 'UpdateSignature'</p>
+<h4 id="maximum-uncompressed-theoretical-size_5">Maximum uncompressed theoretical size</h4>
+<p>~80 Kilobytes, assuming 10 (max) currency addresses with all their values at mex, 65535 characters ASCII (max) at key and all other values are maxed.. Length of the key used by default is 512 characters ASCII. Average number of currency addresses for a key is 0-1 If average, ~6 Kilobytes.</p>
+<h4 id="key-example">Key Example</h4>
+<pre><code>{
+  &quot;fingerprint&quot;: &quot;ea7d8e81e18e3791e0e89a4ebaba64c92c3f0f3c03c3057e2ef5e9fcb7f13891&quot;,
+  &quot;type&quot;: &quot;secp256k1&quot;,
+  &quot;name&quot;: &quot;burak&quot;,
+  &quot;key&quot;: &quot;04da41af852dad151094de0e84a7c8a111cf93d56a2028c8400a1e9f9e37adffd4328a256228cc30387af52e507e33c28cf1accfda524800cdd5f17845ebc63168&quot;,
+  &quot;creation&quot;: 1442040412,
+  &quot;proof_of_work&quot;: &quot;1:23:1509120719:[mimdata]::xUEBZA89/o7EZwtg:000000000000000000000000000000000GHiK&quot;,
+  &quot;signature&quot;: &quot;30450221008829563cc1ac75659c440e9d737fb81d5a8f3f60cda48d041ed71c61adfcb5cb022026fbd30a651433778d4d94d774082ba66acd7dd1d43d8263e36972aba98c6a79&quot;,
+  &quot;currency_addresses&quot;: [
+    {
+      &quot;currency_code&quot;: &quot;XDG&quot;,
+      &quot;address&quot;: &quot;ea7d8e81e18e3791e0e89a4ebaba64c92c3f0f3c03c3057e2ef5e9fcb7f13891&quot;
+    }
+  ],
+  &quot;info&quot;: &quot;This is the key information.&quot;,
+  &quot;last_update&quot;: 1442044141,
+  &quot;update_proof_of_work&quot;: &quot;1:24:1509120749:[mimdata]::hyVUb0vRzJsxkZ4Q:0001tD3/&quot;,
+  &quot;update_signature&quot;: &quot;3046022100ce06189f3aea609a095aebb2a8ff4115af18c15abc0e84ff07ee7ba5687a3502022100bc7676c71e81208e179afc7fe0302ac1433ce22527d673ed291dd0965d4e5e58&quot;
+}
+</code></pre>
+
+<h4 id="key-index-form-example">Key Index Form Example</h4>
+<p>The index form of address is the address entity itself.</p>
+<pre><code>{
+  &quot;fingerprint&quot;: &quot;edb4e3da4e8f1e99aba3743fc3de5a84f73e4fd32f5883759e743582a25cb466&quot;,
+  &quot;creation&quot;: 1442041028,
+  &quot;last_update&quot;: 1442099904,
+  &quot;page_number&quot;: 0 // Only appears on index form. Allows for faster queries.
+}
+</code></pre>
+
+<h4 id="fingerprint_4"><em>Fingerprint</em></h4>
+<p>See Board &gt; Fingerprint field.</p>
+<h4 id="type_2"><em>Type</em></h4>
+<p>The type of the key, a string field, such as 'RSA2048'. There are no defined values of this field. Whatever you put there, make sure all other clients can decipher it. If this type is indecipherable to a client, it is required for the client to make a best-effort attempt to validate the key.</p>
+<h4 id="key_1"><em>Key</em></h4>
+<p>The key itself.</p>
+<h4 id="name_2"><em>Name</em></h4>
+<p>The user name of the person who owns the key.</p>
+<h4 id="creation_4"><em>Creation</em></h4>
+<p>See Thread &gt; Creation field.</p>
+<h4 id="proofofwork_4"><em>ProofOfWork</em></h4>
+<p>See Thread &gt; ProofOfWork field.</p>
+<h4 id="signature_4"><em>Signature</em></h4>
+<p>See Thread &gt; Signature field.</p>
+<h4 id="currencyaddresses"><em>CurrencyAddresses</em></h4>
+<p>An array of CurrencyAddress objects. Maximum 10 objects.</p>
+<h4 id="info"><em>Info</em></h4>
+<p>Ideally, some information about the owner of the key, alternative contact methods etc.</p>
+<h5 id="lastupdate_2"><em>LastUpdate</em></h5>
+<p>See Board &gt; LastUpdate field.</p>
+<h4 id="updateproofofwork_2"><em>UpdateProofOfWork</em></h4>
+<p>See Board &gt; UpdateProofOfWork field.</p>
+<h4 id="updatesignature_2"><em>UpdateSignature</em></h4>
+<p>See Board &gt; UpdateSignature field.</p>
+<hr />
+<h3 id="currencyaddress-sub-entity-of-key">CurrencyAddress (sub-entity of Key)</h3>
+<p>Defines a currency where the user can be sent money out-of-band. Mim does not handle monetary transactions.</p>
+<h4 id="currencyaddress-object">CurrencyAddress Object</h4>
+<ul>
+<li>CurrencyCode (Max 5 characters ASCII string, ISO 4217)</li>
+<li>Address (Max 1024 characters ASCII string)</li>
+</ul>
+<h4 id="fields_8">Fields</h4>
+<h5 id="currencycode"><em>CurrencyCode</em></h5>
+<p>ISO4217 Currency code of the currency in this address. The currencies not defined in ISO4217 should be based on consensus. If you are dealing with a cryptocurrency, the recommendation is to use X at the beginning and 2 letters for the currency. For example, Bitcoin would be XBT.</p>
+<h5 id="address_1"><em>Address</em></h5>
+<p>The currency address of the keyholder in this currency.</p>
+<hr />
+<h2 id="truststate">TrustState</h2>
+<p>TrustState objects are declarations of trust of an user for another. If an user trusts, or distrusts another, it emits a TrustState. If the user changes an existing TrustState to neutral, it updates the state with a 'neutral'.</p>
+<h3 id="truststate-object">TrustState Object</h3>
+<ul>
+<li>Fingerprint (64 characters, ASCII string)</li>
+<li>Target (64 characters, ASCII string)</li>
+<li>Owner (64 characters, ASCII string)</li>
+<li>Creation (Unix Epoch Time, UTC, int64)</li>
+<li>ProofOfWork (Min 0, Max 1024 characters, ASCII string)</li>
+<li>Signature (Min 0, Max 512 characters, ASCII string)</li>
+<li>Type (<strong>Mutable</strong>, uint8. A number between 0-255)</li>
+<li>Domains (<strong>Mutable</strong>, Min 0, max 100 array of Board fingerprints)</li>
+<li>Expiry (<strong>Mutable</strong>, Unix Epoch Time, UTC, int64)</li>
+<li>LastUpdate (<strong>Mutable</strong>, Unix Epoch Time, UTC, int64)</li>
+<li>UpdateProofOfWork (<strong>Mutable</strong>, Min 0, Max 1024 characters, ASCII string)</li>
+<li>UpdateSignature (<strong>Mutable</strong>, Min 0, Max 512 characters, ASCII string)</li>
+</ul>
+<h4 id="mutable-fields-in-truststate-object">Mutable fields in TrustState Object</h4>
+<p>'Type', 'Domains', 'Expiry' 'LastUpdate', 'UpdateProofOfWork', 'UpdateSignature'</p>
+<h4 id="maximum-uncompressed-theoretical-size_6">Maximum uncompressed theoretical size</h4>
+<p>~7 Kilobytes, assuming 100 (max) domains. Average number of domains is likely 1-2. If average, ~1 Kilobytes.</p>
+<h4 id="truststate-example">TrustState Example</h4>
+<pre><code>{
+  &quot;fingerprint&quot;: &quot;ea7d8e81e18e3791e0e89a4ebaba64c92c3f0f3c03c3057e2ef5e9fcb7f13891&quot;,
+  &quot;target&quot;: &quot;f1c4f90dd4a45bdb83b47e04e158065b9c7c867ffd44ea925c1301ad6134f2bd&quot;,
+  &quot;owner&quot;: &quot;623429db9c6e9bd441b5d6ceaaeeb80a1066f4a0cdbc83722bb970f67700b22f&quot;,
+  &quot;creation&quot;: 1442040412,
+  &quot;proof_of_work&quot;: &quot;1:23:1509120719:[mimdata]::xUEBZA89/o7EZwtg:000000000000000000000000000000000GHiK&quot;,
+  &quot;signature&quot;: &quot;30450221008829563cc1ac75659c440e9d737fb81d5a8f3f60cda48d041ed71c61adfcb5cb022026fbd30a651433778d4d94d774082ba66acd7dd1d43d8263e36972aba98c6a79&quot;,
+  &quot;type&quot;: 2,
+  &quot;domains&quot;: [
+    &quot;64c74b58966274583ebe2e177e8f53da090cecf91a8d21d173e1af48d3ea3f21&quot;,
+    &quot;f9df663ad9cd758eb1ae510d595a5f722b558e8176e576e62031fbe4053b3943&quot;
+    ],
+  &quot;expiry&quot;: 1442044141,
+  &quot;last_update&quot;: 1442044141,
+  &quot;update_proof_of_work&quot;: &quot;1:24:1509120749:[mimdata]::hyVUb0vRzJsxkZ4Q:0001tD3/&quot;,
+  &quot;update_signature&quot;: &quot;3046022100ce06189f3aea609a095aebb2a8ff4115af18c15abc0e84ff07ee7ba5687a3502022100bc7676c71e81208e179afc7fe0302ac1433ce22527d673ed291dd0965d4e5e58&quot;
+}
+</code></pre>
+
+<h4 id="truststate-index-form-example">TrustState Index Form Example</h4>
+<pre><code>{
+  &quot;fingerprint&quot;: &quot;edb4e3da4e8f1e99aba3743fc3de5a84f73e4fd32f5883759e743582a25cb466&quot;,
+  &quot;target&quot;: &quot;81b3c8d7ae3fa2b971e811834e61e4d6a30c246fb04ac309b267c1dc369cb902&quot;,
+  &quot;creation&quot;: 1442041028,
+  &quot;last_update&quot;: 1442099904,
+  &quot;page_number&quot;: 0 // Only appears on index form. Allows for faster queries.
+}
+</code></pre>
+
+<h4 id="fields_9">Fields</h4>
+<h5 id="fingerprint_5"><em>Fingerprint</em></h5>
+<p>See Board &gt; Fingerprint field.</p>
+<h5 id="target_1"><em>Target</em></h5>
+<p>The target key (user) of the trust assignment.</p>
+<h5 id="owner_3"><em>Owner</em></h5>
+<p>See Post &gt; Owner field.</p>
+<h5 id="creation_5"><em>Creation</em></h5>
+<p>See Post &gt; Creation field.</p>
+<h5 id="proofofwork_5"><em>ProofOfWork</em></h5>
+<p>See Post &gt; ProofOfWork field.</p>
+<h5 id="signature_5"><em>Signature</em></h5>
+<p>See Post &gt; Signature field.</p>
+<h5 id="type_3"><em>Type</em></h5>
+<p>A value between 0 and 255. (uint8)</p>
+<h5 id="type-values_2">Type values</h5>
+<p>0: Neutral trust state. This is assumed if no state is available. If you see this, this was reverted back from some other type of state.</p>
+<p>1: Trusted. Owner of this TrustState trusts the user with the key TargetKey.</p>
+<p>2: Distrusted. Owner of this TrustState has blocked the user with the key TargetKey.</p>
+<h5 id="domains"><em>Domains</em></h5>
+<p>An array of board fingerprints, in which the user is declared to be in the provided trust state. You cannot trust an user in one board and distrust in another. If you give a domain, in anywhere that is not the domain provided, the trust is assumed to be neutral. If you do not give a domain, the trust is in all boards.</p>
+<h5 id="expiry_1"><em>Expiry</em></h5>
+<p>The UTC timestamp which declares when the trust expires. Can be empty. If empty, the trust does not expire.</p>
+<h5 id="lastupdate_3"><em>LastUpdate</em></h5>
+<p>See Board &gt; LastUpdate field.</p>
+<h5 id="updateproofofwork_3"><em>UpdateProofOfWork</em></h5>
+<p>See Board &gt; UpdateProofOfWork field.</p>
+<h5 id="updatesignature_3"><em>UpdateSignature</em></h5>
+<p>See Board &gt; UpdateSignature field.</p>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../apigeneral/" class="btn btn-neutral float-right" title="API"/>Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+        <a href="../entity_concepts/" class="btn btn-neutral" title="Entity Concepts"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="http://www.mkdocs.org">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+	  
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+<div class="rst-versions" role="note" style="cursor: pointer">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href="../entity_concepts/" style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+        <span style="margin-left: 15px"><a href="../apigeneral/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
+    </span>
+</div>
+
+</body>
+</html>

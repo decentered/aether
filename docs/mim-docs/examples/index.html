@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Usage Examples - Mim Protocol Documentation</title>
+  
+
+  <link rel="shortcut icon" href="../img/favicon.ico">
+
+  
+  <link href='https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700' rel='stylesheet' type='text/css'>
+
+  <link rel="stylesheet" href="../css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../css/theme_extra.css" type="text/css" />
+  <link rel="stylesheet" href="../css/highlight.css">
+
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "Usage Examples";
+  </script>
+  
+  <script src="../js/jquery-2.1.1.min.js"></script>
+  <script src="../js/modernizr-2.8.3.min.js"></script>
+  <script type="text/javascript" src="../js/highlight.pack.js"></script>
+  <script src="../js/theme.js"></script> 
+
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+      <div class="wy-side-nav-search">
+        <a href=".." class="icon icon-home"> Mim Protocol Documentation</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+        <ul class="current">
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="..">Home</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../entity_concepts/">Entity Concepts</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../objects/">Entities</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../apigeneral/">API</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../endpoints/">Endpoints</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../flows/">Common Flows</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 current">
+        <a class="current" href="./">Usage Examples</a>
+        
+            <ul>
+            
+                <li class="toctree-l3"><a href="#examples">Examples</a></li>
+                
+            
+                <li class="toctree-l3"><a href="#requests">Requests</a></li>
+                
+                    <li><a class="toctree-l4" href="#get">GET</a></li>
+                
+                    <li><a class="toctree-l4" href="#post">POST</a></li>
+                
+            
+                <li class="toctree-l3"><a href="#responses">Responses</a></li>
+                
+                    <li><a class="toctree-l4" href="#status">Status</a></li>
+                
+                    <li><a class="toctree-l4" href="#entity-endpoints">Entity Endpoints</a></li>
+                
+            
+            </ul>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../faq/">FAQ</a>
+        
+    </li>
+<li>
+          
+            <li>
+    <li class="toctree-l1 ">
+        <a class="" href="../about/">About</a>
+        
+    </li>
+<li>
+          
+        </ul>
+      </div>
+      &nbsp;
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="..">Mim Protocol Documentation</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="..">Docs</a> &raquo;</li>
+    
+      
+    
+    <li>Usage Examples</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="examples">Examples</h1>
+<p>Here you can see examples of GET and POST requests, and GET and POST responses used in Mim for all available endpoints. All endpoints are HTTPS only.</p>
+<ul>
+<li>Requests<ul>
+<li>GET</li>
+<li>POST</li>
+</ul>
+</li>
+<li>Responses<ul>
+<li>Status<ul>
+<li>GET</li>
+<li>POST</li>
+</ul>
+</li>
+<li>Index<ul>
+<li>GET</li>
+<li>POST</li>
+</ul>
+</li>
+<li>Entity endpoints<ul>
+<li>GET</li>
+<li>POST</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h1 id="requests">Requests</h1>
+<h2 id="get">GET</h2>
+<p>You can issue GET requests by just pointing your browser towards that link. These will give you last day's cache in a paginated format, with a link to be able to jump to the cache of the day before, and so on.</p>
+<h3 id="without-filters">Without filters</h3>
+<p><code>https://[ip-address-of-node]:[port]/[protocol-version]/[endpoint]/[page_number]</code></p>
+<h4 id="endpoints">Endpoints</h4>
+<p>These are all of the endpoints available in the base protocol. Extensions can extend the protocol in a way that can create new endpoints, new objects and new behaviours.</p>
+<p><code>https://1.2.3.4:34821/v0/status.json</code></p>
+<!-- ```https://1.2.3.4:34821/v0/index/0.json``` -->
+
+<p><code>https://1.2.3.4:34821/v0/boards/index.json</code></p>
+<p><code>https://1.2.3.4:34821/v0/threads/index.json</code></p>
+<p><code>https://1.2.3.4:34821/v0/posts/index.json</code></p>
+<p><code>https://1.2.3.4:34821/v0/votes/index.json</code></p>
+<p><code>https://1.2.3.4:34821/v0/keys/index.json</code></p>
+<p><code>https://1.2.3.4:34821/v0/addresses/index.json</code></p>
+<p><code>https://1.2.3.4:34821/v0/truststates/index.json</code></p>
+<p>The [entity]/index endpoints allow you to reach to the index of the existing caches of that endpoint. From this page, you will be given the list of caches you can reach.</p>
+<h3 id="reaching-out-to-actual-data">Reaching out to actual data</h3>
+<p><code>https://localhost:34821/v0/threads/cache_e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/0.json // page 0 of a cache</code></p>
+<p><code>cache_9843jifnk</code> is a random name. It can be generated by however the remote wishes. <code>0</code> is the first page of that cache. The amount of data are determined by the <a href="http://localhost:8000/apigeneral/#minimum-results-policy">minimum results policy</a>.</p>
+<h2 id="post">POST</h2>
+<p>Post requests are usually done to reach non-cached data that is current. (GET requests hit cached data)</p>
+<h4 id="general-format">General format</h4>
+<p>Exactly the same endpoints provided above.</p>
+<h4 id="the-standard-post-request">The standard POST Request</h4>
+<pre><code>{
+  &quot;node_id&quot;: &quot;e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855&quot;,
+  &quot;address&quot;: {
+    &quot;location&quot;: &quot;&quot;, // L should infer from connection
+    &quot;sublocation&quot;: &quot;&quot;, // L should infer from connection
+    &quot;location_type&quot;: 0, // L should infer from connection
+    &quot;port&quot;: 23432,
+    &quot;type&quot;: 2,
+    &quot;last_online&quot;: 0, // L should infer from connection
+    &quot;protocol&quot;: {
+      &quot;version_major&quot;: 0,
+      &quot;version_minor&quot;: 1,
+      &quot;extensions&quot;: []
+    },
+    &quot;client&quot;: {
+      &quot;version_major&quot;: 2,
+      &quot;version_minor&quot;: 0,
+      &quot;version_patch&quot;: 0,
+      &quot;name&quot;: &quot;Aether&quot;
+    }
+  },
+  &quot;filters&quot;: [
+   // ... (If there are filters being requested)
+  ]
+}
+</code></pre>
+
+<p>Filters section should receive the filters you want to have. Check the endpoints documentation for available filters for each endpoint.</p>
+<p><em>This all below, excluding filters section,m will be called [[node info]] in this document after this for the sake of brevity.</em></p>
+<h3 id="without-filters_1">Without filters</h3>
+<p>If the filter array is empty, the remote will assume that means a timestamp filter of a week, which is the longest duration you can ask for. When you do a post, you have to have a request body.</p>
+<h3 id="with-filters">With filters</h3>
+<p>There are three types of filters that you can provide within the POST request body given above.</p>
+<ul>
+<li>Timestamp</li>
+<li>Fingerprints</li>
+<li>Embeds</li>
+</ul>
+<h4 id="timestamp">Timestamp</h4>
+<pre><code>{
+  // [[node info]]
+  &quot;filters&quot;: [
+    {
+      &quot;type&quot;: &quot;timestamp&quot;,
+      &quot;values&quot;: 1442039887
+    }
+  ],
+}
+</code></pre>
+
+<h4 id="fingerprints">Fingerprints</h4>
+<pre><code>{
+  // [[node info]]
+  &quot;filters&quot;: [
+    {
+      &quot;type&quot;: &quot;fingerprint&quot;,
+      &quot;values&quot;: [
+      &quot;bdb237bf8c5de6b60ba1e2dcfe364fc24f583e568d1682f851a9d0f11a45c78d&quot;,
+      &quot;421c76d77563afa1914846b010bd164f395bd34c2102e5e99e0cb9cf173c1d87&quot;,
+      &quot;e23e44bf8d3adfa1c78d22c13554ffd12002d6ed2a016087d37d3d6f9ab47991&quot;,
+      &quot;0f5c0b2e41c7646b11a0e24080ab59e63fd9d21331c99859d5fad7937c1992c9&quot;
+    ]
+    }
+  ],
+}
+</code></pre>
+
+<h4 id="embeds">Embeds</h4>
+<pre><code>{
+  // [[node info]]
+  &quot;filters&quot;: [
+    {
+      &quot;type&quot;: &quot;embed&quot;,
+      &quot;values&quot;: [&quot;threads&quot;, &quot;keys&quot;]
+    }
+  ],
+}
+</code></pre>
+
+<h1 id="responses">Responses</h1>
+<h2 id="status">Status</h2>
+<h3 id="example-get-response">Example GET response</h3>
+<p><code>HTTP 200 OK</code> With no body.</p>
+<h3 id="example-post-response">Example POST response</h3>
+<pre><code>{
+  &quot;node_id&quot;: &quot;e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855&quot;,
+  &quot;address&quot;: {
+    &quot;location&quot;: &quot;&quot;, // L should infer from connection
+    &quot;sublocation&quot;: &quot;&quot;, // L should infer from connection
+    &quot;location_type&quot;: 0, // L should infer from connection
+    &quot;port&quot;: 23432,
+    &quot;type&quot;: 2,
+    &quot;last_online&quot;: 0, // L should infer from connection
+    &quot;protocol&quot;: {
+      &quot;version_major&quot;: 0,
+      &quot;version_minor&quot;: 1,
+      &quot;extensions&quot;: []
+    },
+    &quot;client&quot;: {
+      &quot;version_major&quot;: 2,
+      &quot;version_minor&quot;: 0,
+      &quot;version_patch&quot;: 0,
+      &quot;name&quot;: &quot;Aether&quot;
+    }
+  },
+  &quot;entity&quot;: &quot;status&quot;,
+  &quot;endpoint&quot;: &quot;status&quot;,
+}
+</code></pre>
+
+<!-- When L does a GET request to the response URL in R, it is given the answer, which is in the same format as the GET reply example provided above. An example URL that would be constructed: -->
+
+<!-- Example: ```https://1.2.3.4:23492/index/post_55a295c39e222e3f94d82d795654adaea9bc981cd2ae82d7c7b8d4975aa52688/0.json``` -->
+
+<p>The general format is <code>https://[node ip]:[node port]/[endpoint]/[response_url]/[page_number]</code></p>
+<h2 id="entity-endpoints">Entity Endpoints</h2>
+<h3 id="example-get-entity-index-response">Example GET entity index Response</h3>
+<p>Example endpoint: <code>https://1.2.3.4:34821/v0/[entity]/index</code>. Same structure with all [entity]/index endpoints. The items in <code>results</code> section are caches with their start and ending dates denoted.</p>
+<pre><code>{
+  &quot;node_id&quot;: &quot;e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855&quot;,
+  &quot;address&quot;: {
+    &quot;location&quot;: &quot;&quot;, // L should infer from connection
+    &quot;sublocation&quot;: &quot;&quot;, // L should infer from connection
+    &quot;location_type&quot;: 0, // L should infer from connection
+    &quot;port&quot;: 23432,
+    &quot;type&quot;: 2,
+    &quot;last_online&quot;: 0, // L should infer from connection
+    &quot;protocol&quot;: {
+      &quot;version_major&quot;: 0,
+      &quot;version_minor&quot;: 1,
+      &quot;extensions&quot;: []
+    },
+    &quot;client&quot;: {
+      &quot;version_major&quot;: 2,
+      &quot;version_minor&quot;: 0,
+      &quot;version_patch&quot;: 0,
+      &quot;name&quot;: &quot;Aether&quot;
+    }
+  },
+  &quot;entity&quot;: &quot;boards&quot;,
+  &quot;endpoint&quot;: &quot;entity_index&quot;,
+  &quot;timestamp&quot;: 1442097755,
+  &quot;results&quot;: [
+    {
+      &quot;response_url&quot;: &quot;cache_55a295c39e222e3f94d82d795654a0fea9bc981cd2ae82d7c7b8d4975aa52688&quot;,
+      &quot;starts_from&quot;: 1000952512,
+      &quot;ends_at&quot;: 1445197252
+    },
+    {
+      &quot;response_url&quot;: &quot;cache_55a295c39e222e3f94d82d795654a0fea9bc981cd2ae82d7c7b8d4975aa52688&quot;,
+      &quot;starts_from&quot;: 1000952512,
+      &quot;ends_at&quot;: 1445197252
+    },
+    {
+      &quot;response_url&quot;: &quot;cache_55a295c39e222e3f94d82d795654a0fea9bc981cd2ae82d7c7b8d4975aa52688&quot;,
+      &quot;starts_from&quot;: 1000952512,
+      &quot;ends_at&quot;: 1445197252
+    },
+    {
+      &quot;response_url&quot;: &quot;cache_55a295c39e222e3f94d82d795654a0fea9bc981cd2ae82d7c7b8d4975aa52688&quot;,
+      &quot;starts_from&quot;: 1000952512,
+      &quot;ends_at&quot;: 1445197252
+    },
+    {
+      &quot;response_url&quot;: &quot;cache_55a295c39e222e3f94d82d795654a0fea9bc981cd2ae82d7c7b8d4975aa52688&quot;,
+      &quot;starts_from&quot;: 1000952512,
+      &quot;ends_at&quot;: 1445197252
+    },
+    {
+      &quot;response_url&quot;: &quot;cache_55a295c39e222e3f94d82d795654a0fea9bc981cd2ae82d7c7b8d4975aa52688&quot;,
+      &quot;starts_from&quot;: 1000952512,
+      &quot;ends_at&quot;: 1445197252
+    },
+    {
+      &quot;response_url&quot;: &quot;cache_55a295c39e222e3f94d82d795654a0fea9bc981cd2ae82d7c7b8d4975aa52688&quot;,
+      &quot;starts_from&quot;: 1000952512,
+      &quot;ends_at&quot;: 1445197252
+    },
+    {
+      &quot;response_url&quot;: &quot;cache_55a295c39e222e3f94d82d795654a0fea9bc981cd2ae82d7c7b8d4975aa52688&quot;,
+      &quot;starts_from&quot;: 1000952512,
+      &quot;ends_at&quot;: 1445197252
+    }
+  ]
+}
+</code></pre>
+
+<h3 id="example-get-cache-index-response">Example GET cache index response</h3>
+<p>Example endpoint: <code>//localhost:8000/posts/cache_0c558847c...7b14/index/0.json</code></p>
+<pre><code>{
+    &quot;node_id&quot;: &quot;e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855&quot;,
+    &quot;address&quot;: {
+        &quot;location&quot;: &quot;&quot;,
+        &quot;sublocation&quot;: &quot;&quot;,
+        &quot;location_type&quot;: 0,
+        &quot;port&quot;: 0,
+        &quot;type&quot;: 2,
+        &quot;last_online&quot;: 0,
+        &quot;protocol&quot;: {
+            &quot;version_major&quot;: 0,
+            &quot;version_minor&quot;: 1,
+            &quot;extensions&quot;: []
+        },
+        &quot;client&quot;: {
+            &quot;version_major&quot;: 2,
+            &quot;version_minor&quot;: 0,
+            &quot;version_patch&quot;: 0,
+            &quot;name&quot;: &quot;Aether&quot;
+        }
+    },
+    &quot;entity&quot;: &quot;boards&quot;,
+    &quot;endpoint&quot;: &quot;cache_index&quot;,
+    &quot;timestamp&quot;: 1448163764,
+    &quot;starts_from&quot;: 1447814295,
+    &quot;ends_at&quot;: 1447900695,
+    &quot;pagination&quot;: {
+        &quot;pages&quot;: 0,
+        &quot;current_page&quot;: 0
+    },
+    &quot;caching&quot;: {
+        &quot;served_from_cache&quot;: true,
+        &quot;cache_scope&quot;: &quot;day&quot;,
+        &quot;prev_cache_url&quot;: &quot;cache_664b09483da3a122512200656ba707626a330c441ee6ef02506be57eb4047ffa&quot;,
+        &quot;current_cache_url&quot;: &quot;cache_fa798564efd639282d66a5f8ee6c6171d35633b420a7ffaaf0318748a84e62d1&quot;
+    },
+    &quot;response&quot;: [
+        {
+            &quot;fingerprint&quot;: &quot;0221c70a30df591e548b2a13674cb85d9e4be3841c6434cdb0ec6e22b8b1bfc3&quot;,
+            &quot;creation&quot;: 1439603165,
+            &quot;last_update&quot;: 1447900175
+        },
+        {
+            &quot;fingerprint&quot;: &quot;50b12fb93ebde496b74bf0ef2dbe08639f7d04ecd7a92bf053505b0c8d6de699&quot;,
+            &quot;creation&quot;: 1439733415,
+            &quot;last_update&quot;: 1447899299
+        },
+        {
+            &quot;fingerprint&quot;: &quot;1c28d1b805bd6c4284d6a6344b5c853454ffd4f79f74ae752b1471cb98e75c47&quot;,
+            &quot;creation&quot;: 1446817789,
+            &quot;last_update&quot;: 1447899118
+        }
+    ]
+}
+</code></pre>
+
+<!-- ### Example POST cache index response
+
+wzxhzdk:7
+
+{
+  "node_id": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "address": {
+    "location": "", // L should infer from connection
+    "sublocation": "", // L should infer from connection
+    "location_type": 0, // L should infer from connection
+    "port": 23432,
+    "type": 2,
+    "last_online": 0, // L should infer from connection
+    "protocol": {
+      "version_major": 0,
+      "version_minor": 1,
+      "extensions": []
+    },
+    "client": {
+      "version_major": 2,
+      "version_minor": 0,
+      "version_patch": 0,
+      "name": "Aether"
+    }
+  },
+  "entity": "boards",
+  "endpoint": "boards",
+  "timestamp": 1442097755,
+  "starts_from": 1000952512,
+  "ends_at": 1000952512,
+  "pagination": {
+    "pages": 5,
+    "current_page": 0
+  },
+  "caching": {
+    "served_from_cache":true,
+    "cache_scope":"day", // day, or week (which is for index).
+    "prev_cache_url": "cache_55a295c39e222e3f94d82d795654a0fea9bc981cd2ae82d7c7b8d4975aa52688",  // The L generates an url from this byadding it to the Address.
+    "current_cache_url": "cache_55a295c39e222e3f94d82d795654adaea9bc981cd2ae82d7c7b8d4975aa52688"
+    },
+  },
+  "response": {
+    "boards": [
+      {}, // board objects, see Board object for examples.
+      {},
+      {}
+    ]
+  }
+}
+
+wzxhzdk:8
+
+{
+  "node_id": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "address": {
+    "location": "", // L should infer from connection
+    "sublocation": "", // L should infer from connection
+    "location_type": 0, // L should infer from connection
+    "port": 23432,
+    "type": 2,
+    "last_online": 0, // L should infer from connection
+    "protocol": {
+      "version_major": 0,
+      "version_minor": 1,
+      "extensions": []
+    },
+    "client": {
+      "version_major": 2,
+      "version_minor": 0,
+      "version_patch": 0,
+      "name": "Aether"
+    }
+  },
+  "entity": "boards",
+  "endpoint": "boards",
+  "filters": [
+    {
+      "type": "embed",
+      "values": ["threads", "keys"]
+    }
+  ],
+  "timestamp": 1442097755,
+  "results": [
+    {
+      "response_url": "post_55a295c39e222e3f94d82d795654adaea9bc981cd2ae82d7c7b8d4975aa52688",
+      "starts_from": 1000952512,
+      "ends_at": 1445197252
+    }
+  ]
+}
+
+wzxhzdk:9
+
+{
+  "node_id": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "address": {
+    "location": "", // L should infer from connection
+    "sublocation": "", // L should infer from connection
+    "location_type": 0, // L should infer from connection
+    "port": 23432,
+    "type": 2,
+    "last_online": 0, // L should infer from connection
+    "protocol": {
+      "version_major": 0,
+      "version_minor": 1,
+      "extensions": []
+    },
+    "client": {
+      "version_major": 2,
+      "version_minor": 0,
+      "version_patch": 0,
+      "name": "Aether"
+    }
+  },
+  "entity": "boards",
+  "endpoint": "boards",
+  "filters": [
+    {
+      "type": "embed",
+      "values": ["threads", "keys"]
+    }
+  ],
+  "timestamp": 1442097755,
+  "starts_from": 1000952512,
+  "ends_at": 1000952512,
+  "pagination": {
+    "pages": 5,
+    "current_page": 0
+  },
+  "caching": {
+    "served_from_cache":false,
+  },
+  "response": {
+    "boards": [
+      {}, // board objects, see Board object for examples.
+      {},
+      {}
+    ],
+    "threads": [
+      {}, // Thread objects, available because they requested via embeds.
+      {},
+      {}
+    ],
+    "keys": [
+      {}, // Key objects, available because they requested via embeds.
+      {},
+      {}
+    ]
+  }
+}
+```
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../faq/" class="btn btn-neutral float-right" title="FAQ"/>Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+        <a href="../flows/" class="btn btn-neutral" title="Common Flows"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="http://www.mkdocs.org">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+	  
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+<div class="rst-versions" role="note" style="cursor: pointer">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href="../flows/" style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+        <span style="margin-left: 15px"><a href="../faq/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
+    </span>
+</div>
+
+</body>
+</html>
