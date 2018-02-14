@@ -16,6 +16,7 @@ import (
 
 var KeyPair *ecdsa.PrivateKey
 var MarshaledPubKey string
+
 var LastCacheGenerationTimestamp int64
 var VerificationEnabled bool
 
@@ -116,7 +117,8 @@ var AddressPort uint16
 var AddressType int
 var ProtocolVersionMajor int
 var ProtocolVersionMinor int
-var ProtocolExtensions []string
+
+// var ProtocolExtensions []string
 var ClientVersionMajor int
 var ClientVersionMinor int
 var ClientVersionPatch int
@@ -133,6 +135,47 @@ var DispatcherExclusionsExpiryLiveAddress time.Duration
 var DispatcherExclusionsExpiryStaticAddress time.Duration
 var LoggingLevel int
 var ExternalIp string
+var LastLiveNodeConnectionTs int64
+var LastStaticNodeConnectionTs int64
+
+/*
+These are variables that determine how much data the user's node will accrue, and how much data it will broadcast out.
+
+NETWORK_HEAD: The current state of the network that every node needs to achieve to be considered up to date. This is also the state the node will broadcast out in the form of caches.
+
+NETWORK_MEMORY: This is the entirety of the memory that is kept in the node. When the most current reference to that entity is more than NETWORK_MEMORY, the object is deleted. Mind that this is not an absolute 'if older than this, delete' thing - If If a three year old board has its last thread created 5 months ago, and it has a post that is created 5 months ago, it will still be conserved.
+
+For an object to be deleted, its **last reference** needs to become older than the NETWORK_MEMORY.
+
+These are node (backend) variables btw. They should be going into the backend config, not frontend user settings.
+*/
+
+var NETWORK_HEAD_DAYS int
+var NETWORK_MEMORY_DAYS int
+
+// This struct determines the length of history that is publicly broadcast for every single entity type.
+
+type CacheSizesDaysStruct struct {
+	Board      int
+	Thread     int
+	Post       int
+	Vote       int
+	Key        int
+	Truststate int
+	Address    int
+}
+
+var CacheSizes CacheSizesDaysStruct
+
+func SetCacheSizesDays() {
+	CacheSizes.Board = NETWORK_MEMORY_DAYS
+	CacheSizes.Thread = NETWORK_HEAD_DAYS
+	CacheSizes.Post = NETWORK_HEAD_DAYS
+	CacheSizes.Vote = NETWORK_HEAD_DAYS
+	CacheSizes.Key = NETWORK_HEAD_DAYS
+	CacheSizes.Truststate = NETWORK_HEAD_DAYS
+	CacheSizes.Address = NETWORK_HEAD_DAYS
+}
 
 /*
 Application state: These are set while running. At every start, they will start from their default state given here. Do not change these until you want to test the application already being in that state. (i.e. These are not 'settings' but just the runtime variables, other parts of the code will use these to set variables that won't persist between restarts.)
@@ -150,6 +193,8 @@ var StopImmatureCacheGenerationCycle chan bool
 var StopAddressScannerCycle chan bool
 var StopUPNPCycle chan bool
 var AddressesScannerActive bool
+var LiveDispatchRunning bool
+var StaticDispatchRunning bool
 
 func SetApplicationState() {
 	TooManyConnections = false
@@ -159,21 +204,24 @@ func SetApplicationState() {
 
 func SetGlobals() {
 	// This function is useful until we get the configstore running.
+	NETWORK_HEAD_DAYS = 14
+	NETWORK_MEMORY_DAYS = 180
 	GenerateUserKeyPair()
 	SetMinPoWStrengths(4)
 	SetVerificationEnabled(false)
 	SetBailoutTime()
+	SetCacheSizesDays()
 	NodeId = "my node id"
 	AddressPort = 23420
 	AddressType = 2
 	ProtocolVersionMajor = 0
 	ProtocolVersionMinor = 1
-	ProtocolExtensions = []string{"aether"}
+	// Subprotocols := []api.Subprotocol{api.Subprotocol{"c0", 1, 0, []string{"board", "thread", "post", "vote", "key", "truststate"}}}
 	ClientVersionMajor = 2
 	ClientVersionMinor = 0
 	ClientVersionPatch = 0
 	ClientName = "Aether"
-	LastCacheGenerationTimestamp = 0
+	LastCacheGenerationTimestamp = 0 // This is used to deny live POST requests for things already in the cache.
 	setEntityPageAndIndexSizes()
 	UserDirectory = "/Users/Helios/Dropbox/Aether_Catchall/Aether_Main_Repo/Aether_2/aether-core/userdir"
 	PostResponseExpiryMinutes = 30
@@ -187,5 +235,4 @@ func SetGlobals() {
 	DispatcherExclusionsExpiryStaticAddress = 72 * time.Hour
 	LoggingLevel = 0
 	SetApplicationState()
-
 }

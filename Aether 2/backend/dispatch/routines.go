@@ -73,7 +73,6 @@ func Sync(a api.Address) error {
 	var err4 error
 	n, err4 = persistence.ReadNode(apiResp.NodeId)
 	if err4 != nil && strings.Contains(err4.Error(), "The node you have asked for could not be found") {
-
 		// Node does not exist in the DB. Create it and commit it to DB.
 		n.Fingerprint = apiResp.NodeId
 		err5 := persistence.InsertNode(n)
@@ -94,15 +93,18 @@ func Sync(a api.Address) error {
 		"addresses":   n.AddressesLastCheckin,
 		"keys":        n.KeysLastCheckin,
 		"truststates": n.TruststatesLastCheckin}
-	// endpoints := []string{"boards", "threads", "posts", "votes", "addresses", "keys", "truststates"}
-	logging.Log(1, fmt.Sprintf("SYNC:COMMIT STARTED with data from node: %s:%d", a.Location, a.Port))
+	logging.Log(1, fmt.Sprintf("SYNC:PULL STARTED with data from node: %s:%d", a.Location, a.Port))
+	logging.Log(1, fmt.Sprintf("Endpoints: %#v", endpoints))
+
 	for key, val := range endpoints {
 		// // GET
 		// Do an endpoint GET with the timestamp. (Mind that the timestamp is being provided into the GetEndpoint, it will only fetch stuff after that timestamp.)
+		logging.Log(1, fmt.Sprintf("Asking for entity type: %s", key))
 		resp, err6 := api.GetEndpoint(string(a.Location), string(a.Sublocation), a.Port, key, val)
 		if err6 != nil {
-			return errors.New(fmt.Sprintf("Getting GET Endpoint for this entity type failed. Endpoint type: %s, Error: %s", key, err6))
+			logging.Log(1, fmt.Sprintf("Getting GET Endpoint for the entity type '%s' failed. Error: %s, Address: %#v", key, err6, a))
 		}
+		logging.Log(1, fmt.Sprintf("Response to be moved to the interface pack: %#v", resp))
 		// Move the objects into an interface to prepare them to be committed.
 		iface := moveEntitiesToInterfacePack(&resp)
 		// Save the response to the database.
@@ -147,7 +149,7 @@ func Sync(a api.Address) error {
 			endpoints[key] = postApiResp.Timestamp
 		}
 	}
-	logging.Log(1, fmt.Sprintf("SYNC:COMMIT COMPLETE with data from node: %s:%d", a.Location, a.Port))
+	logging.Log(1, fmt.Sprintf("SYNC:PULL COMPLETE with data from node: %s:%d", a.Location, a.Port))
 	// Both POST and GETs are committed into the database. We now need to save the Node LastCheckin timestamps into the database.
 	n.BoardsLastCheckin = endpoints["boards"]
 	n.ThreadsLastCheckin = endpoints["threads"]

@@ -62,11 +62,11 @@ func TestCreateCurrencyAddress_Success(t *testing.T) {
 
 func TestCreateBoard_Success(t *testing.T) {
 	bo, _ :=
-		create.CreateBoardOwner("user key", api.Timestamp(12345678), uint8(1))
+		create.CreateBoardOwner(UserKeyEntity.GetOwner(), api.Timestamp(12345678), uint8(1))
 	entity, err :=
 		create.CreateBoard(
 			"My board name",
-			"board owner fingerprint",
+			bo.KeyFingerprint,
 			[]api.BoardOwner{bo},
 			"my description")
 	if err != nil {
@@ -88,7 +88,7 @@ func TestCreateThread_Success(t *testing.T) {
 			"thread name",
 			"thread body",
 			"thread link",
-			"thread owner fingerprint")
+			UserKeyEntity.GetOwner())
 	if err != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err)
 	}
@@ -108,7 +108,7 @@ func TestCreatePost_Success(t *testing.T) {
 			"Post parent (thread) fingerprint",
 			"Post parent (post or thread) fingerprint",
 			"Post body",
-			"Post owner fingerprint")
+			UserKeyEntity.GetOwner())
 	if err != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err)
 	}
@@ -127,7 +127,7 @@ func TestCreateVote_Success(t *testing.T) {
 			"board fp",
 			"thread fp",
 			"target fp",
-			"owner fp",
+			UserKeyEntity.GetOwner(),
 			uint8(1))
 	if err != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err)
@@ -152,7 +152,7 @@ func TestCreateAddress_Success(t *testing.T) {
 			api.Timestamp(12345678),
 			uint8(1),
 			uint16(1),
-			[]string{"aether"},
+			[]api.Subprotocol{api.Subprotocol{"c0", 1, 0, []string{"board", "thread", "post", "vote", "key", "truststate"}}},
 			uint8(1),
 			uint16(1),
 			uint16(0),
@@ -167,14 +167,15 @@ func TestCreateKey_Success(t *testing.T) {
 	entity, err :=
 		create.CreateKey(
 			"key type",
-			"key itself",
+			globals.MarshaledPubKey,
 			"user name",
 			*new([]api.CurrencyAddress),
 			"key info")
 	if err != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err)
 	}
-	result, err2 := verify.Verify(&entity, UserKeyEntity)
+	// fmt.Printf("%#v\n", entity)
+	result, err2 := verify.Verify(&entity, entity)
 	if err2 != nil {
 		t.Errorf("Object verification process failed. Err: '%s'", err2)
 	}
@@ -187,7 +188,7 @@ func TestCreateTruststate_Success(t *testing.T) {
 	entity, err :=
 		create.CreateTruststate(
 			"target fp",
-			"owner fp",
+			UserKeyEntity.GetFingerprint(),
 			uint8(1),
 			[]api.Fingerprint{"domain1fp", "domain2fp"},
 			api.Timestamp(12345678))
@@ -207,11 +208,11 @@ func TestCreateTruststate_Success(t *testing.T) {
 
 func TestUpdateBoard_Success(t *testing.T) {
 	bo, _ :=
-		create.CreateBoardOwner("user key", api.Timestamp(12345678), uint8(1))
+		create.CreateBoardOwner(UserKeyEntity.GetFingerprint(), api.Timestamp(12345678), uint8(1))
 	entity, err :=
 		create.CreateBoard(
 			"My board name",
-			"board owner fingerprint",
+			bo.KeyFingerprint,
 			[]api.BoardOwner{bo},
 			"my description")
 	if err != nil {
@@ -239,7 +240,7 @@ func TestUpdateVote_Success(t *testing.T) {
 			"board fp",
 			"thread fp",
 			"target fp",
-			"owner fp",
+			UserKeyEntity.GetFingerprint(),
 			uint8(1))
 	if err != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err)
@@ -264,7 +265,7 @@ func TestUpdateKey_Success(t *testing.T) {
 	entity, err :=
 		create.CreateKey(
 			"key type",
-			"key itself",
+			globals.MarshaledPubKey,
 			"user name",
 			*new([]api.CurrencyAddress),
 			"key info")
@@ -276,7 +277,7 @@ func TestUpdateKey_Success(t *testing.T) {
 	updatereq.InfoUpdated = true
 	updatereq.NewInfo = "This is my new key info."
 	create.UpdateKey(updatereq)
-	result, err2 := verify.Verify(&entity, UserKeyEntity)
+	result, err2 := verify.Verify(&entity, entity)
 	if err2 != nil {
 		t.Errorf("Object verification process failed. Err: '%s'", err2)
 	}
@@ -289,7 +290,7 @@ func TestUpdateTruststate_Success(t *testing.T) {
 	entity, err :=
 		create.CreateTruststate(
 			"target fp",
-			"owner fp",
+			UserKeyEntity.GetFingerprint(),
 			uint8(1),
 			[]api.Fingerprint{"domain1fp", "domain2fp"},
 			api.Timestamp(12345678))

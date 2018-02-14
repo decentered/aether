@@ -68,6 +68,14 @@ func Dispatcher(addressType uint8) {
 	logging.Log(1, fmt.Sprintf("Dispatch for AddressType: %d has started.", addressType))
 	defer logging.Log(1, fmt.Sprintf("Dispatch for AddressType: %d is complete.", addressType))
 	/*
+		Set up the mutexes.
+	*/
+	if addressType == 2 {
+		globals.LiveDispatchRunning = true
+	} else if addressType == 255 {
+		globals.StaticDispatchRunning = true
+	}
+	/*
 		Check the exclusions list and clean out the expired exclusions.
 	*/
 	exclSlice := processExclusions(&globals.DispatcherExclusions)
@@ -91,9 +99,36 @@ func Dispatcher(addressType uint8) {
 		*/
 		addrsAsIface := interface{}(onlineAddresses[0])
 		globals.DispatcherExclusions[&addrsAsIface] = time.Now()
+		// Set the last live / static node connection timestamps.
+		now := time.Now()
+		if addressType == 2 {
+			globals.LastLiveNodeConnectionTs = now.Unix()
+		} else if addressType == 255 {
+			globals.LastStaticNodeConnectionTs = now.Unix()
+		}
 	} else {
-		logging.Log(1, "Dispatcher could not find any online addresses. It will a)trigger the AddressScanner so it can convert more addresses to known addresses, rendering them eligible to be used by Dispatcher in the next iteration, and b) Quit this iteration of Dispatcher without further processing after AddressScanner completes.")
+		logging.Log(1, "Dispatcher could not find any online addresses. It will a)trigger the AddressScanner so it can convert more addresses to known addresses, rendering them eligible to be used by Dispatcher in the next iteration, and b) Connect to a static node if a static node hasn't been connected in the last 10 minutes.")
+		if addressType == 2 {
+			// Specifically for the live node check, if there are no active nodes found, check if the last static check was more than ten minutes ago. If so, run a static update before filing a request with tha AddressScanner.
+			TenMinAgo := int64(time.Now().Add(-10 * time.Minute).Unix())
+			if globals.LastStaticNodeConnectionTs < TenMinAgo {
+				logging.Log(1, "Live node dispatcher is firing a static node dispatcher because it's been more than ten minutes after a connection to a static node.")
+				if !globals.StaticDispatchRunning {
+					Dispatcher(255)
+				} else {
+					logging.Log(1, "Live node dispatcher attempted to fire a static dispatcher because it found no live nodes, but it was preempted by an existing static dispatcher currently running.")
+				}
+			}
+		}
 		AddressScanner()
+	}
+	/*
+		Clear the mutexes.
+	*/
+	if addressType == 2 {
+		globals.LiveDispatchRunning = false
+	} else if addressType == 255 {
+		globals.StaticDispatchRunning = false
 	}
 }
 
@@ -168,6 +203,20 @@ func GetOnlineAddresses(noOfOnlineAddressesRequested int, exclude []api.Address,
 	return onlineAddresses, nil
 }
 
+func unconnectedAddressSearch(days int) ([]api.Address, error) {
+	now := time.Now()
+	pastTs := api.Timestamp(now.AddDate(0, 0, -days).Unix())
+	// Get me all addresses that was inputted up to two weeks ago
+	resp, err := persistence.ReadAddresses(
+		"", "", 0, pastTs, 0, 0, 0, 0)
+	// resp, err := persistence.ReadAddresses(
+	// 	"", "", 0, 0, 0, 1000,0)
+	if err != nil {
+		return []api.Address{}, err
+	}
+	return resp, nil
+}
+
 // AddressScanner goes through all the **prior-unconnected** addresses that were provided by other remotes up to two weeks ago, and it goes through them. If it finds any online nodes that are able to connect, it will mark them as such, and set the appropriate address type, rendering them **known**. Setting the node type renders the address eligible to be connected via dispatch. This method will be called by Dispatch if it ends up finding no nodes to connect to, and in 6-hour intervals.
 func AddressScanner() error {
 	if globals.AddressesScannerActive {
@@ -178,17 +227,39 @@ func AddressScanner() error {
 	defer func() { globals.AddressesScannerActive = false }()
 	logging.Log(1, "SEEK START for prior-unconnected addresses.")
 	defer logging.Log(1, "SEEK END for prior-unconnected addresses.")
-	now := time.Now()
-	twoWeeksAgoTs := api.Timestamp(now.AddDate(0, 0, -14).Unix())
-	// Get me all addresses that was inputted up to two weeks ago
-	resp, err := persistence.ReadAddresses(
-		"", "", 0, twoWeeksAgoTs, 0, 0, 0, 0)
-	// resp, err := persistence.ReadAddresses(
-	// 	"", "", 0, 0, 0, 1000,0)
+	resp, err := unconnectedAddressSearch(14)
 	if err != nil {
 		return err
 	}
-	logging.Log(2, fmt.Sprintf("We have this many prior-unconnected addresses to check: %d", len(resp)))
+	if len(resp) == 0 {
+		logging.Log(1, "AddressesScanner could not find any prior-unconnected addresses in the last 14 days. Expanding search to last 30 days.")
+		resp2, err2 := unconnectedAddressSearch(30)
+		if err2 != nil {
+			return err2
+		}
+		if len(resp2) == 0 {
+			logging.Log(1, "AddressesScanner could not find any prior-unconnected addresses in the last 30 days. Expanding search to last 90 days.")
+			resp3, err3 := unconnectedAddressSearch(90)
+			if err3 != nil {
+				return err3
+			}
+			if len(resp3) == 0 {
+				logging.Log(1, "AddressesScanner could not find any prior-unconnected addresses in the last 90 days. Expanding search to all past addresses captured at any time.")
+				resp4, err4 := persistence.ReadAddresses(
+					"", "", 0, 0, 0, 0, 0, 0)
+				if err4 != nil {
+					return err4
+				}
+				// Assign to a scope out so it'll trickle down to the resp eventually.
+				resp3 = resp4
+			}
+			// Assign to a scope out so it'll trickle down to the resp eventually.
+			resp2 = resp3
+		}
+		// Assign to a scope out so it'll trickle down to the resp eventually.
+		resp = resp2
+	}
+	logging.Log(1, fmt.Sprintf("We have this many prior-unconnected addresses to check: %d", len(resp)))
 	updatedAddresses := Pinger(resp)
 	persistence.InsertOrUpdateAddresses(&updatedAddresses)
 	return nil

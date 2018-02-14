@@ -24,13 +24,17 @@ import (
 
 // GeneratePrefilledApiResponse constructs the basic ApiResponse and fills it with the data about the local machine.
 func GeneratePrefilledApiResponse() *api.ApiResponse {
+
+	subprotOne := api.Subprotocol{Name: "c0", VersionMajor: 0, VersionMinor: 1, SupportedEntities: []string{"board", "thread", "post", "vote", "key", "truststate"}}
+	subprotTwo := api.Subprotocol{Name: "dweb", VersionMajor: 0, VersionMinor: 1, SupportedEntities: []string{"page"}}
+	subprotsSupported := []api.Subprotocol{subprotOne, subprotTwo}
 	var resp api.ApiResponse
 	resp.NodeId = api.Fingerprint(globals.NodeId)
 	resp.Address.LocationType = uint8(globals.AddressType)
 	resp.Address.Port = uint16(globals.AddressPort)
 	resp.Address.Protocol.VersionMajor = uint8(globals.ProtocolVersionMajor)
 	resp.Address.Protocol.VersionMinor = uint16(globals.ProtocolVersionMinor)
-	resp.Address.Protocol.Extensions = globals.ProtocolExtensions
+	resp.Address.Protocol.Subprotocols = subprotsSupported
 	resp.Address.Client.VersionMajor = uint8(globals.ClientVersionMajor)
 	resp.Address.Client.VersionMinor = uint16(globals.ClientVersionMinor)
 	resp.Address.Client.VersionPatch = uint16(globals.ClientVersionPatch)
@@ -886,6 +890,7 @@ func createIndexes(fullData *[]api.Response) *api.Response {
 				}
 			}
 			// Addresses: Address doesn't have an index form. It is its own index.
+			// Addresses are skipped here.
 			if len(fd[i].Keys) > 0 {
 				for j, _ := range fd[i].Keys {
 					entityIndex := createKeyIndex(&fd[i].Keys[j], i)
@@ -921,6 +926,61 @@ type CacheResponse struct {
 	indexPages  *[]api.Response
 }
 
+func cleanTooOldEntities(localData *api.Response) *api.Response {
+	networkHeadEndTs := api.Timestamp(time.Now().AddDate(0, 0, -globals.NETWORK_HEAD_DAYS).Unix())
+	var cleanedLocalData api.Response
+	if len(localData.Boards) > 0 {
+		for _, val := range localData.Boards {
+			if val.Creation > networkHeadEndTs || val.LastUpdate > networkHeadEndTs {
+				cleanedLocalData.Boards = append(cleanedLocalData.Boards, val)
+			} else {
+				logging.Log(1, fmt.Sprintf("This entity didn't make the cut for being included in any caches at the point of creation. Entity: %#v", val))
+			}
+		}
+	} else if len(localData.Threads) > 0 {
+		for _, val := range localData.Threads {
+			if val.Creation > networkHeadEndTs {
+				cleanedLocalData.Threads = append(cleanedLocalData.Threads, val)
+			} else {
+				logging.Log(1, fmt.Sprintf("This entity didn't make the cut for being included in any caches at the point of creation. Entity: %#v", val))
+			}
+		}
+	} else if len(localData.Posts) > 0 {
+		for _, val := range localData.Posts {
+			if val.Creation > networkHeadEndTs {
+				cleanedLocalData.Posts = append(cleanedLocalData.Posts, val)
+			} else {
+				logging.Log(1, fmt.Sprintf("This entity didn't make the cut for being included in any caches at the point of creation. Entity: %#v", val))
+			}
+		}
+	} else if len(localData.Votes) > 0 {
+		for _, val := range localData.Votes {
+			if val.Creation > networkHeadEndTs || val.LastUpdate > networkHeadEndTs {
+				cleanedLocalData.Votes = append(cleanedLocalData.Votes, val)
+			} else {
+				logging.Log(1, fmt.Sprintf("This entity didn't make the cut for being included in any caches at the point of creation. Entity: %#v", val))
+			}
+		}
+	} else if len(localData.Keys) > 0 {
+		for _, val := range localData.Keys {
+			if val.Creation > networkHeadEndTs || val.LastUpdate > networkHeadEndTs {
+				cleanedLocalData.Keys = append(cleanedLocalData.Keys, val)
+			} else {
+				logging.Log(1, fmt.Sprintf("This entity didn't make the cut for being included in any caches at the point of creation. Entity: %#v", val))
+			}
+		}
+	} else if len(localData.Truststates) > 0 {
+		for _, val := range localData.Truststates {
+			if val.Creation > networkHeadEndTs || val.LastUpdate > networkHeadEndTs {
+				cleanedLocalData.Truststates = append(cleanedLocalData.Truststates, val)
+			} else {
+				logging.Log(1, fmt.Sprintf("This entity didn't make the cut for being included in any caches at the point of creation. Entity: %#v", val))
+			}
+		}
+	}
+	return &cleanedLocalData
+}
+
 // GenerateCacheResponse responds to a cache generation request. This returns an Api.Response entity with entities, entity indexes, and the cache link that needs to be inserted into the index of the endpoint.
 // This has no filters.
 func GenerateCacheResponse(respType string, start api.Timestamp, end api.Timestamp) (CacheResponse, error) {
@@ -931,6 +991,12 @@ func GenerateCacheResponse(respType string, start api.Timestamp, end api.Timesta
 		if dbError != nil {
 			return resp, errors.New(fmt.Sprintf("This cache generation request caused an error in the local database while trying to respond to this request. Error: %#v\n", dbError))
 		}
+		if len(localData.Boards) == 0 && len(localData.Threads) == 0 && len(localData.Posts) == 0 && len(localData.Votes) == 0 && len(localData.Keys) == 0 && len(localData.Truststates) == 0 {
+			// There's no data in this result - return error so we can cancel the creation of this cache.
+			return resp, errors.New(fmt.Sprintf("The result for this cache is empty. Entity type: %s", respType))
+		}
+		cleanedLocalData := cleanTooOldEntities(&localData)
+		localData = *cleanedLocalData
 		entityPages := splitEntitiesToPages(&localData)
 		indexes := createIndexes(entityPages)
 		indexPages := splitEntityIndexesToPages(indexes)
@@ -946,11 +1012,15 @@ func GenerateCacheResponse(respType string, start api.Timestamp, end api.Timesta
 
 	case "addresses":
 		addresses, dbError := persistence.ReadAddresses("", "", 0, start, end, 0, 0, 0)
-		var localData api.Response
-		localData.Addresses = addresses
 		if dbError != nil {
 			return resp, errors.New(fmt.Sprintf("This cache generation request caused an error in the local database while trying to respond to this request. Error: %#v\n", dbError))
 		}
+		if len(addresses) == 0 {
+			return resp, errors.New(fmt.Sprintf("The result for this cache is empty. Entity type: %s", respType))
+		}
+		var localData api.Response
+		localData.Addresses = addresses
+
 		entityPages := splitEntitiesToPages(&localData)
 		cn, err := generateCacheName()
 		if err != nil {
@@ -1030,9 +1100,22 @@ func CreateCache(respType string, start api.Timestamp, end api.Timestamp) error 
 	// - If there is no cache present there, create the index and add it as the first entry.
 	cacheData, err := GenerateCacheResponse(respType, start, end)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Cache creation process encountered an error. Error: %s", err))
+		if strings.Contains(err.Error(), "The result for this cache is empty") {
+			logging.Log(1, errors.New(fmt.Sprintf("The result for this cache is empty. Entity type: %s", respType)))
+			return nil
+		} else {
+			return errors.New(fmt.Sprintf("Cache creation process encountered an error. Error: %s", err))
+		}
 	}
-	entityCacheDir := fmt.Sprint(globals.CachesLocation, "/", respType)
+	var entityCacheDir string
+	if respType == "boards" || respType == "threads" || respType == "posts" || respType == "votes" || respType == "keys" || respType == "truststates" {
+		entityCacheDir = fmt.Sprint(globals.CachesLocation, "/c0/", respType)
+	} else if respType == "addresses" {
+		entityCacheDir = fmt.Sprint(globals.CachesLocation, "/", respType)
+	} else {
+		return errors.New(fmt.Sprintf("Unknown response type: %s", respType))
+	}
+
 	// Create the caches dir and the appropriate endpoint if does not exist.
 	createPath(entityCacheDir)
 	// Save the cache to disk.
@@ -1063,21 +1146,182 @@ func CreateCache(respType string, start api.Timestamp, end api.Timestamp) error 
 	return nil
 }
 
-// GenerateCaches generates all day caches for all entities and saves them to disk.
-func GenerateCaches() {
-	now := int64(time.Now().Unix())
-	lastCacheGenTs := globals.LastCacheGenerationTimestamp
-	lastCacheGenTime := time.Unix(lastCacheGenTs, 0)
-	// If more than 24 hours has passed since the last cache generation, generated a new cache for that timeframe.
-	if time.Since(lastCacheGenTime) > 24*time.Hour {
-		CreateCache("boards", api.Timestamp(lastCacheGenTs), api.Timestamp(now))
-		CreateCache("threads", api.Timestamp(lastCacheGenTs), api.Timestamp(now))
-		CreateCache("posts", api.Timestamp(lastCacheGenTs), api.Timestamp(now))
-		CreateCache("votes", api.Timestamp(lastCacheGenTs), api.Timestamp(now))
-		CreateCache("addresses", api.Timestamp(lastCacheGenTs), api.Timestamp(now))
-		CreateCache("keys", api.Timestamp(lastCacheGenTs), api.Timestamp(now))
-		CreateCache("truststates", api.Timestamp(lastCacheGenTs), api.Timestamp(now))
-		// After successfully generating the caches, make the last cache generation timestamp to current.
-		globals.LastCacheGenerationTimestamp = now
+/*
+	Methods related to cache days table generation. Cache Days Table is a table of days with beginning and end timestamps that we feed into the cache generator to generate caches for those days.
+
+	We then feed this cache generation table into our cache generator, and it creates the appropriate folder structure for us.
+*/
+
+// readCacheIndex reads the cache index of the requested endpoint from the local drive. This is then used for finding the end timestamp of the last cache generated.
+func readCacheIndex(etype string) (api.ApiResponse, error) {
+	var cacheDir string
+	if etype == "boards" || etype == "threads" || etype == "posts" || etype == "votes" || etype == "keys" || etype == "truststates" {
+		cacheDir = globals.UserDirectory + "/statics/caches/v0/c0/" + etype
+	} else if etype == "addresses" {
+		cacheDir = globals.UserDirectory + "/statics/caches/v0/" + etype
+	}
+	cacheIndex := cacheDir + "/index.json"
+	dat, err := ioutil.ReadFile(cacheIndex)
+	if err != nil {
+		return api.ApiResponse{}, err
+	}
+	var apiresp api.ApiResponse
+	err2 := json.Unmarshal([]byte(dat), &apiresp)
+	if err2 != nil {
+		logging.Log(1, fmt.Sprintf(fmt.Sprintf(
+			"The JSON That was the cache index for the entity type is malformed. Entity type: %s, JSON: %s", etype, string([]byte(dat)))))
+		// Delete the whole index folder and return 0 to generate new caches.
+		os.RemoveAll(cacheDir)
+		return api.ApiResponse{}, errors.New("no such file or directory")
+	}
+	return apiresp, nil
+}
+
+// determineLastCacheEnd figures out when was the last cache for this entity type was generated. For each entity, we need to look at the last cache that is generated by the entity and find its end timestamp.
+func determineLastCacheEnd(etype string) api.Timestamp {
+	cacheIndex, err := readCacheIndex(etype)
+	if err != nil {
+		// logging.LogCrash(err)
+		// TODO add tampered caches gating
+		if strings.Contains(err.Error(), "no such file or directory") {
+			var blankTs api.Timestamp
+			return blankTs
+		} else {
+			logging.LogCrash(err)
+		}
+	}
+	// Identify the most recent end timestamp
+	var mostRecentExtantCacheEndTs api.Timestamp
+	for _, cache := range cacheIndex.Results {
+		if cache.EndsAt > mostRecentExtantCacheEndTs {
+			mostRecentExtantCacheEndTs = cache.EndsAt
+		}
+	}
+	return mostRecentExtantCacheEndTs
+}
+
+// generateRequestedCachesTable determines how many caches we need to generate, and at which intervals they need to start and end.
+func generateRequestedCachesTable(mostRecentExtantCacheEndTs api.Timestamp) []api.ResultCache {
+	// Split the difference of most recent cache end and now into 24H slices.
+	now := api.Timestamp(time.Now().Unix())
+	var dayTable []api.ResultCache
+	currentEndTs := mostRecentExtantCacheEndTs
+	// So long as the current end + a day is lesser than timestamp of now, iterate
+	for currentEndTs < now {
+		newEnd := api.Timestamp(time.Unix(int64(currentEndTs), 0).AddDate(0, 0, 1).Unix())
+		cache := api.ResultCache{
+			StartsFrom: currentEndTs,
+			EndsAt:     newEnd,
+		}
+		currentEndTs = newEnd
+		dayTable = append(dayTable, cache)
+
+	}
+
+	// After this table generation is done, check the last cache bracket (start>end). If the time difference of its start and now() is less than 12 hours, delete the last bracket, and set the n-1th cache bracket's end timestamp to now.
+	/*
+		e.g.
+		IF:
+		 Day -3  Day -2  Day -1     Now
+		|-------|-------|-------|----=--|
+		(more than half day's worth data in last)
+
+		DO:
+		 Day -3  Day -2  Day -1     Now
+		|-------|-------|-------|----=|
+		(move the end to now)
+
+		IF:
+		 Day -3  Day -2  Day -1   Now
+		|-------|-------|-------|--=----|
+		(less than 12 hours of data in last)
+
+		DO:
+		 Day -3  Day -2  Day -1  Now
+		|-------|-------|---------=|
+		(remove the last one and move the end of n-1 to now)
+	*/
+	lastDTItemEndTs := dayTable[len(dayTable)-1].EndsAt
+	halfDayIntoFuture := api.Timestamp(time.Now().Add(12 * time.Hour).Unix())
+	if halfDayIntoFuture < lastDTItemEndTs {
+		// The last cache covers less than 12 hours (i.e. it captures more than 12 hours of not-happened-yet)
+		// Chop the last item off.
+		dayTable = dayTable[:len(dayTable)-1]
+	}
+	// Make the last item of the day table come up to now.
+	dayTable[len(dayTable)-1].EndsAt = api.Timestamp(time.Now().Unix())
+	return dayTable
+}
+
+// GenerateCacheSet determines how many caches we will need to create for a given entity type, and generates them.
+func GenerateCacheSet(etype string) {
+	// Read the end of the last cache, or if there are none, start from the beginning.
+	lastCacheEndTs := determineLastCacheEnd(etype)
+	// If the lastCacheEndTs is younger than 13 (cache generation duration / 2 + 1) hours, we do nothing. Why 13? Because if it had been 24, and the user had started the machine 23 hours after the last cache generation, it's gonna pre-empt, and it'll try again in 24 hours, which at that point would have been 47 hours without cache generation.
+
+	// If last cache end is more than 13 hours ago
+	thirteenHoursAgo := api.Timestamp(time.Now().Add(-13 * time.Hour).Unix())
+	if thirteenHoursAgo > lastCacheEndTs {
+		cachesTable := generateRequestedCachesTable(lastCacheEndTs)
+		/*
+			Based on the max cache size in days, we need to delete if the delta is bigger than the needed number of caches.
+
+			Ex: If the cache size for threads is 14 days, we only need the last 14 days of the caches table, the rest is beyond our event horizon.
+		*/
+		if etype == "boards" {
+			if len(cachesTable) > globals.CacheSizes.Board {
+				// Grab the last N items of the table, as requested.
+				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Board:]
+			}
+		} else if etype == "threads" {
+			if len(cachesTable) > globals.CacheSizes.Thread {
+				// Grab the last N items of the table, as requested.
+				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Thread:]
+			}
+		} else if etype == "posts" {
+			if len(cachesTable) > globals.CacheSizes.Post {
+				// Grab the last N items of the table, as requested.
+				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Post:]
+			}
+		} else if etype == "votes" {
+			if len(cachesTable) > globals.CacheSizes.Vote {
+				// Grab the last N items of the table, as requested.
+				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Vote:]
+			}
+		} else if etype == "keys" {
+			if len(cachesTable) > globals.CacheSizes.Key {
+				// Grab the last N items of the table, as requested.
+				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Key:]
+			}
+		} else if etype == "truststates" {
+			if len(cachesTable) > globals.CacheSizes.Truststate {
+				// Grab the last N items of the table, as requested.
+				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Truststate:]
+			}
+		} else if etype == "addresses" {
+			if len(cachesTable) > globals.CacheSizes.Address {
+				// Grab the last N items of the table, as requested.
+				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Address:]
+			}
+		}
+		for _, val := range cachesTable {
+			CreateCache(etype, val.StartsFrom, val.EndsAt)
+		}
+	} else {
+		logging.Log(1, fmt.Sprintf("Last cache that was created was newer than 13 hours ago. Please wait until at least 13 hours have passed to file a new day cache creation request. Entity type: %s", etype))
 	}
 }
+
+// GenerateCaches generates all day caches for all entities and saves them to disk.
+func GenerateCaches() {
+	// NOTE: We are no longer keeping the last cache timestamp in the globals, but actually reading the existing last cache in the filesystem.
+	entityTypes := []string{"boards", "threads", "posts", "votes", "keys", "truststates", "addresses"}
+	for _, val := range entityTypes {
+		GenerateCacheSet(val)
+	}
+	globals.LastCacheGenerationTimestamp = time.Now().Unix()
+}
+
+// TODO: We need to make read cache index throw a reasonable error if a cache is not found, or if caches are tampered with.
+
+// TODO: We need to take a look at mature / immature cycle and determine how we actually deal with this. We have some logic that splits time into blocks, we need to implement that.

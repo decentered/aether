@@ -32,6 +32,7 @@ var testNodePort uint16
 var nodeLocation string
 
 func TestMain(m *testing.M) {
+	globals.SetGlobals()
 	testNodeAddress = "127.0.0.1"
 	testNodePort = 8089
 	setup(testNodeAddress, testNodePort)
@@ -170,7 +171,7 @@ func setup(testNodeAddress string, testNodePort uint16) {
 
 	if len(nodeLocation) == 0 {
 		// If no node location is given, assume default. This will break when you move that folder off desktop...
-		nodeLocation = "/Users/Helios/Desktop/generated nodes/node-newest_7/static_mim_node"
+		nodeLocation = "/Users/Helios/Desktop/generated nodes/node-newest_14/static_mim_node"
 	}
 
 	// // Vote endpoint borkage test setup start.
@@ -254,7 +255,7 @@ func setup(testNodeAddress string, testNodePort uint16) {
 	// First case: Edit the page count number to be negative.
 	editExistingJson(
 		fmt.Sprint(postsDir, "/cache_negative_page_count/0.json"),
-		`"pages": \d{2}`, `"pages": -16`)
+		`"pages": \d`, `"pages": -16`)
 	// Second case: missing pages from the cache.
 	os.Remove(fmt.Sprint(postsDir, "/cache_missing_pages/7.json"))
 	os.Remove(fmt.Sprint(postsDir, "/cache_missing_pages/34.json"))
@@ -264,7 +265,7 @@ func setup(testNodeAddress string, testNodePort uint16) {
 	// Third case: Huge page count as a way to DDoS.
 	editExistingJson(
 		fmt.Sprint(postsDir, "/cache_huge_page_number/0.json"),
-		`"pages": \d{2}`, `"pages": 549815`)
+		`"pages": \d`, `"pages": 549815`)
 
 	// // Cache tests setup end.
 
@@ -342,7 +343,7 @@ func ValidateTest(expected interface{}, actual interface{}, t *testing.T) {
 
 func TestFetch_Success(t *testing.T) {
 	httpResp, err :=
-		api.Fetch(testNodeAddress, "v0", testNodePort, "status", "GET")
+		api.Fetch(testNodeAddress, "", testNodePort, "status", "GET", []byte{})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -352,29 +353,29 @@ func TestFetch_Success(t *testing.T) {
 }
 
 func TestFetch_404(t *testing.T) {
-	_, err := api.Fetch(testNodeAddress, "v0", testNodePort, "this is a nonexistent location", "GET")
-	expected := "Non-200 status code returned from Fetch. Received status code: 404, Host: 127.0.0.1, Subhost: v0, Port: 8089, Location: this is a nonexistent location"
+	_, err := api.Fetch(testNodeAddress, "", testNodePort, "this is a nonexistent location", "GET", []byte{})
+	expected := "Non-200 status code returned from Fetch. Received status code: 404, Host: 127.0.0.1, Subhost: , Port: 8089, Location: this is a nonexistent location"
 	actual := err.Error()
 	ValidateTest(expected, actual, t)
 }
 
 func TestFetch_Refused(t *testing.T) {
-	_, err := api.Fetch(testNodeAddress, "v0", 48915, "this is a nonexistent location", "GET")
-	expected := "The host refused the connection. Host:127.0.0.1, Subhost: v0, Port: 48915, Location: this is a nonexistent location"
+	_, err := api.Fetch(testNodeAddress, "", 48915, "this is a nonexistent location", "GET", []byte{})
+	expected := "The host refused the connection. Host:127.0.0.1, Subhost: , Port: 48915, Location: this is a nonexistent location"
 	actual := err.Error()
 	ValidateTest(expected, actual, t)
 }
 
 func TestFetch_Timeout(t *testing.T) {
-	_, err := api.Fetch(testNodeAddress, "v0", testNodePort, "timeouter", "GET")
-	expected := "Timeout exceeded. Host:127.0.0.1, Subhost: v0, Port: 8089, Location: timeouter"
+	_, err := api.Fetch(testNodeAddress, "", testNodePort, "timeouter", "GET", []byte{})
+	expected := "Timeout exceeded. Host:127.0.0.1, Subhost: , Port: 8089, Location: timeouter"
 	actual := err.Error()
 	ValidateTest(expected, actual, t)
 }
 
 // Get Page tests
 func TestGetPageRaw_Success(t *testing.T) {
-	resp, err := api.GetPageRaw(testNodeAddress, "v0", testNodePort, "boards/index.json", "GET")
+	resp, err := api.GetPageRaw(testNodeAddress, "", testNodePort, "boards/index.json", "GET", []byte{})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Results) == 0 {
@@ -383,14 +384,14 @@ func TestGetPageRaw_Success(t *testing.T) {
 }
 
 func TestGetPageRaw_Unparsable(t *testing.T) {
-	_, err := api.GetPageRaw(testNodeAddress, "v0", testNodePort, "invalid_data.json", "GET")
-	expected := "The JSON that arrived over the network is malformed. JSON: This is some invalid JSON., Host: 127.0.0.1, Subhost: v0, Port: 8089, Location: invalid_data.json"
+	_, err := api.GetPageRaw(testNodeAddress, "", testNodePort, "invalid_data.json", "GET", []byte{})
+	expected := "The JSON that arrived over the network is malformed. JSON: This is some invalid JSON., Host: 127.0.0.1, Subhost: , Port: 8089, Location: invalid_data.json"
 	actual := err.Error()
 	ValidateTest(expected, actual, t)
 }
 
 func TestGetPage_Success(t *testing.T) {
-	resp, err := api.GetPage(testNodeAddress, "v0", testNodePort, "boards/index.json", "GET")
+	resp, err := api.GetPage(testNodeAddress, "", testNodePort, "boards/index.json", "GET", []byte{})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.CacheLinks) == 0 {
@@ -403,7 +404,7 @@ func TestGetPage_Success(t *testing.T) {
 func TestGetCache_Success(t *testing.T) {
 	cacheName, _, _ := getValidEntity("cache")
 	// fmt.Printf("cachename: %#v\n", cacheName)
-	resp, err := api.GetCache(testNodeAddress, "v0", testNodePort, cacheName)
+	resp, err := api.GetCache(testNodeAddress, "", testNodePort, cacheName)
 	// TODO: pointing out the name directly here is brittle. We have no others, so fix this.
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
@@ -413,7 +414,7 @@ func TestGetCache_Success(t *testing.T) {
 }
 
 func TestGetCache_InvalidPageCount_CountNegative(t *testing.T) {
-	_, err := api.GetCache(testNodeAddress, "v0", testNodePort, "posts/cache_negative_page_count/")
+	_, err := api.GetCache(testNodeAddress, "", testNodePort, "posts/cache_negative_page_count/")
 	errMessage := "The JSON that arrived over the network is malformed"
 	if err == nil {
 		t.Errorf("JSON parser failed to catch the error. No error from parser.")
@@ -424,7 +425,7 @@ func TestGetCache_InvalidPageCount_CountNegative(t *testing.T) {
 
 func TestGetCache_InvalidPageCount_HugePageCount(t *testing.T) {
 	// This also tests for the 3 consequent missing pages safeguard, as the huge fake page count is stopped by the 3 pages after the last real page failing.
-	_, err := api.GetCache(testNodeAddress, "v0", testNodePort, "posts/cache_huge_page_number/")
+	_, err := api.GetCache(testNodeAddress, "", testNodePort, "posts/cache_huge_page_number/")
 	errMessage := "3 Consequent missing pages."
 	if err == nil {
 		t.Errorf("GetCache failed to stop when 3 missing pages followed each other.")
@@ -434,7 +435,7 @@ func TestGetCache_InvalidPageCount_HugePageCount(t *testing.T) {
 }
 
 func TestGetCache_MissingPage(t *testing.T) {
-	resp, err := api.GetCache(testNodeAddress, "v0", testNodePort, "posts/cache_missing_pages/")
+	resp, err := api.GetCache(testNodeAddress, "", testNodePort, "posts/cache_missing_pages/")
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Posts) == 0 {
@@ -445,7 +446,7 @@ func TestGetCache_MissingPage(t *testing.T) {
 // Get Endpoint tests
 
 func TestGetEndpoint_Success(t *testing.T) {
-	resp, err := api.GetEndpoint(testNodeAddress, "v0", testNodePort, "threads", 0)
+	resp, err := api.GetEndpoint(testNodeAddress, "", testNodePort, "threads", 0)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Threads) == 0 {
@@ -454,7 +455,7 @@ func TestGetEndpoint_Success(t *testing.T) {
 }
 
 func TestGetEndpoint_3ConsequentCachesMissingFailure(t *testing.T) {
-	_, err := api.GetEndpoint(testNodeAddress, "v0", testNodePort, "votes", 0)
+	_, err := api.GetEndpoint(testNodeAddress, "", testNodePort, "votes", 0)
 	errMessage := "3 consequent cache misses. "
 	if err == nil {
 		t.Errorf("Did not notice the cache being missing.")
@@ -464,7 +465,7 @@ func TestGetEndpoint_3ConsequentCachesMissingFailure(t *testing.T) {
 }
 
 func TestGetEndpoint_NonexistentEndpoint(t *testing.T) {
-	_, err := api.GetEndpoint(testNodeAddress, "v0", testNodePort, "fakeendpoint", 0)
+	_, err := api.GetEndpoint(testNodeAddress, "", testNodePort, "fakeendpoint", 0)
 	errMessage := "Get Endpoint failed because it couldn't get the index of the endpoint."
 	if err == nil {
 		t.Errorf("Did not notice the endpoint being missing.")
@@ -475,7 +476,7 @@ func TestGetEndpoint_NonexistentEndpoint(t *testing.T) {
 
 func TestGetEndpoint_EndpointNameAndContentsMismatch(t *testing.T) {
 	// This test is present to make sure that endpoints have no dependence on their names. The parsing logic should be global.
-	resp, err := api.GetEndpoint(testNodeAddress, "v0", testNodePort, "invalidendpoint", 0)
+	resp, err := api.GetEndpoint(testNodeAddress, "", testNodePort, "invalidendpoint", 0)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Posts) == 0 {
@@ -486,7 +487,7 @@ func TestGetEndpoint_EndpointNameAndContentsMismatch(t *testing.T) {
 // Get Remote Node tests
 
 func TestGetRemoteNode_Success(t *testing.T) {
-	resp, err := api.GetRemoteNode(testNodeAddress, "v0", testNodePort)
+	resp, err := api.GetRemoteNode(testNodeAddress, "", testNodePort)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Boards) == 0 ||
@@ -512,7 +513,7 @@ func TestGetRemoteNode_Success(t *testing.T) {
 func TestQuery_Fingerprint_Success(t *testing.T) {
 	entityFp, _, _ := getValidEntity("boards")
 	data := api.QueryData{"boards", api.Fingerprint(entityFp), 0, 0}
-	resp, err := api.Query(testNodeAddress, "v0", testNodePort, data)
+	resp, err := api.Query(testNodeAddress, "", testNodePort, data)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Boards) == 0 {
@@ -525,7 +526,7 @@ func TestQuery_FingerprintAndCreation_Success(t *testing.T) {
 	// Mind that it's asking for something created AFTER 0451102626
 	entityFp, creation, _ := getValidEntity("posts")
 	data := api.QueryData{"posts", api.Fingerprint(entityFp), creation, 0}
-	resp, err := api.Query(testNodeAddress, "v0", testNodePort, data)
+	resp, err := api.Query(testNodeAddress, "", testNodePort, data)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Posts) == 0 {
@@ -536,7 +537,7 @@ func TestQuery_FingerprintAndCreation_Success(t *testing.T) {
 func TestQuery_FingerprintAndCreationAndLastUpdate_Success(t *testing.T) {
 	entityFp, creation, lastUpdate := getValidEntity("truststates")
 	data := api.QueryData{"truststates", api.Fingerprint(entityFp), creation, lastUpdate}
-	resp, err := api.Query(testNodeAddress, "v0", testNodePort, data)
+	resp, err := api.Query(testNodeAddress, "", testNodePort, data)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Truststates) == 0 {
@@ -547,7 +548,7 @@ func TestQuery_FingerprintAndCreationAndLastUpdate_Success(t *testing.T) {
 func TestQuery_FingerprintAndLastUpdate_Success(t *testing.T) {
 	entityFp, _, lastUpdate := getValidEntity("truststates")
 	data := api.QueryData{"truststates", api.Fingerprint(entityFp), 0, lastUpdate}
-	resp, err := api.Query(testNodeAddress, "v0", testNodePort, data)
+	resp, err := api.Query(testNodeAddress, "", testNodePort, data)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Truststates) == 0 {
@@ -557,7 +558,7 @@ func TestQuery_FingerprintAndLastUpdate_Success(t *testing.T) {
 
 func TestQuery_NotFound(t *testing.T) {
 	data := api.QueryData{"truststates", "0af3473c5a3ae6376f0d3824b16d2ef90510973c75f889557d39f6616ea55535", 0, 0}
-	resp, err := api.Query(testNodeAddress, "v0", testNodePort, data)
+	resp, err := api.Query(testNodeAddress, "", testNodePort, data)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Truststates) > 0 {
@@ -567,7 +568,7 @@ func TestQuery_NotFound(t *testing.T) {
 
 func TestQuery_InvalidTimeRange(t *testing.T) {
 	data := api.QueryData{"truststates", "7bb882b1e9b679948478266c6ccdd153cb71fbcb2e58bf1237f30d43245eed5d", 1449122236523, 1451543248432}
-	resp, err := api.Query(testNodeAddress, "v0", testNodePort, data)
+	resp, err := api.Query(testNodeAddress, "", testNodePort, data)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Truststates) > 0 {
@@ -578,7 +579,7 @@ func TestQuery_InvalidTimeRange(t *testing.T) {
 func TestQuery_TheItemDoesNotExistAtLocationGivenByIndex(t *testing.T) {
 	entityFp, _, _ := getValidEntity("threads_index")
 	data := api.QueryData{"threads", api.Fingerprint(entityFp), 0, 0}
-	_, err := api.Query(testNodeAddress, "v0", testNodePort, data)
+	_, err := api.Query(testNodeAddress, "", testNodePort, data)
 	errMessage := "Could not pull entity from cache. The item is indexed as available in the remote node, but the actual body of the item is not available."
 	if err == nil {
 		t.Errorf("This should have caused an error.")

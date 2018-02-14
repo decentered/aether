@@ -5,8 +5,10 @@ package persistence
 
 import (
 	"aether-core/io/api"
+	"aether-core/services/fingerprinting"
 	"aether-core/services/logging"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -40,6 +42,23 @@ type DbCurrencyAddress struct {
 	KeyFingerprint api.Fingerprint `db:"KeyFingerprint"`
 	CurrencyCode   string          `db:"CurrencyCode"`
 	Address        string          `db:"Address"`
+}
+
+type DbSubprotocol struct {
+	Fingerprint       api.Fingerprint `db:"Fingerprint"`
+	Name              string          `db:"Name"`
+	VersionMajor      uint8           `db:"VersionMajor"`
+	VersionMinor      uint16          `db:"VersionMinor"`
+	SupportedEntities string          `db:"SupportedEntities"`
+}
+
+// Junction Table Entities
+
+type DbAddressSubprotocol struct {
+	AddressLocation        api.Location    `db:"AddressLocation"`
+	AddressSublocation     api.Location    `db:"AddressSublocation"`
+	AddressPort            uint16          `db:"AddressPort"`
+	SubprotocolFingerprint api.Fingerprint `db:"SubprotocolFingerprint"`
 }
 
 // Entities
@@ -97,7 +116,6 @@ type DbAddress struct {
 	LastOnline           api.Timestamp `db:"LastOnline"`
 	ProtocolVersionMajor uint8         `db:"ProtocolVersionMajor"`
 	ProtocolVersionMinor uint16        `db:"ProtocolVersionMinor"`
-	ProtocolExtensions   string        `db:"ProtocolExtensions"` // comma separated extension list
 	ClientVersionMajor   uint8         `db:"ClientVersionMajor"`
 	ClientVersionMinor   uint16        `db:"ClientVersionMinor"`
 	ClientVersionPatch   uint16        `db:"ClientVersionPatch"`
@@ -150,6 +168,11 @@ type BoardPack struct {
 type KeyPack struct {
 	Key               DbKey
 	CurrencyAddresses []DbCurrencyAddress
+}
+
+type AddressPack struct {
+	Address      DbAddress
+	Subprotocols []DbSubprotocol
 }
 
 // APItoDB translates structs of API objects into structs of DB objects.
@@ -250,27 +273,60 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.LastOnline = obj.LastOnline
 		dbObj.ProtocolVersionMajor = obj.Protocol.VersionMajor
 		dbObj.ProtocolVersionMinor = obj.Protocol.VersionMinor
-		for _, protExt := range obj.Protocol.Extensions {
-			// Convert to comma separated list.
-			if len(dbObj.ProtocolExtensions) == 0 {
-				dbObj.ProtocolExtensions = string(protExt)
-			} else {
-				dbObj.ProtocolExtensions = fmt.Sprint(
-					dbObj.ProtocolExtensions, ",", protExt)
-			}
-		}
+		// for _, protExt := range obj.Protocol.Extensions {
+		// 	// Convert to comma separated list.
+		// 	if len(dbObj.ProtocolExtensions) == 0 {
+		// 		dbObj.ProtocolExtensions = string(protExt)
+		// 	} else {
+		// 		dbObj.ProtocolExtensions = fmt.Sprint(
+		// 			dbObj.ProtocolExtensions, ",", protExt)
+		// 	}
+		// }
 		dbObj.ClientVersionMajor = obj.Client.VersionMajor
 		dbObj.ClientVersionMinor = obj.Client.VersionMinor
 		dbObj.ClientVersionPatch = obj.Client.VersionPatch
 		dbObj.ClientName = obj.Client.ClientName
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
-		parsedStr, err := parseStringSliceToCommaSeparatedString(obj.Protocol.Extensions, 64, 100)
-		if err != nil {
-			return dbObj, err
+		// parsedStr, err := parseStringSliceToCommaSeparatedString(obj.Protocol.Extensions, 64, 100)
+		// if err != nil {
+		// 	return dbObj, err
+		// }
+		// dbObj.ProtocolExtensions = parsedStr
+		var ap AddressPack
+		ap.Address = dbObj
+		// Loop over subprotocols and insert to pack.
+		var subprotocols []DbSubprotocol
+		for _, val := range obj.Protocol.Subprotocols {
+			var s DbSubprotocol
+			s.Name = val.Name
+			s.VersionMajor = val.VersionMajor
+			s.VersionMinor = val.VersionMinor
+			// fmt.Printf("%#v", val.SupportedEntities)
+			// Convert protocol entities in subprotocol into comma separated list
+			parsedStr, err := parseStringSliceToCommaSeparatedString(val.SupportedEntities, 64, 100)
+			if err != nil {
+				logging.Log(1, fmt.Sprintf("Subprotocol %s has an error in its supported entities list. Supported Entities List: %#v Error: %s. This field will be saved as empty in the database.", s.Name, val.SupportedEntities, err))
+				return ap, err
+			}
+			s.SupportedEntities = parsedStr
+			// Create Fingerprint for the entity. Mind that this is an internal FP useful for local access purposes, and this is not communicated externally.
+			res, _ := json.Marshal(s)
+			fp := fingerprinting.Create(string(res))
+			s.Fingerprint = api.Fingerprint(fp)
+
+			subprotocols = append(subprotocols, s)
+			// for _, supportedEntity := range val.SupportedEntities {
+			// 	if len(s.SupportedEntities) == 0 {
+			// 		s.SupportedEntities = string(supportedEntity)
+			// 	} else {
+			// 		s.SupportedEntities = fmt.Sprint(s.SupportedEntities, ",", supportedEntity)
+			// 	}
+			// }
 		}
-		dbObj.ProtocolExtensions = parsedStr
-		return dbObj, nil
+
+		ap.Subprotocols = subprotocols
+		return ap, nil
 
 	case api.Key:
 		// Corner case: currency addresses
@@ -417,7 +473,7 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		return apiObj, nil
 
 	case DbAddress:
-		// Corner case, comma separated fingerprint parse
+		// Corner case
 		var apiObj api.Address
 		apiObj.Location = obj.Location
 		apiObj.Sublocation = obj.Sublocation
@@ -431,11 +487,25 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Client.VersionMinor = obj.ClientVersionMinor
 		apiObj.Client.VersionPatch = obj.ClientVersionPatch
 		apiObj.Client.ClientName = obj.ClientName
-		parsedStrSlice, err := parseCommaSeparatedStringToStringSlice(obj.ProtocolExtensions, 64, 100)
+		dbSubprotocols, err := ReadDBSubprotocols(obj.Location, obj.Sublocation, obj.Port)
 		if err != nil {
-			return apiObj, err
+			logging.LogCrash(err)
 		}
-		apiObj.Protocol.Extensions = parsedStrSlice
+		// Convert dbSubprotocols to api.Subprotocols
+		var apiSubprotocols []api.Subprotocol
+		for _, dbSubprot := range dbSubprotocols {
+			var apiSp api.Subprotocol
+			apiSp.Name = dbSubprot.Name
+			apiSp.VersionMajor = dbSubprot.VersionMajor
+			apiSp.VersionMinor = dbSubprot.VersionMinor
+			parsedStrSlice, err2 := parseCommaSeparatedStringToStringSlice(dbSubprot.SupportedEntities, 64, 100)
+			if err2 != nil {
+				return apiSp, err2
+			}
+			apiSp.SupportedEntities = parsedStrSlice
+			apiSubprotocols = append(apiSubprotocols, apiSp)
+		}
+		apiObj.Protocol.Subprotocols = apiSubprotocols
 		return apiObj, nil
 
 	case DbKey:

@@ -1,0 +1,17 @@
+To run the tests, go into each of the libraries, and do: go test
+
+For the api, specifically, do: go test -nodeloc=/Users/Helios/Desktop/generated\ nodes/node-newest_4/static_mim_node
+
+You do not need to host the actual static node.
+
+Also, in your gopath (~/Dropbox/GoProjects/src as of now) you need to create a symbolic link named _ that points to /. Also, add a symbolic link 'aether-core' to the actual directory so that the imports will resolve.
+
+## Code coverage
+
+If you want to run code coverage tests (not regular tests, those run normally) You should cd into gopath, and reach out to the folder from there. ~/Dropbox/GoProjects/src/aether-core
+
+./run-tests.sh
+
+Actually, you don't even need to cd to the gopath any more. I added the cd into the bash script so it does that for you, too. yay.
+
+

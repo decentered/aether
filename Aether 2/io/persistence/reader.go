@@ -15,19 +15,24 @@ import (
 
 // These are utility methods that need to read from the database for miscelleaneous purposes.
 
-func LocalNodeIsMature() (bool, error) {
-	var nrOfRows int
-	err := DbInstance.Get(&nrOfRows, "SELECT count(1) FROM Nodes;")
-	if err != nil {
-		return false, errors.New(fmt.Sprintf("LocalNodeIsMature failed to get the number of rows from the Nodes database. Error: %#v", err))
-	}
-	if nrOfRows >= 3 {
-		logging.Log(2, "A maturity check was requested. Local node is mature.")
-		return true, nil
-	}
-	logging.Log(2, "A maturity check was requested. Local node is NOT mature.")
-	return false, nil
-}
+// func LocalNodeIsMature() (bool, error) {
+// 	var nrOfRows int
+// 	err := DbInstance.Get(&nrOfRows, "SELECT count(1) FROM Nodes;")
+// 	if err != nil {
+// 		return false, errors.New(fmt.Sprintf("LocalNodeIsMature failed to get the number of rows from the Nodes database. Error: %#v", err))
+// 	}
+// 	if nrOfRows >= 3 {
+// 		logging.Log(2, "A maturity check was requested. Local node is mature.")
+// 		return true, nil
+// 	}
+// 	logging.Log(2, "A maturity check was requested. Local node is NOT mature.")
+// 	return false, nil
+// }
+
+// // LocalNodeIsCurrent determines whether there was at least 5 syncs in the last hour.
+// func LocalNodeIsCurrent() (bool, error) {
+
+// }
 
 // ReadNode provides the ability to seek a specific node.
 func ReadNode(fingerprint api.Fingerprint) (DbNode, error) {
@@ -514,7 +519,7 @@ func ReadBoards(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Boards WHERE (LocalArrival > ? AND LocalArrival < ?) ", beginTimestamp, endTimestamp)
+		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Boards WHERE (LocalArrival > ? AND LocalArrival < ? ) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
 		if err != nil {
 			return arr, err
 		}
@@ -568,7 +573,7 @@ func ReadThreads(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Threads WHERE (LocalArrival > ? AND LocalArrival < ?) ", beginTimestamp, endTimestamp)
+		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Threads WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
 		if err != nil {
 			return arr, err
 		}
@@ -646,7 +651,7 @@ func ReadPosts(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Posts WHERE (LocalArrival > ? AND LocalArrival < ?) ", beginTimestamp, endTimestamp)
+		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Posts WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
 		if err != nil {
 			return arr, err
 		}
@@ -700,7 +705,7 @@ func ReadVotes(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Votes WHERE (LocalArrival > ? AND LocalArrival < ?) ", beginTimestamp, endTimestamp)
+		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Votes WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
 		if err != nil {
 			return arr, err
 		}
@@ -813,8 +818,10 @@ func ReadAddresses(
 		var endTs api.Timestamp
 		if endTimestamp == 0 {
 			endTs = api.Timestamp(time.Now().Unix())
+		} else {
+			endTs = endTimestamp
 		}
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Addresses WHERE (LocalArrival > ? AND LocalArrival < ?) ", beginTimestamp, endTs)
+		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Addresses WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTs)
 		if err != nil {
 			return arr, err
 		}
@@ -895,7 +902,7 @@ func ReadKeys(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from PublicKeys WHERE (LocalArrival > ? AND LocalArrival < ?) ", beginTimestamp, endTimestamp)
+		rows, err := DbInstance.Queryx("SELECT DISTINCT * from PublicKeys WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
 		if err != nil {
 			return arr, err
 		}
@@ -972,7 +979,7 @@ func ReadTruststates(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Truststates WHERE (LocalArrival > ? AND LocalArrival < ?) ", beginTimestamp, endTimestamp)
+		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Truststates WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
 		if err != nil {
 			return arr, err
 		}
@@ -1092,4 +1099,40 @@ func ReadDBBoardOwners(BoardFingerprint api.Fingerprint,
 		}
 	}
 	return arr, nil
+}
+
+// ReadDBSubprotocols reads the subprotocols of a given address from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
+
+func ReadDBSubprotocols(Location api.Location, Sublocation api.Location, Port uint16) ([]DbSubprotocol, error) {
+	var fpArr []api.Fingerprint
+	rows, err := DbInstance.Queryx("SELECT * from AddressesSubprotocols WHERE AddressLocation = ? AND AddressSublocation = ? AND AddressPort = ?", Location, Sublocation, Port)
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	// Get the Subprotocol fingerprints from the junction table.
+	for rows.Next() {
+		var dbAddressSubprot DbAddressSubprotocol
+		err = rows.StructScan(&dbAddressSubprot)
+		if err != nil {
+			logging.LogCrash(err)
+		}
+		fpArr = append(fpArr, dbAddressSubprot.SubprotocolFingerprint)
+	}
+	// For each fingerprint, get the matching subprotocol.
+	var subprotArr []DbSubprotocol
+	for _, val := range fpArr {
+		rows, err := DbInstance.Queryx("SELECT * from Subprotocols WHERE Fingerprint = ?", val)
+		if err != nil {
+			logging.LogCrash(err)
+		}
+		for rows.Next() {
+			var subprot DbSubprotocol
+			err = rows.StructScan(&subprot)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+			subprotArr = append(subprotArr, subprot)
+		}
+	}
+	return subprotArr, nil
 }

@@ -47,6 +47,7 @@ func createNodeData() {
 	var p api.Post
 	var v api.Vote
 	var a api.Address
+	var s api.Subprotocol
 	var k api.Key
 	var k2 api.Key
 	var ca api.CurrencyAddress
@@ -104,13 +105,17 @@ func createNodeData() {
 	v.Signature = "sig"
 	v.ProofOfWork = "pow"
 
+	s.Name = "c0"
+	s.VersionMajor = 1
+	s.VersionMinor = 0
+	s.SupportedEntities = []string{"board", "thread", "post", "vote", "key", "truststate"}
 	a.Location = "www.example.com"
 	a.Sublocation = "example"
 	a.Port = 8090
 	a.LocationType = 1
 	a.LastOnline = 1
 	a.Protocol.VersionMajor = 1
-	a.Protocol.Extensions = []string{"a"}
+	a.Protocol.Subprotocols = []api.Subprotocol{s}
 	a.Client.VersionMajor = 1
 	a.Client.ClientName = "client name"
 
@@ -135,6 +140,7 @@ func createNodeData() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 }
 
 // Tests
@@ -523,6 +529,51 @@ func TestReadAddress_Success(t *testing.T) {
 	}
 }
 
+func TestFirstPartyInsertReadAddress_Success(t *testing.T) {
+	// Insert test for new type address
+	var a2 api.Address
+	var s1 api.Subprotocol
+	s1.Name = "dweb"
+	s1.VersionMajor = 1
+	s1.VersionMinor = 0
+	s1.SupportedEntities = []string{"page"}
+	var s2 api.Subprotocol
+	s2.Name = "c0"
+	s2.VersionMajor = 1
+	s2.VersionMinor = 0
+	s2.SupportedEntities = []string{"board", "thread", "post", "vote", "key", "truststate"}
+	a2.Location = "www.example33.com"
+	a2.Sublocation = "example33"
+	a2.Port = 1111
+	a2.LocationType = 1
+	a2.LastOnline = 1
+	a2.Protocol.VersionMajor = 1
+	a2.Protocol.Subprotocols = []api.Subprotocol{s1, s2}
+	a2.Client.VersionMajor = 1
+	a2.Client.ClientName = "client name"
+	addressSet := []api.Address{a2}
+	persistence.InsertOrUpdateAddresses(&addressSet)
+
+	loc := api.Location("www.example33.com")
+	subloc := api.Location("example33")
+	port := uint16(1111)
+
+	resp, err := persistence.ReadAddresses(
+		loc, subloc, port, 0, 0, 0, 0, 0)
+	fmt.Printf("%#v\n", resp)
+	if resp[0].Protocol.Subprotocols[0].Name != "c0" {
+		t.Errorf(fmt.Sprintf("Test failed, the subprotocol information has not been committed. Response: %#v", resp))
+	}
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	} else if len(resp) == 0 {
+		t.Errorf("Test failed, the response is empty.")
+	} else if resp[0].Location != loc {
+		t.Errorf("The response received isn't the expected one. Location: '%s'", resp[0].Location)
+	}
+
+}
+
 func TestReadAddress_Empty(t *testing.T) {
 	resp, err := persistence.ReadAddresses(
 		"fake loc", "fake subloc", 9090, 0, 0, 0, 0, 0)
@@ -684,26 +735,35 @@ func TestApiToDb_Success(t *testing.T) {
 	a.Location = "www.example.com"
 	a.Sublocation = "hello"
 	a.Port = uint16(8090)
-	var strPack = []string{"a", "b", "c"}
-	a.Protocol.Extensions = strPack
-	dbObj, err := persistence.APItoDB(a)
-	obj := dbObj.(persistence.DbAddress)
+	var s api.Subprotocol
+	s.Name = "c0"
+	s.VersionMajor = 1
+	s.VersionMinor = 0
+	s.SupportedEntities = []string{"board", "thread", "post", "vote", "key", "truststate"}
+	a.Protocol.Subprotocols = []api.Subprotocol{s}
+	addressPack, err := persistence.APItoDB(a)
+	obj := addressPack.(persistence.AddressPack)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
-	} else if len(obj.ProtocolExtensions) == 0 {
+	} else if len(obj.Subprotocols) == 0 {
 		t.Errorf("Test failed, the locations response is empty.")
-	} else if obj.Location != a.Location {
-		t.Errorf("The response received isn't the expected one. Location: '%s'", obj.Location)
+	} else if obj.Address.Location != a.Location {
+		t.Errorf("The response received isn't the expected one. Location: '%s'", obj.Address.Location)
 	}
 }
 
+// TOFIX: make sure this detection works.
 func TestApiToDb_RepeatedItems(t *testing.T) {
 	var a api.Address
 	a.Location = "www.example.com"
 	a.Sublocation = "hello"
 	a.Port = uint16(8090)
-	var strPack = []string{"a", "a", "c"}
-	a.Protocol.Extensions = strPack
+	var s1 api.Subprotocol
+	s1.Name = "c0"
+	s1.VersionMajor = 1
+	s1.VersionMinor = 0
+	s1.SupportedEntities = []string{"board", "board"}
+	a.Protocol.Subprotocols = []api.Subprotocol{s1}
 	_, err := persistence.APItoDB(a)
 	errMessage := "This list includes items that are duplicates."
 	if err == nil {
@@ -718,8 +778,12 @@ func TestApiToDb_TooManyItems(t *testing.T) {
 	a.Location = "www.example.com"
 	a.Sublocation = "hello"
 	a.Port = uint16(8090)
-	var strPack = []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "r", "s", "t", "u", "x", "v", "w", "y", "z", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "a1", "b1", "c1", "d1", "e1", "f1", "g1", "h1", "i1", "j1", "k1", "l1", "m1", "n1", "o1", "p1", "r1", "s1", "t1", "u1", "x1", "v1", "w1", "y1", "z1", "a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2", "i2", "j2", "k2", "l2", "m2", "n2", "o2", "p2", "r2", "s2", "t2", "u2", "x2", "v2", "w2", "y2", "z2", "a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3", "i3", "j3", "k3", "l3", "m3", "n3", "o3", "p3", "r3", "s3", "t3", "u3", "x3", "v3", "w3", "y3", "z3"}
-	a.Protocol.Extensions = strPack
+	var s api.Subprotocol
+	s.Name = "c0"
+	s.VersionMajor = 1
+	s.VersionMinor = 0
+	s.SupportedEntities = []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "111", "211", "311", "411", "511", "611", "711", "811", "911", "1011", "1111", "1211", "1311", "1411", "1511", "1611", "1711", "1811", "1911", "2011", "2111", "2211", "2311", "2411", "2511", "2611", "2711", "2811", "2911", "3011", "11111", "21111", "31111", "41111", "51111", "61111", "71111", "81111", "91111", "101111", "111111", "121111", "131111", "141111", "151111", "161111", "171111", "181111", "191111", "201111", "211111", "221111", "231111", "241111", "251111", "261111", "271111", "281111", "291111", "301111", "1111111", "2111111", "3111111", "4111111", "5111111", "6111111", "7111111", "8111111", "9111111", "10111111", "11111111", "12111111", "13111111", "14111111", "15111111", "16111111", "17111111", "18111111", "19111111", "20111111", "21111111", "22111111", "23111111", "24111111", "25111111", "26111111", "27111111", "28111111", "29111111", "30111111"}
+	a.Protocol.Subprotocols = []api.Subprotocol{s}
 	_, err := persistence.APItoDB(a)
 	errMessage := "The string slice provided has too many items."
 	if err == nil {
@@ -734,8 +798,12 @@ func TestApiToDb_ItemLengthLongerThanAllowed(t *testing.T) {
 	a.Location = "www.example.com"
 	a.Sublocation = "hello"
 	a.Port = uint16(8090)
-	var strPack = []string{"fingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprintfingerprint"}
-	a.Protocol.Extensions = strPack
+	var s api.Subprotocol
+	s.Name = "c0"
+	s.VersionMajor = 1
+	s.VersionMinor = 0
+	s.SupportedEntities = []string{"boaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaard"}
+	a.Protocol.Subprotocols = []api.Subprotocol{s}
 	_, err := persistence.APItoDB(a)
 	errMessage := "This string is too long for this field."
 	if err == nil {
@@ -873,13 +941,19 @@ func TestInsert_MultipleTypes_Success(t *testing.T) {
 	ts.Signature = "sig"
 	ts.ProofOfWork = "pow"
 
+	var s api.Subprotocol
+	s.Name = "c0"
+	s.VersionMajor = 1
+	s.VersionMinor = 0
+	s.SupportedEntities = []string{"board", "thread", "post", "vote", "key", "truststate"}
+
 	a.Location = addressLoc
 	a.Sublocation = addressSubloc
 	a.Port = addressPort
 	a.LocationType = 1
 	a.LastOnline = 1
 	a.Protocol.VersionMajor = 1
-	a.Protocol.Extensions = []string{"a"}
+	a.Protocol.Subprotocols = []api.Subprotocol{s, s}
 	a.Client.VersionMajor = 1
 	a.Client.ClientName = "client name"
 

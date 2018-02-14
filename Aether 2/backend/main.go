@@ -5,49 +5,58 @@
 package main
 
 import (
-	"aether-core/backend/dispatch"
+	// "aether-core/backend/dispatch"
 	"aether-core/backend/responsegenerator"
 	"aether-core/backend/server"
-	// "aether-core/io/api"
+	"aether-core/io/api"
 	"aether-core/io/persistence"
 	"aether-core/services/globals"
 	// "aether-core/services/verify"
 	// "crypto/ecdsa"
 	"aether-core/services/logging"
-	"aether-core/services/scheduling"
-	"aether-core/services/upnp"
+	// "aether-core/services/scheduling"
+	// "aether-core/services/upnp"
 	"flag"
 	"fmt"
 	"os"
-	"time"
+	// "time"
 )
 
 func StartSchedules() {
 	logging.Log(1, "Setting up cyclical tasks is starting.")
 	defer logging.Log(1, "Setting up cyclical tasks is complete.")
+	// The dispatcher that seeks live nodes runs every minute.
+	// globals.StopLiveDispatcherCycle = scheduling.Schedule(func() { dispatch.Dispatcher(2) }, 1*time.Second)
+	// // The dispatcher that seeks static nodes runs every hour.
+	// globals.StopStaticDispatcherCycle = scheduling.Schedule(func() { dispatch.Dispatcher(255) }, 1*time.Minute)
+	// // Address scanner goes through all prior unconnected addresses and attempts to connect to them to establish a relationship.
+	// globals.StopAddressScannerCycle = scheduling.Schedule(func() { dispatch.AddressScanner() }, 6*time.Hour)
+	// // UPNP tries to port map every 10 minutes.
+	// globals.StopUPNPCycle = scheduling.Schedule(func() { upnp.MapPort() }, 10*time.Minute)
+	fmt.Println("Caches are starting to be generated...")
+	responsegenerator.GenerateCaches()
+	fmt.Println("Caches generation is complete.")
+	// time.AfterFunc(5*time.Second, func() {
+	// })
 
-	globals.StopLiveDispatcherCycle = scheduling.Schedule(func() { dispatch.Dispatcher(2) }, 1*time.Minute)
-	globals.StopStaticDispatcherCycle = scheduling.Schedule(func() { dispatch.Dispatcher(255) }, 1*time.Hour)
-	globals.StopAddressScannerCycle = scheduling.Schedule(func() { dispatch.AddressScanner() }, 6*time.Hour)
-	globals.StopUPNPCycle = scheduling.Schedule(func() { upnp.MapPort() }, 10*time.Minute)
 	/*
 		For cache generation, the logic is like this:
 		- Start a schedule that checks every 5 minutes if the node is mature
 		- If node is mature, start the mature cycle and stop the immature cycle.
 	*/
-	maturityChecker := func() {
-		mature, err := persistence.LocalNodeIsMature()
-		if err != nil {
-			logging.LogCrash(err)
-		}
-		if mature {
-			// If the node is mature, stop the immature cycle and start the mature.
-			logging.Log(1, "The local node is as of now mature. Stopping the maturity check scheduling and starting the cache generation schedule")
-			globals.StopMatureCacheGenerationCycle = scheduling.Schedule(func() { responsegenerator.GenerateCaches() }, 6*time.Hour)
-			globals.StopImmatureCacheGenerationCycle <- true
-		}
-	}
-	globals.StopImmatureCacheGenerationCycle = scheduling.Schedule(maturityChecker, 5*time.Minute)
+	// maturityChecker := func() {
+	// 	mature, err := persistence.LocalNodeIsMature()
+	// 	if err != nil {
+	// 		logging.LogCrash(err)
+	// 	}
+	// 	if mature {
+	// 		// If the node is mature, stop the immature cycle and start the mature.
+	// 		logging.Log(1, "The local node is as of now mature. Stopping the maturity check scheduling and starting the cache generation schedule")
+	// 		globals.StopMatureCacheGenerationCycle = scheduling.Schedule(func() { responsegenerator.GenerateCaches() }, 6*time.Hour)
+	// 		globals.StopImmatureCacheGenerationCycle <- true
+	// 	}
+	// }
+	// globals.StopImmatureCacheGenerationCycle = scheduling.Schedule(maturityChecker, 5*time.Minute)
 
 }
 
@@ -94,6 +103,23 @@ func Startup() {
 	ShowIntro()
 	ReadFlags()
 	StartSchedules()
+	logging.Log(1, "Startup complete.")
+	// TEST Insert the localhost data.
+	var addrLocal api.Address
+	addrLocal.Location = "127.0.0.1"
+	addrLocal.Sublocation = ""
+	addrLocal.LocationType = 4
+	addrLocal.Port = 8001
+	addrLocal.LastOnline = 1111111
+	addrLocal.Protocol.VersionMajor = 1
+	addrLocal.Protocol.VersionMinor = 1
+	addrLocal.Protocol.Subprotocols = []api.Subprotocol{api.Subprotocol{"c0", 1, 0, []string{"board", "thread", "post", "vote", "key", "truststate"}}}
+	addrLocal.Client.VersionMajor = 1
+	addrLocal.Client.VersionMinor = 1
+	addrLocal.Client.VersionPatch = 1
+	addrLocal.Client.ClientName = "Aether"
+	persistence.BatchInsert([]interface{}{addrLocal})
+	// dispatch.Sync(addrLocal)
 }
 
 func Shutdown() {
@@ -103,15 +129,15 @@ func Shutdown() {
 	globals.StopStaticDispatcherCycle <- true
 	globals.StopAddressScannerCycle <- true
 	globals.StopUPNPCycle <- true
-	mature, err := persistence.LocalNodeIsMature()
-	if err != nil {
-		logging.LogCrash(err)
-	}
-	if mature {
-		globals.StopMatureCacheGenerationCycle <- true
-	} else {
-		globals.StopImmatureCacheGenerationCycle <- true
-	}
+	// mature, err := persistence.LocalNodeIsMature()
+	// if err != nil {
+	// 	logging.LogCrash(err)
+	// }
+	// if mature {
+	// 	globals.StopMatureCacheGenerationCycle <- true
+	// } else {
+	// 	globals.StopImmatureCacheGenerationCycle <- true
+	// }
 	logging.Log(1, "Shutdown is complete.")
 	fmt.Println("Shutdown is complete. Bye.")
 	os.Exit(0)
@@ -119,6 +145,6 @@ func Shutdown() {
 
 func main() {
 	Startup()
-	// Shutdown()
 	server.Serve()
+	Shutdown()
 }

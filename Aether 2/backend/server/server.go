@@ -84,7 +84,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/boards", "/v0/boards/":
+			case "/v0/c0/boards", "/v0/c0/boards/":
 				resp, err := BoardsPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -96,7 +96,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/threads", "/v0/threads/":
+			case "/v0/c0/threads", "/v0/c0/threads/":
 				resp, err := ThreadsPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -108,7 +108,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/posts", "/v0/posts/":
+			case "/v0/c0/posts", "/v0/c0/posts/":
 				resp, err := PostsPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -120,7 +120,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/votes", "/v0/votes/":
+			case "/v0/c0/votes", "/v0/c0/votes/":
 				resp, err := VotesPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -132,7 +132,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/keys", "/v0/keys/":
+			case "/v0/c0/keys", "/v0/c0/keys/":
 				resp, err := KeysPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -144,7 +144,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/addresses", "/v0/addresses/":
+			case "/v0/c0/addresses", "/v0/c0/addresses/":
 				resp, err := AddressesPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -156,7 +156,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/truststates", "/v0/truststates/":
+			case "/v0/c0/truststates", "/v0/c0/truststates/":
 				resp, err := TruststatesPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -210,7 +210,7 @@ func insertLocallySourcedRemoteAddressDetails(r *http.Request, req *api.ApiRespo
 	req.Address.Location = api.Location(host)
 	req.Address.LastOnline = api.Timestamp(time.Now().Unix())
 	req.Address.Type = 2 // If it is making a request to you, it cannot be a static node, by definition.
-	req.Address.Protocol.Extensions = []string{}
+	req.Address.Protocol.Subprotocols = []api.Subprotocol{}
 	req.Address.Protocol.VersionMajor = 0
 	req.Address.Protocol.VersionMinor = 0
 	req.Address.Client.ClientName = ""
@@ -236,13 +236,13 @@ func ParsePOSTRequest(r *http.Request) (api.ApiResponse, error) {
 	// - Node Id always 64 chars long
 	// - Port has to exist, and > 0
 	// - Type cannot be 0
-	// - Protocol extensions have to include "aether"
+	// - Protocol subprotocols have to include "c0" (aether subprotocol of mim)
 	if r.Header["Content-Type"][0] == "application/json" &&
 		len(req.NodeId) == 64 &&
 		req.Address.Port > 0 &&
 		req.Address.Type != 0 {
-		for _, ext := range req.Address.Protocol.Extensions {
-			if ext == "aether" {
+		for _, ext := range req.Address.Protocol.Subprotocols {
+			if ext.Name == "c0" {
 				// We insert to the POST request the locally sourced details. (Location, Sublocation, LocationType [ipv4 or 6], LastOnline)
 				err := insertLocallySourcedRemoteAddressDetails(r, &req)
 				if err != nil {

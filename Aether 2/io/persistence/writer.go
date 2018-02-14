@@ -49,12 +49,13 @@ func InsertOrUpdateAddresses(a *[]api.Address) {
 
 // InsertOrUpdateAddress is the ONLY way to update an address in the database. Be very careful with this, careless use of this function can result in entry of untrusted data from the remotes into the local database. The only legitimate use of this is to put in the details of nodes that this local machine has personally connected to.
 func InsertOrUpdateAddress(a api.Address) error {
-	dbA, err := APItoDB(a)
+	addressPackAsInterface, err := APItoDB(a)
+	addressPack := addressPackAsInterface.(AddressPack)
 	if err != nil {
 		return errors.New(fmt.Sprint(
 			"Error raised from APItoDB function used in Batch insert. Error: ", err))
 	}
-	err2 := enforceNoEmptyIdentityFields(dbA)
+	err2 := enforceNoEmptyIdentityFields(addressPack)
 	if err2 != nil {
 		// If this unit does have empty identity fields, we pass on adding it to the database.
 		return err2
@@ -68,13 +69,30 @@ func InsertOrUpdateAddress(a api.Address) error {
 	if err4 != nil {
 		logging.LogCrash(err4)
 	}
-	_, err5 := tx.NamedExec(addressUpdateInsert, dbA)
+	_, err5 := tx.NamedExec(addressUpdateInsert, addressPack.Address)
 	if err5 != nil {
 		logging.LogCrash(err5)
 	}
-	err6 := tx.Commit()
-	if err6 != nil {
-		return err6
+	for _, dbSubprot := range addressPack.Subprotocols {
+		_, err6 := tx.NamedExec(subprotocolInsert, dbSubprot)
+		if err6 != nil {
+			logging.LogCrash(err6)
+		}
+		// Construct the entry for AddressesSubprotocols table.
+		var addressSubprot DbAddressSubprotocol
+		addressSubprot.AddressLocation = addressPack.Address.Location
+		addressSubprot.AddressSublocation = addressPack.Address.Sublocation
+		addressSubprot.AddressPort = addressPack.Address.Port
+		addressSubprot.SubprotocolFingerprint = dbSubprot.Fingerprint
+		// Insert the constructed entity into the junction table.
+		_, err7 := tx.NamedExec(addressSubprotocolInsert, addressSubprot)
+		if err7 != nil {
+			logging.LogCrash(err7)
+		}
+	}
+	err8 := tx.Commit()
+	if err8 != nil {
+		return err8
 	}
 	return nil
 }
@@ -171,23 +189,28 @@ func BatchInsert(apiObjects []interface{}) error {
 			if err != nil {
 				logging.LogCrash(err)
 			}
-		case DbAddress:
+
+		case AddressPack:
 			// In case of address, we strip out everything except the primary keys. This is because we cannot trust the data that is coming from the network. We just add the primary key set, and the local node will take care of directly connecting to these nodes and getting the details.
+
 			// The other types of address inputs are not affected by this because they use InsertOrUpdateAddress, not this batch insert. If you're batch inserting addresses, it's by definition third party data.
-			dbObject.LocationType = 0 // IPv4 or 6
-			dbObject.Type = 0         // 2 = live, 255 = static
-			dbObject.LastOnline = 0   // We cannot trust someone else's last online timestamp
-			dbObject.ProtocolVersionMajor = 0
-			dbObject.ProtocolVersionMinor = 0
-			dbObject.ProtocolExtensions = ""
-			dbObject.ClientVersionMajor = 0
-			dbObject.ClientVersionMinor = 0
-			dbObject.ClientVersionPatch = 0
-			dbObject.ClientName = ""
-			_, err := tx.NamedExec(addressInsert, dbObject)
+
+			// This also means that we will actually be not using the Subprotocols data, as that would be untrusted data.
+
+			dbObject.Address.LocationType = 0 // IPv4 or 6
+			dbObject.Address.Type = 0         // 2 = live, 255 = static
+			dbObject.Address.LastOnline = 0   // We cannot trust someone else's last online timestamp
+			dbObject.Address.ProtocolVersionMajor = 0
+			dbObject.Address.ProtocolVersionMinor = 0
+			dbObject.Address.ClientVersionMajor = 0
+			dbObject.Address.ClientVersionMinor = 0
+			dbObject.Address.ClientVersionPatch = 0
+			dbObject.Address.ClientName = ""
+			_, err := tx.NamedExec(addressInsert, dbObject.Address)
 			if err != nil {
 				logging.LogCrash(err)
 			}
+
 		case KeyPack:
 			if packShouldBeCommitted(dbObject) {
 				_, err := tx.NamedExec(keyInsert, dbObject.Key)
@@ -463,13 +486,20 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 				fmt.Sprintf(
 					"This vote has some required fields empty (One or more of: Board, Thread, Target, Owner, Type, Creation, Signature, PoW). Vote: %#v\n", obj))
 		}
-
-	case DbAddress:
-		if obj.LocationType == 0 || obj.LastOnline == 0 || obj.ProtocolVersionMajor == 0 || obj.ProtocolExtensions == "" || obj.ClientVersionMajor == 0 || obj.ClientName == "" {
+	case AddressPack:
+		if obj.Address.LocationType == 0 || obj.Address.LastOnline == 0 || obj.Address.ProtocolVersionMajor == 0 || obj.Address.ClientVersionMajor == 0 || obj.Address.ClientName == "" || len(obj.Subprotocols) < 1 {
 			return errors.New(
 				fmt.Sprintf(
-					"This address has some required fields empty (One or more of: LocationType, LastOnline, ProtocolVersionMajor, ProtocolExtensions, ClientVersionMajor, ClientName). Address: %#v\n", obj))
+					"This address has some required fields empty (One or more of: LocationType, LastOnline, ProtocolVersionMajor, Subprotocols, ClientVersionMajor, ClientName). Address: %#v\n", obj))
 		}
+		for _, subprot := range obj.Subprotocols {
+			if subprot.Fingerprint == "" || subprot.Name == "" || subprot.VersionMajor == 0 || subprot.SupportedEntities == "" {
+				return errors.New(
+					fmt.Sprintf(
+						"This address' subprotocol has some required fields empty (One or more of: Fingerprint, Name, VersionMajor, SupportedEntities). Address: %#v\n Subprotocol: %#v\n", obj, subprot))
+			}
+		}
+
 	case KeyPack:
 		if obj.Key.Type == "" || obj.Key.PublicKey == "" || obj.Key.Creation == 0 || obj.Key.ProofOfWork == "" || obj.Key.Signature == "" {
 			return errors.New(

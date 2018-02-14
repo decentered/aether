@@ -108,10 +108,17 @@ type CurrencyAddress struct {
 	Address      string `json:"address"`
 }
 
+type Subprotocol struct {
+	Name              string   `json:"name"`
+	VersionMajor      uint8    `json:"version_major"`
+	VersionMinor      uint16   `json:"version_minor"`
+	SupportedEntities []string `json:"supported_entities"`
+}
+
 type Protocol struct {
-	VersionMajor uint8    `json:"version_major"`
-	VersionMinor uint16   `json:"version_minor"`
-	Extensions   []string `json:"extensions"` // max 100 extensions
+	VersionMajor uint8         `json:"version_major"`
+	VersionMinor uint16        `json:"version_minor"`
+	Subprotocols []Subprotocol `json:"subprotocols"`
 }
 
 type Client struct {

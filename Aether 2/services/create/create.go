@@ -198,7 +198,7 @@ func CreateAddress(
 	lastOnline api.Timestamp,
 	protVMajor uint8,
 	protVMinor uint16,
-	protExt []string,
+	subprotocols []api.Subprotocol,
 	clientVMajor uint8,
 	clientVMinor uint16,
 	clientVPatch uint16,
@@ -215,7 +215,7 @@ func CreateAddress(
 	var prot api.Protocol
 	prot.VersionMajor = protVMajor
 	prot.VersionMinor = protVMinor
-	prot.Extensions = protExt
+	prot.Subprotocols = subprotocols
 	var client api.Client
 	client.VersionMajor = clientVMajor
 	client.VersionMinor = clientVMinor

@@ -158,18 +158,18 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 	var resp *http.Response
 	if method == "GET" {
 		resp, err = client.Get(fullLink)
-		if err != nil {
-			return []byte{}, err
-		}
+		// if err != nil {
+		// 	return []byte{}, err
+		// }
 	} else if method == "POST" {
 		resp, err = client.Post(fullLink, "application/json", bytes.NewReader(postBody))
-		if err != nil {
-			return []byte{}, err
-		}
+		// if err != nil {
+		// 	return []byte{}, err
+		// }
 	} else {
+		defer resp.Body.Close()
 		return []byte{}, errors.New("Unsupported HTTP method. Available methods are: GET, POST")
 	}
-	defer resp.Body.Close()
 	if err != nil {
 		if strings.Contains(err.Error(), "getsockopt: connection refused") {
 			return []byte{}, errors.New(
@@ -185,11 +185,19 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 					", Subhost: ", subhost,
 					", Port: ", port,
 					", Location: ", location))
+		} else if strings.Contains(err.Error(), "i/o timeout") {
+			return []byte{}, errors.New(
+				fmt.Sprint(
+					"I/O timeout. Host:", host,
+					", Subhost: ", subhost,
+					", Port: ", port,
+					", Location: ", location))
 		} else {
 			fmt.Println("Fatal error in api.Fetch. Quitting.")
 			logging.LogCrash(err)
 		}
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode == 200 {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -302,9 +310,20 @@ func GetCache(host string, subhost string, port uint16, location string) (Respon
 
 // GetEndpoint returns an entire endpoint from the remote node.
 func GetEndpoint(host string, subhost string, port uint16, endpoint string, lastCheckin Timestamp) (Response, error) {
+	// This is where the mapping for an endpoint to its respective subprotocol folder is mapped. Below this level, you have to supply your own subprotocol string.
+	logging.Log(1, fmt.Sprintf("GetEndpoint was called for the endpoint: %s", endpoint))
+	// Structure the endpoint -> location map
+	endpointsMap := map[string]string{
+		"boards":      "c0/boards",
+		"threads":     "c0/threads",
+		"posts":       "c0/posts",
+		"votes":       "c0/votes",
+		"addresses":   "addresses", // Addresses is a mim entity, not a c0 entity.
+		"keys":        "c0/keys",
+		"truststates": "c0/truststates"}
 	var response Response
 	// Get raw page, because we need to access index links.
-	result, err := getIndexOfEndpoint(host, subhost, port, endpoint)
+	result, err := getIndexOfEndpoint(host, subhost, port, endpointsMap[endpoint])
 	indexes := result.CacheLinks
 	if err != nil {
 		return response, errors.New(
@@ -330,7 +349,7 @@ func GetEndpoint(host string, subhost string, port uint16, endpoint string, last
 		if val.EndsAt >= lastCheckin {
 			// Get the first page of the cache.
 			cache, err := GetCache(host, subhost, port,
-				fmt.Sprint(endpoint, "/", val.ResponseUrl))
+				fmt.Sprint(endpointsMap[endpoint], "/", val.ResponseUrl))
 			response = concatResponses(response, cache)
 			if err == nil {
 				missingCacheCounter = 0 // Zero out the missing cache counter.
@@ -352,7 +371,17 @@ func GetEndpoint(host string, subhost string, port uint16, endpoint string, last
 		}
 
 	}
+	boardCount := len(response.Boards)
+	threadCount := len(response.Threads)
+	postCount := len(response.Posts)
+	voteCount := len(response.Votes)
+	addressCount := len(response.Addresses)
+	keysCount := len(response.Keys)
+	truststatesCount := len(response.Truststates)
 	response.AvailableTypes = getResponseTypes(response)
+	// logging.Log(1, fmt.Sprintf("Response for the endpoint %s was %#v\n", endpoint, response))
+	logging.Log(1, fmt.Sprintf("GetEndpoint returned for the endpoint: %s. Number of items: Boards: %d, Threads: %d, Posts: %d, Votes: %d, Addresses: %d, Keys: %d, Truststates: %d", endpoint, boardCount, threadCount, postCount, voteCount, addressCount, keysCount, truststatesCount))
+
 	return response, nil
 }
 

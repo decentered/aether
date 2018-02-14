@@ -118,7 +118,6 @@ func CreateDatabase() {
       LastOnline BIGINT NOT NULL,
       ProtocolVersionMajor SMALLINT NOT NULL,
       ProtocolVersionMinor INTEGER NOT NULL,
-      ProtocolExtensions VARCHAR(5000) NOT NULL,
       ClientVersionMajor SMALLINT NOT NULL,
       ClientVersionMinor INTEGER NOT NULL,
       ClientVersionPatch INTEGER NOT NULL,
@@ -171,6 +170,24 @@ func CreateDatabase() {
         TruststatesLastCheckin BIGINT NOT NULL
       );
     `
+	schema11 := `
+      CREATE TABLE IF NOT EXISTS Subprotocols (
+        Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
+        Name VARCHAR(64) NOT NULL,
+        VersionMajor SMALLINT NOT NULL,
+        VersionMinor INTEGER NOT NULL,
+        SupportedEntities VARCHAR(5000) NOT NULL
+      );`
+
+	schema12 := `
+      CREATE TABLE IF NOT EXISTS AddressesSubprotocols (
+        AddressLocation VARCHAR(256) NOT NULL,
+        AddressSublocation VARCHAR(256) NOT NULL,
+        AddressPort INTEGER NOT NULL,
+        SubprotocolFingerprint VARCHAR(64) NOT NULL,
+        PRIMARY KEY(AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint)
+      );`
+
 	var creationSchemas []string
 	creationSchemas = append(creationSchemas, schema1)
 	creationSchemas = append(creationSchemas, schema2)
@@ -182,6 +199,8 @@ func CreateDatabase() {
 	creationSchemas = append(creationSchemas, schema8)
 	creationSchemas = append(creationSchemas, schema9)
 	creationSchemas = append(creationSchemas, schema10)
+	creationSchemas = append(creationSchemas, schema11)
+	creationSchemas = append(creationSchemas, schema12)
 
 	for _, schema := range creationSchemas {
 		// fmt.Println(schema)
@@ -223,7 +242,7 @@ var boardOwnerInsert = `REPLACE INTO BoardOwners
   :BoardFingerprint, :KeyFingerprint, :Expiry, :Level
 )`
 
-// Deletion for BoardOwner. This triggers when a person is no longer a moderator, etc.
+// Deletion for BoardOwner. This triggers when a person is no longer a moderator, etc. This is the only deletion here because nothing else really gets deleted.
 var boardOwnerDelete = `DELETE FROM BoardOwners WHERE BoardFingerprint = :BoardFingerprint AND KeyFingerprint = :KeyFingerprint`
 
 // Immutable
@@ -270,13 +289,13 @@ var voteInsert = `REPLACE INTO Votes
 var addressInsert = `INSERT IGNORE INTO Addresses
 (
   Location, Sublocation, Port, IPType, AddressType, LastOnline,
-  ProtocolVersionMajor, ProtocolVersionMinor, ProtocolExtensions,
-  ClientVersionMajor, ClientVersionMinor, ClientVersionPatch, ClientName,
+  ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
+  ClientVersionMinor, ClientVersionPatch, ClientName,
   LocalArrival
 ) VALUES (
   :Location, :Sublocation, :Port,:IPType, :AddressType, :LastOnline,
-  :ProtocolVersionMajor, :ProtocolVersionMinor, :ProtocolExtensions,
-  :ClientVersionMajor, :ClientVersionMinor, :ClientVersionPatch, :ClientName,
+  :ProtocolVersionMajor, :ProtocolVersionMinor, :ClientVersionMajor,
+  :ClientVersionMinor, :ClientVersionPatch, :ClientName,
   :LocalArrival
 )`
 
@@ -284,15 +303,32 @@ var addressInsert = `INSERT IGNORE INTO Addresses
 var addressUpdateInsert = `REPLACE INTO Addresses
 (
   Location, Sublocation, Port, IPType, AddressType, LastOnline,
-  ProtocolVersionMajor, ProtocolVersionMinor, ProtocolExtensions,
-  ClientVersionMajor, ClientVersionMinor, ClientVersionPatch, ClientName,
+  ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
+  ClientVersionMinor, ClientVersionPatch, ClientName,
   LocalArrival
 ) VALUES (
   :Location, :Sublocation, :Port,:IPType, :AddressType, :LastOnline,
-  :ProtocolVersionMajor, :ProtocolVersionMinor, :ProtocolExtensions,
-  :ClientVersionMajor, :ClientVersionMinor, :ClientVersionPatch, :ClientName,
+  :ProtocolVersionMajor, :ProtocolVersionMinor, :ClientVersionMajor,
+  :ClientVersionMinor, :ClientVersionPatch, :ClientName,
   :LocalArrival
 )`
+
+// Subprotocol insert is the part of address insertion series. This makes it so that we have a list of all subprotocols flying around.
+var subprotocolInsert = `REPLACE INTO Subprotocols
+(
+  Fingerprint, Name, VersionMajor, VersionMinor, SupportedEntities
+) VALUES (
+  :Fingerprint, :Name, :VersionMajor, :VersionMinor, :SupportedEntities
+)`
+
+// AddressSubprotocolInsert inserts into the many to many junction table so that we can keep track of the subprotocols an address uses.
+
+var addressSubprotocolInsert = `INSERT IGNORE INTO AddressesSubprotocols
+ (
+   AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint
+ ) VALUES (
+   :AddressLocation, :AddressSublocation, :AddressPort, :SubprotocolFingerprint
+ )`
 
 // Key insert does insert or replace without checking because we're handling the logic that decides whether we should update or not in the database layer.
 var keyInsert = `REPLACE INTO PublicKeys
