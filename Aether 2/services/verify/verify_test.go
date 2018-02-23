@@ -2,10 +2,14 @@ package verify_test
 
 import (
 	"aether-core/io/api"
+	"aether-core/services/configstore"
 	"aether-core/services/create"
 	"aether-core/services/globals"
+	"aether-core/services/logging"
 	"aether-core/services/signaturing"
 	"aether-core/services/verify"
+	"crypto/elliptic"
+	"encoding/hex"
 	// "fmt"
 	"os"
 	"strings"
@@ -21,10 +25,28 @@ func TestMain(m *testing.M) {
 	os.Exit(exitVal)
 }
 
+var MarshaledPubKey string
+
+func startconfigs() {
+	becfg, err := configstore.EstablishBackendConfig()
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	becfg.Cycle()
+	globals.BackendConfig = becfg
+
+	fecfg, err := configstore.EstablishFrontendConfig()
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	fecfg.Cycle()
+	globals.FrontendConfig = fecfg
+}
+
 func setup() {
-	globals.GenerateUserKeyPair()
-	globals.SetBailoutTime()
-	globals.SetMinPoWStrengths(16)
+	startconfigs()
+	globals.BackendConfig.SetMinimumPoWStrengths(16)
+	MarshaledPubKey = hex.EncodeToString(elliptic.Marshal(elliptic.P521(), globals.FrontendConfig.GetUserKeyPair().PublicKey.X, globals.FrontendConfig.GetUserKeyPair().PublicKey.Y))
 }
 
 func teardown() {
@@ -34,7 +56,7 @@ func teardown() {
 
 func TestVerify_Success(t *testing.T) {
 	keyEntity, err3 := create.CreateKey(
-		"", globals.MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -59,7 +81,7 @@ func TestVerify_Success(t *testing.T) {
 
 func TestVerify_BrokenFingerprint_Fail(t *testing.T) {
 	keyEntity, err3 := create.CreateKey(
-		"", globals.MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -85,7 +107,7 @@ func TestVerify_BrokenFingerprint_Fail(t *testing.T) {
 
 func TestVerify_BrokenPoW1_Fail(t *testing.T) {
 	keyEntity, err3 := create.CreateKey(
-		"", globals.MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -116,7 +138,7 @@ func TestVerify_BrokenPoW1_Fail(t *testing.T) {
 func TestVerify_BrokenPoW2_Fail(t *testing.T) {
 	// Changing a mutable element, but not actually running update.
 	keyEntity, err3 := create.CreateKey(
-		"", globals.MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -141,7 +163,7 @@ func TestVerify_BrokenPoW2_Fail(t *testing.T) {
 
 func TestVerify_BrokenSignature_Fail(t *testing.T) {
 	keyEntity, err3 := create.CreateKey(
-		"", globals.MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -161,7 +183,7 @@ func TestVerify_BrokenSignature_Fail(t *testing.T) {
 	}
 	// Re-shrink-wrap
 	thr.CreateSignature(privKey) // Signing it with a new key
-	thr.CreatePoW(globals.KeyPair, 20)
+	thr.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), 20)
 	thr.CreateFingerprint()
 	errMessage := "A wrong key is provided for this signature"
 	result, err2 := verify.Verify(&thr, keyEntity)
@@ -178,7 +200,7 @@ func TestVerify_BrokenSignature_Fail(t *testing.T) {
 
 func TestVerify_UpdatedItemSuccess(t *testing.T) {
 	keyEntity, err3 := create.CreateKey(
-		"", globals.MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -208,7 +230,7 @@ func TestVerify_UpdatedItemSuccess(t *testing.T) {
 func TestVerify_UpdatedItemFailure_Pow(t *testing.T) {
 	// Failed to call the update request.
 	keyEntity, err3 := create.CreateKey(
-		"", globals.MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -235,7 +257,7 @@ func TestVerify_UpdatedItemFailure_Pow(t *testing.T) {
 func TestVerify_UpdatedItemFailure_Fingerprint(t *testing.T) {
 	// Failed to call the update request.
 	keyEntity, err3 := create.CreateKey(
-		"", globals.MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -262,7 +284,7 @@ func TestVerify_UpdatedItemFailure_Fingerprint(t *testing.T) {
 func TestVerify_UpdatedItemFailure_Signature(t *testing.T) {
 	// Failed to call the update request.
 	keyEntity, err3 := create.CreateKey(
-		"", globals.MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}

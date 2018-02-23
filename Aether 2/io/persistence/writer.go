@@ -18,7 +18,7 @@ func InsertNode(n DbNode) error {
 	// fmt.Println("Node to be inserted:")
 	// fmt.Printf("%#v\n", n)
 	// TODO: Consider whether this needs a enforceNoEmptyIdentityFields or enforceNoEmptyRequiredFields
-	if api.Fingerprint(globals.NodeId) == n.Fingerprint {
+	if api.Fingerprint(globals.BackendConfig.GetNodeId()) == n.Fingerprint {
 		return errors.New(fmt.Sprintf("The node ID that was attempted to be inserted is the SAME AS the local node's ID. This could be an attempted attack. Node ID of the remote: %s", n.Fingerprint))
 	}
 	tx, err := DbInstance.Beginx()

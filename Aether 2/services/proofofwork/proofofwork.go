@@ -96,16 +96,17 @@ func getNowInUnixTS() int {
 // Mid level functions
 
 // Create creates the Hashcash proof of with the given difficulty. This function has an inner loop which adds a random element to the input and tries to find enough zeros at the beginning of the SHA1 hash of the result.
-func Create(input string, difficulty int64, privKey *ecdsa.PrivateKey) (string, error) {
+func Create(input string, difficulty int, privKey *ecdsa.PrivateKey) (string, error) {
 	// First of all, check if BailoutSeconds exists. If this does not exist we have to exit as the allotted maximum time until a PoW is created will be zero.
-	if globals.PoWBailoutTime.BailoutTimeSeconds == 0 {
+	difficulty64 := int64(difficulty)
+	if globals.BackendConfig.GetPoWBailoutTimeSeconds() == 0 {
 		return "", errors.New(fmt.Sprint(
 			"Please initialise BailoutSeconds first."))
 	}
 	// Calculate number of zeros we need at the beginning of the hash.
 	// Hex is floored. So you still need to do additional checks.
-	lowerHexDigitsNeeded := int(math.Floor(float64(difficulty) / float64(4)))
-	binDigitsNeeded := difficulty
+	lowerHexDigitsNeeded := int(math.Floor(float64(difficulty64) / float64(4)))
+	binDigitsNeeded := difficulty64
 	var zeroHexDigits string
 	var zeroBinDigits string
 	for i := 0; i < lowerHexDigitsNeeded; i++ {
@@ -129,12 +130,12 @@ func Create(input string, difficulty int64, privKey *ecdsa.PrivateKey) (string, 
 		saltBytes[i] = LETTERS[int(randNum.Int64())]
 	}
 	// Add salt to the end of the input string.
-	inputToBePoWd := strconv.FormatInt(difficulty, 10) +
+	inputToBePoWd := strconv.FormatInt(difficulty64, 10) +
 		input + string(saltBytes)
 	// Take time here
 	timeCounter := getNowInUnixTS()
 
-	bailoutSeconds := globals.PoWBailoutTime.BailoutTimeSeconds
+	bailoutSeconds := globals.BackendConfig.GetPoWBailoutTimeSeconds()
 	for {
 		// This is the tight loop.
 		// Check if the bailout time has passed.
@@ -161,7 +162,7 @@ func Create(input string, difficulty int64, privKey *ecdsa.PrivateKey) (string, 
 		}
 	}
 	// Mind the terminating ":" in case of no signature.
-	proofOfWork := "MIM1" + ":" + strconv.FormatInt(difficulty, 10) + "::::" +
+	proofOfWork := "MIM1" + ":" + strconv.FormatInt(difficulty64, 10) + "::::" +
 		string(saltBytes) + ":" + strconv.FormatInt(counter, 10) + ":"
 	if privKey.D != nil {
 		// We have a private key. Sign the hash with this key.
@@ -183,7 +184,7 @@ func Create(input string, difficulty int64, privKey *ecdsa.PrivateKey) (string, 
 // TODO: deal with error conditions below.
 
 // Verify validates whether the given Hashcash token is strong enough to satisfy the given difficulty.
-func Verify(input string, pow string, pubKey string) (bool, int64, error) {
+func Verify(input string, pow string, pubKey string) (bool, int, error) {
 	// MimHashcash syntax:
 	// [version]:[difficulty]:[date]:[input]:[extension]:[salt]:[counter]:[signature]
 	// Check PoW length. If longer than 1024 chars, bail.
@@ -205,13 +206,14 @@ func Verify(input string, pow string, pubKey string) (bool, int64, error) {
 	}
 	// Create proper parse fields.
 	var parsedVersion string
-	var parsedDifficulty int64
+	var parsedDifficulty64 int64
 	var parsedSalt string
 	var parsedCounter int64
 	var parsedSignature string
 	// Attempt to parse into the properly typed fields.
 	parsedVersion = parsedStrings[0]
-	parsedDifficulty, err := strconv.ParseInt(parsedStrings[1], 10, 64)
+	parsedDifficulty64, err := strconv.ParseInt(parsedStrings[1], 10, 64)
+	parsedDifficulty := int(parsedDifficulty64)
 	if err != nil {
 		return false, 0, errors.New(fmt.Sprint(
 			"PoW parsing failed, this PoW is invalid. Error: ", err))
@@ -235,14 +237,14 @@ func Verify(input string, pow string, pubKey string) (bool, int64, error) {
 	switch parsedVersion {
 	case "MIM1":
 		// Add the difficulty, salt and counter to the input string.
-		stringToBeVerified := strconv.FormatInt(parsedDifficulty, 10) +
+		stringToBeVerified := strconv.FormatInt(parsedDifficulty64, 10) +
 			input + parsedSalt + strconv.FormatInt(parsedCounter, 10)
 		// Hash the outputted string to see the result per SHA256x3.
 		result := mimHash(stringToBeVerified)
 		resultBinary := convertToBinaryString(result)
 		// Check for zeroes at the beginning.
 		var zeroBinDigits string
-		for i := int64(0); i < parsedDifficulty; i++ {
+		for i := int(0); i < parsedDifficulty; i++ {
 			zeroBinDigits = zeroBinDigits + "0"
 		}
 		if resultBinary[:parsedDifficulty] == zeroBinDigits {

@@ -25,15 +25,15 @@ func MapPort() {
 		// External IP finding failed.
 		logging.Log(1, fmt.Sprintf("External IP of this machine could not be determined. Error: %s", err2.Error()))
 	} else {
-		globals.ExternalIp = extIp
-		logging.Log(1, fmt.Sprintf("This computer's external IP is %s", globals.ExternalIp))
+		globals.BackendConfig.SetExternalIp(extIp)
+		logging.Log(1, fmt.Sprintf("This computer's external IP is %s", globals.BackendConfig.GetExternalIp()))
 	}
-	err3 := router.Forward(globals.AddressPort, "Aether")
+	err3 := router.Forward(globals.BackendConfig.GetExternalPort(), "Aether")
 	if err3 != nil {
 		// Router is there, but port mapping failed.
 		logging.Log(1, fmt.Sprintf("In an attempt to port map, the router was found, but the port mapping failed. Error: %s", err3.Error()))
 	}
-	logging.Log(1, fmt.Sprintf("Port mapping was successful. We mapped port %d to this computer.", globals.AddressPort))
+	logging.Log(1, fmt.Sprintf("Port mapping was successful. We mapped port %d to this computer.", globals.BackendConfig.GetExternalPort()))
 }
 
 // func UnmapPort() {

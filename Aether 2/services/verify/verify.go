@@ -95,7 +95,7 @@ func verifyProvable(resp api.Response, entity api.Provable) (bool, error) {
 	} else if !isVerified {
 		// We do not have an error in validation but the item could not be validated..
 		return false, errors.New(fmt.Sprintf(
-			"An entity in the response could not be validated. Entity: %#v, Coming from: %s\n", entity, resp.Addresses))
+			"An entity in the response could not be validated. Entity: %#v, Coming from: %#v\n", entity, resp.Addresses))
 	}
 	if isVerified {
 		// We do not have an error, and the validation was successful.

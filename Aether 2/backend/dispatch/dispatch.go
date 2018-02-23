@@ -16,8 +16,8 @@ import (
 
 // processExclusions processes the exclusions in the Dispatcher, and it returns a slice of Addresses. It can also differentiate between different types of addresses (static vs live) and apply different exclusion expiry durations.
 func processExclusions(excl *map[*interface{}]time.Time) []api.Address {
-	liveExpiry := globals.DispatcherExclusionsExpiryLiveAddress
-	staticExpiry := globals.DispatcherExclusionsExpiryStaticAddress
+	liveExpiry := globals.BackendConfig.GetDispatchExclusionExpiryForLiveAddress()
+	staticExpiry := globals.BackendConfig.GetDispatchExclusionExpiryForStaticAddress()
 	exclusionsList := *excl
 	excludedAddressesToReturn := []api.Address{}
 	newExclusionsList := make(map[*interface{}]time.Time)
@@ -102,16 +102,16 @@ func Dispatcher(addressType uint8) {
 		// Set the last live / static node connection timestamps.
 		now := time.Now()
 		if addressType == 2 {
-			globals.LastLiveNodeConnectionTs = now.Unix()
+			globals.BackendConfig.SetLastLiveAddressConnectionTimestamp(now.Unix())
 		} else if addressType == 255 {
-			globals.LastStaticNodeConnectionTs = now.Unix()
+			globals.BackendConfig.SetLastStaticAddressConnectionTimestamp(now.Unix())
 		}
 	} else {
 		logging.Log(1, "Dispatcher could not find any online addresses. It will a)trigger the AddressScanner so it can convert more addresses to known addresses, rendering them eligible to be used by Dispatcher in the next iteration, and b) Connect to a static node if a static node hasn't been connected in the last 10 minutes.")
 		if addressType == 2 {
 			// Specifically for the live node check, if there are no active nodes found, check if the last static check was more than ten minutes ago. If so, run a static update before filing a request with tha AddressScanner.
 			TenMinAgo := int64(time.Now().Add(-10 * time.Minute).Unix())
-			if globals.LastStaticNodeConnectionTs < TenMinAgo {
+			if globals.BackendConfig.GetLastStaticAddressConnectionTimestamp() < TenMinAgo {
 				logging.Log(1, "Live node dispatcher is firing a static node dispatcher because it's been more than ten minutes after a connection to a static node.")
 				if !globals.StaticDispatchRunning {
 					Dispatcher(255)
@@ -171,7 +171,7 @@ func eliminateExcludedAddressesFromList(addrs *[]api.Address, excls *[]api.Addre
 func GetOnlineAddresses(noOfOnlineAddressesRequested int, exclude []api.Address, addressType uint8) ([]api.Address, error) {
 	logging.Log(1, fmt.Sprintf("SEEK START for %d online addresses with type %d in the DB with %d addresses excluded.", noOfOnlineAddressesRequested, addressType, len(exclude)))
 	var onlineAddresses []api.Address
-	PAGESIZE := globals.OnlineAddressFinderPageSize
+	PAGESIZE := globals.BackendConfig.GetOnlineAddressFinderPageSize()
 	offset := 0
 	// Until the number of online addresses found is equal to or more than addresses requested,
 	for len(onlineAddresses) < noOfOnlineAddressesRequested {
@@ -271,7 +271,7 @@ func Pinger(fullAddressesSlice []api.Address) []api.Address {
 	// Paginate addresses first. We batch these into pages of 100, because it's very easy to run into too many open files error if you just dump it through.
 	var pages [][]api.Address
 	dataSet := fullAddressesSlice
-	PAGESIZE := globals.PingerPageSize
+	PAGESIZE := globals.BackendConfig.GetPingerPageSize()
 	numPages := len(dataSet)/PAGESIZE + 1
 	var allUpdatedAddresses []api.Address
 	// The division above is floored.
@@ -295,7 +295,7 @@ func Pinger(fullAddressesSlice []api.Address) []api.Address {
 		addrs := pages[i]
 		outputChan := make(chan api.Address)
 		for j, _ := range addrs {
-			logging.Log(2, fmt.Sprintf("Pinging the address at %#s:%d", addrs[j].Location, addrs[j].Port))
+			logging.Log(2, fmt.Sprintf("Pinging the address at %#v:%d", addrs[j].Location, addrs[j].Port))
 			go Ping(addrs[j], outputChan)
 		}
 		var updatedAddresses []api.Address

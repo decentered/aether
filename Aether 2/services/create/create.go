@@ -17,7 +17,7 @@ func Bake(entity api.Provable) error {
 	// 1) Signature
 	// 2) PoW
 	// 3) Fingerprint
-	err := entity.CreateSignature(globals.KeyPair)
+	err := entity.CreateSignature(globals.FrontendConfig.GetUserKeyPair())
 	if err != nil {
 		return errors.New(fmt.Sprintf(
 			"Entity creation failed. Error: %s, Entity: %#v\n", err, entity))
@@ -25,17 +25,17 @@ func Bake(entity api.Provable) error {
 	err2 := *new(error)
 	switch ent := entity.(type) {
 	case *api.Board:
-		err2 = ent.CreatePoW(globals.KeyPair, globals.MinPoWStrengths.Board)
+		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().Board)
 	case *api.Thread:
-		err2 = ent.CreatePoW(globals.KeyPair, globals.MinPoWStrengths.Thread)
+		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().Thread)
 	case *api.Post:
-		err2 = ent.CreatePoW(globals.KeyPair, globals.MinPoWStrengths.Post)
+		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().Post)
 	case *api.Vote:
-		err2 = ent.CreatePoW(globals.KeyPair, globals.MinPoWStrengths.Vote)
+		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().Vote)
 	case *api.Key:
-		err2 = ent.CreatePoW(globals.KeyPair, globals.MinPoWStrengths.Key)
+		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().Key)
 	case *api.Truststate:
-		err2 = ent.CreatePoW(globals.KeyPair, globals.MinPoWStrengths.Truststate)
+		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().Truststate)
 	}
 	if err2 != nil {
 		return errors.New(fmt.Sprintf(
@@ -48,7 +48,7 @@ func Bake(entity api.Provable) error {
 // Rebake saves the updates to the entity and updates the signature and pow accordingly based on given fields.
 
 func Rebake(entity api.Updateable) error {
-	err := entity.CreateUpdateSignature(globals.KeyPair)
+	err := entity.CreateUpdateSignature(globals.FrontendConfig.GetUserKeyPair())
 	if err != nil {
 		return errors.New(fmt.Sprintf(
 			"Update signature creation failed. Error: %s, Entity: %#v\n", err, entity))
@@ -56,13 +56,13 @@ func Rebake(entity api.Updateable) error {
 	err2 := *new(error)
 	switch ent := entity.(type) {
 	case *api.Board:
-		err2 = ent.CreateUpdatePoW(globals.KeyPair, globals.MinPoWStrengths.BoardUpdate)
+		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().BoardUpdate)
 	case *api.Vote:
-		err2 = ent.CreateUpdatePoW(globals.KeyPair, globals.MinPoWStrengths.VoteUpdate)
+		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().VoteUpdate)
 	case *api.Key:
-		err2 = ent.CreateUpdatePoW(globals.KeyPair, globals.MinPoWStrengths.KeyUpdate)
+		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().KeyUpdate)
 	case *api.Truststate:
-		err2 = ent.CreateUpdatePoW(globals.KeyPair, globals.MinPoWStrengths.TruststateUpdate)
+		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().TruststateUpdate)
 	}
 	if err2 != nil {
 		return errors.New(fmt.Sprintf(

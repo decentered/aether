@@ -22,7 +22,7 @@ import (
 func Serve() {
 	http.HandleFunc("/responses/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			dir := fmt.Sprint(globals.UserDirectory, "/statics", r.URL.Path)
+			dir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/statics", r.URL.Path)
 			w.Header().Set("Content-Type", "application/json")
 			http.ServeFile(w, r, dir)
 		} else { // If not GET we bail.
@@ -66,7 +66,7 @@ func Serve() {
 
 			default:
 				// TODO: Convert this into a whitelist. This should not respond to the random requests, only the endpoints. It also should not list directories.
-				http.ServeFile(w, r, fmt.Sprint(globals.UserDirectory, "/statics/caches", r.URL.Path))
+				http.ServeFile(w, r, fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), r.URL.Path))
 			}
 
 		} else if r.Method == "POST" {
@@ -175,8 +175,9 @@ func Serve() {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
-	logging.Log(1, "Serving setup complete. Starting to serve publicly.")
-	http.ListenAndServe(fmt.Sprint("127.0.0.1", ":", 8089), nil)
+	port := globals.BackendConfig.GetExternalPort()
+	logging.Log(1, fmt.Sprintf("Serving setup complete. Starting to serve publicly on port %d", port))
+	http.ListenAndServe(fmt.Sprint("127.0.0.1", ":", port), nil)
 }
 
 // MaybeSaveRemote checks if the database has data about the remote that is reaching out. If not, save a new address.
@@ -196,7 +197,7 @@ func insertLocallySourcedRemoteAddressDetails(r *http.Request, req *api.ApiRespo
 		return errors.New(fmt.Sprintf("The address from which the remote is connecting could not be parsed. Remote Address: %s, Error: %s", r.RemoteAddr, err))
 	}
 	if len(host) == 0 {
-		return errors.New(fmt.Sprintf("The address from which the remote is connecting seems to be empty. Remote Address: %s", r.RemoteAddr, err))
+		return errors.New(fmt.Sprintf("The address from which the remote is connecting seems to be empty. Remote Address: %#v. %#v", r.RemoteAddr, err))
 	}
 	ipAddrAsIP := net.ParseIP(host)
 	ipV4Test := ipAddrAsIP.To4()

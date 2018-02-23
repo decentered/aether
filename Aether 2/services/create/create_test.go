@@ -2,11 +2,15 @@ package create_test
 
 import (
 	"aether-core/io/api"
+	"aether-core/services/configstore"
 	"aether-core/services/create"
 	"aether-core/services/globals"
+	"aether-core/services/logging"
 	// "aether-core/services/signaturing"
 	"aether-core/services/verify"
 	// "fmt"
+	"crypto/elliptic"
+	"encoding/hex"
 	"os"
 	"strings"
 	"testing"
@@ -22,12 +26,33 @@ func TestMain(m *testing.M) {
 }
 
 var UserKeyEntity api.Key
+var MarshaledPubKey string
+
+func startconfigs() {
+	becfg, err := configstore.EstablishBackendConfig()
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	becfg.Cycle()
+	globals.BackendConfig = becfg
+
+	fecfg, err := configstore.EstablishFrontendConfig()
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	fecfg.Cycle()
+	globals.FrontendConfig = fecfg
+}
 
 func setup() {
-	globals.GenerateUserKeyPair()
-	globals.SetBailoutTime()
-	globals.SetMinPoWStrengths(16)
-	UserKeyEntity, _ = create.CreateKey("", globals.MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+
+	startconfigs()
+	globals.BackendConfig.SetMinimumPoWStrengths(16)
+
+	// globals.SetMinPoWStrengths(16)
+	MarshaledPubKey = hex.EncodeToString(elliptic.Marshal(elliptic.P521(), globals.FrontendConfig.GetUserKeyPair().PublicKey.X, globals.FrontendConfig.GetUserKeyPair().PublicKey.Y))
+	UserKeyEntity, _ = create.CreateKey("", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+
 }
 
 func teardown() {
@@ -167,7 +192,7 @@ func TestCreateKey_Success(t *testing.T) {
 	entity, err :=
 		create.CreateKey(
 			"key type",
-			globals.MarshaledPubKey,
+			MarshaledPubKey,
 			"user name",
 			*new([]api.CurrencyAddress),
 			"key info")
@@ -265,7 +290,7 @@ func TestUpdateKey_Success(t *testing.T) {
 	entity, err :=
 		create.CreateKey(
 			"key type",
-			globals.MarshaledPubKey,
+			MarshaledPubKey,
 			"user name",
 			*new([]api.CurrencyAddress),
 			"key info")

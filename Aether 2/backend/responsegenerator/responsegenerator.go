@@ -9,13 +9,12 @@ import (
 	"aether-core/io/persistence"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
-	"crypto/rand"
-	"crypto/sha256"
+	"aether-core/services/randomhashgen"
+	"aether-core/services/syncconfirmations"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"math/big"
 	"os"
 	"strconv"
 	"strings"
@@ -24,21 +23,23 @@ import (
 
 // GeneratePrefilledApiResponse constructs the basic ApiResponse and fills it with the data about the local machine.
 func GeneratePrefilledApiResponse() *api.ApiResponse {
-
-	subprotOne := api.Subprotocol{Name: "c0", VersionMajor: 0, VersionMinor: 1, SupportedEntities: []string{"board", "thread", "post", "vote", "key", "truststate"}}
-	subprotTwo := api.Subprotocol{Name: "dweb", VersionMajor: 0, VersionMinor: 1, SupportedEntities: []string{"page"}}
-	subprotsSupported := []api.Subprotocol{subprotOne, subprotTwo}
+	// TODO MOVE THESE TO CONFIG
+	subprotsAsShims := globals.BackendConfig.GetServingSubprotocols()
+	subprotsSupported := []api.Subprotocol{}
+	for _, val := range subprotsAsShims {
+		subprotsSupported = append(subprotsSupported, api.Subprotocol(val))
+	}
 	var resp api.ApiResponse
-	resp.NodeId = api.Fingerprint(globals.NodeId)
-	resp.Address.LocationType = uint8(globals.AddressType)
-	resp.Address.Port = uint16(globals.AddressPort)
-	resp.Address.Protocol.VersionMajor = uint8(globals.ProtocolVersionMajor)
-	resp.Address.Protocol.VersionMinor = uint16(globals.ProtocolVersionMinor)
+	resp.NodeId = api.Fingerprint(globals.BackendConfig.GetNodeId())
+	resp.Address.LocationType = globals.BackendConfig.GetExternalIpType()
+	resp.Address.Port = uint16(globals.BackendConfig.GetExternalPort())
+	resp.Address.Protocol.VersionMajor = globals.BackendConfig.GetProtocolVersionMajor()
+	resp.Address.Protocol.VersionMinor = globals.BackendConfig.GetProtocolVersionMinor()
 	resp.Address.Protocol.Subprotocols = subprotsSupported
-	resp.Address.Client.VersionMajor = uint8(globals.ClientVersionMajor)
-	resp.Address.Client.VersionMinor = uint16(globals.ClientVersionMinor)
-	resp.Address.Client.VersionPatch = uint16(globals.ClientVersionPatch)
-	resp.Address.Client.ClientName = globals.ClientName
+	resp.Address.Client.VersionMajor = globals.BackendConfig.GetClientVersionMajor()
+	resp.Address.Client.VersionMinor = globals.BackendConfig.GetClientVersionMinor()
+	resp.Address.Client.VersionPatch = globals.BackendConfig.GetClientVersionPatch()
+	resp.Address.Client.ClientName = globals.BackendConfig.GetClientName()
 	return &resp
 }
 
@@ -123,7 +124,7 @@ func splitEntityIndexesToPages(fullData *api.Response) *[]api.Response {
 		// Index entities
 		if entityTypes[i] == "boardindexes" {
 			dataSet := fullData.BoardIndexes
-			pageSize := globals.EntityPageSizesObj.BoardIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().BoardIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -143,7 +144,7 @@ func splitEntityIndexesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "threadindexes" {
 			dataSet := fullData.ThreadIndexes
-			pageSize := globals.EntityPageSizesObj.ThreadIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().ThreadIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -163,7 +164,7 @@ func splitEntityIndexesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "postindexes" {
 			dataSet := fullData.PostIndexes
-			pageSize := globals.EntityPageSizesObj.PostIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().PostIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -183,7 +184,7 @@ func splitEntityIndexesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "voteindexes" {
 			dataSet := fullData.VoteIndexes
-			pageSize := globals.EntityPageSizesObj.VoteIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().VoteIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -203,7 +204,7 @@ func splitEntityIndexesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "keyindexes" {
 			dataSet := fullData.KeyIndexes
-			pageSize := globals.EntityPageSizesObj.KeyIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().KeyIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -223,7 +224,7 @@ func splitEntityIndexesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "addressindexes" {
 			dataSet := fullData.AddressIndexes
-			pageSize := globals.EntityPageSizesObj.AddressIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().AddressIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -243,7 +244,7 @@ func splitEntityIndexesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "truststateindexes" {
 			dataSet := fullData.TruststateIndexes
-			pageSize := globals.EntityPageSizesObj.TruststateIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().TruststateIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -321,7 +322,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 	for i, _ := range entityTypes {
 		if entityTypes[i] == "boards" {
 			dataSet := fullData.Boards
-			pageSize := globals.EntityPageSizesObj.Boards
+			pageSize := globals.BackendConfig.GetEntityPageSizes().Boards
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -341,7 +342,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "threads" {
 			dataSet := fullData.Threads
-			pageSize := globals.EntityPageSizesObj.Threads
+			pageSize := globals.BackendConfig.GetEntityPageSizes().Threads
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -361,7 +362,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "posts" {
 			dataSet := fullData.Posts
-			pageSize := globals.EntityPageSizesObj.Posts
+			pageSize := globals.BackendConfig.GetEntityPageSizes().Posts
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -381,7 +382,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "votes" {
 			dataSet := fullData.Votes
-			pageSize := globals.EntityPageSizesObj.Votes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().Votes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -401,7 +402,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "addresses" {
 			dataSet := fullData.Addresses
-			pageSize := globals.EntityPageSizesObj.Addresses
+			pageSize := globals.BackendConfig.GetEntityPageSizes().Addresses
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -421,7 +422,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "keys" {
 			dataSet := fullData.Keys
-			pageSize := globals.EntityPageSizesObj.Keys
+			pageSize := globals.BackendConfig.GetEntityPageSizes().Keys
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -441,7 +442,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "truststates" {
 			dataSet := fullData.Truststates
-			pageSize := globals.EntityPageSizesObj.Truststates
+			pageSize := globals.BackendConfig.GetEntityPageSizes().Truststates
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -462,7 +463,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		// Index entities
 		if entityTypes[i] == "boardindexes" {
 			dataSet := fullData.BoardIndexes
-			pageSize := globals.EntityPageSizesObj.BoardIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().BoardIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -482,7 +483,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "threadindexes" {
 			dataSet := fullData.ThreadIndexes
-			pageSize := globals.EntityPageSizesObj.ThreadIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().ThreadIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -502,7 +503,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "postindexes" {
 			dataSet := fullData.PostIndexes
-			pageSize := globals.EntityPageSizesObj.PostIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().PostIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -522,7 +523,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "voteindexes" {
 			dataSet := fullData.VoteIndexes
-			pageSize := globals.EntityPageSizesObj.VoteIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().VoteIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -542,7 +543,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "keyindexes" {
 			dataSet := fullData.KeyIndexes
-			pageSize := globals.EntityPageSizesObj.KeyIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().KeyIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -562,7 +563,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "addressindexes" {
 			dataSet := fullData.AddressIndexes
-			pageSize := globals.EntityPageSizesObj.AddressIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().AddressIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -582,7 +583,7 @@ func splitEntitiesToPages(fullData *api.Response) *[]api.Response {
 		}
 		if entityTypes[i] == "truststateindexes" {
 			dataSet := fullData.TruststateIndexes
-			pageSize := globals.EntityPageSizesObj.TruststateIndexes
+			pageSize := globals.BackendConfig.GetEntityPageSizes().TruststateIndexes
 			numPages := len(dataSet)/pageSize + 1
 			// The division above is floored.
 			for i := 0; i < numPages; i++ {
@@ -635,25 +636,25 @@ func convertResponsesToApiResponses(r *[]api.Response) *[]api.ApiResponse {
 	return &responses
 }
 
-func generateRandomHash() (string, error) {
-	const LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	saltBytes := make([]byte, 16)
-	for i := range saltBytes {
-		randNum, err := rand.Int(rand.Reader, big.NewInt(int64(len(LETTERS))))
-		if err != nil {
-			return "", errors.New(fmt.Sprint(
-				"Random number generator generated an error. err: ", err))
-		}
-		saltBytes[i] = LETTERS[int(randNum.Int64())]
-	}
-	calculator := sha256.New()
-	calculator.Write(saltBytes)
-	resultHex := fmt.Sprintf("%x", calculator.Sum(nil))
-	return resultHex, nil
-}
+// func randomhashgen.GenerateRandomHash() (string, error) {
+// 	const LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+// 	saltBytes := make([]byte, 16)
+// 	for i := range saltBytes {
+// 		randNum, err := rand.Int(rand.Reader, big.NewInt(int64(len(LETTERS))))
+// 		if err != nil {
+// 			return "", errors.New(fmt.Sprint(
+// 				"Random number generator generated an error. err: ", err))
+// 		}
+// 		saltBytes[i] = LETTERS[int(randNum.Int64())]
+// 	}
+// 	calculator := sha256.New()
+// 	calculator.Write(saltBytes)
+// 	resultHex := fmt.Sprintf("%x", calculator.Sum(nil))
+// 	return resultHex, nil
+// }
 
 func generateExpiryTimestamp() int64 {
-	expiry := time.Duration(globals.PostResponseExpiryMinutes) * time.Minute
+	expiry := time.Duration(globals.BackendConfig.GetPOSTResponseExpiryMinutes()) * time.Minute
 	expiryTs := int64(time.Now().Add(expiry).Unix())
 	return expiryTs
 }
@@ -696,13 +697,13 @@ func bakeFinalApiResponse(resultPages *[]api.ApiResponse) (*api.ApiResponse, err
 	resp := GeneratePrefilledApiResponse()
 	if len(*resultPages) > 1 {
 		// Create a random SHA256 hash as folder name
-		dirname, err := generateRandomHash()
+		dirname, err := randomhashgen.GenerateRandomHash()
 		if err != nil {
 			return resp, err
 		}
 		// Generate the responses directory if doesn't exist. Add the expiry date to the folder name to be searched for.
 		foldername := fmt.Sprint(generateExpiryTimestamp(), "_", dirname)
-		responsedir := fmt.Sprint(globals.UserDirectory, "/statics/responses/", foldername)
+		responsedir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/statics/responses/", foldername)
 		os.MkdirAll(responsedir, 0755)
 		var jsons [][]byte
 		// For each response, number it, set timestamps etc. And save to disk.
@@ -909,7 +910,7 @@ func createIndexes(fullData *[]api.Response) *api.Response {
 }
 
 func generateCacheName() (string, error) {
-	hash, err := generateRandomHash()
+	hash, err := randomhashgen.GenerateRandomHash()
 	if err != nil {
 		return "", err
 	}
@@ -927,7 +928,7 @@ type CacheResponse struct {
 }
 
 func cleanTooOldEntities(localData *api.Response) *api.Response {
-	networkHeadEndTs := api.Timestamp(time.Now().AddDate(0, 0, -globals.NETWORK_HEAD_DAYS).Unix())
+	networkHeadEndTs := api.Timestamp(time.Now().Add(-time.Duration(globals.BackendConfig.GetNetworkHeadDays()*24) * time.Hour).Unix())
 	var cleanedLocalData api.Response
 	if len(localData.Boards) > 0 {
 		for _, val := range localData.Boards {
@@ -992,8 +993,16 @@ func GenerateCacheResponse(respType string, start api.Timestamp, end api.Timesta
 			return resp, errors.New(fmt.Sprintf("This cache generation request caused an error in the local database while trying to respond to this request. Error: %#v\n", dbError))
 		}
 		if len(localData.Boards) == 0 && len(localData.Threads) == 0 && len(localData.Posts) == 0 && len(localData.Votes) == 0 && len(localData.Keys) == 0 && len(localData.Truststates) == 0 {
-			// There's no data in this result - return error so we can cancel the creation of this cache.
-			return resp, errors.New(fmt.Sprintf("The result for this cache is empty. Entity type: %s", respType))
+			/*
+				There's no data in this result. But the cache generation should continue. Why?
+
+				1) This cache generation process is guarded by the 'is this node tracking head?' guard. So this part of the code does not need to care about accidentally generating blank caches.
+
+				2) Consider the case that the most recent data in the network is actually, genuinely three days old. Had we stopped cache generation when empty, the caches for those two blank days would NEVER be generated, but ALWAYS attempted. So every hit of the cache generation cycle would turn out to be an attempt for the cache generation of those two days.
+
+				How do I know? Because that's exactly what happened and this text is the bug fix.
+			*/
+			logging.Log(1, fmt.Sprintf("The result for this cache is empty. Entity type: %s", respType))
 		}
 		cleanedLocalData := cleanTooOldEntities(&localData)
 		localData = *cleanedLocalData
@@ -1016,7 +1025,16 @@ func GenerateCacheResponse(respType string, start api.Timestamp, end api.Timesta
 			return resp, errors.New(fmt.Sprintf("This cache generation request caused an error in the local database while trying to respond to this request. Error: %#v\n", dbError))
 		}
 		if len(addresses) == 0 {
-			return resp, errors.New(fmt.Sprintf("The result for this cache is empty. Entity type: %s", respType))
+			/*
+				There's no data in this result. But the cache generation should continue. Why?
+
+				1) This cache generation process is guarded by the 'is this node tracking head?' guard. So this part of the code does not need to care about accidentally generating blank caches.
+
+				2) Consider the case that the most recent data in the network is actually, genuinely three days old. Had we stopped cache generation when empty, the caches for those two blank days would NEVER be generated, but ALWAYS attempted. So every hit of the cache generation cycle would turn out to be an attempt for the cache generation of those two days.
+
+				How do I know? Because that's exactly what happened and this text is the bug fix.
+			*/
+			logging.Log(1, fmt.Sprintf("The result for this cache is empty. Entity type: %s", respType))
 		}
 		var localData api.Response
 		localData.Addresses = addresses
@@ -1048,7 +1066,46 @@ func updateCacheIndex(cacheIndex *api.ApiResponse, cacheData *CacheResponse) {
 	cacheIndex.Caching.ServedFromCache = true
 	cacheIndex.Caching.CacheScope = "day"
 	// TODO: How many places am I setting this ".Caching" data?
+}
 
+func deleteTooOldCaches(respType string, cacheIndex *api.ApiResponse, entityCacheDir string) {
+	var threshold api.Timestamp
+	// First, count the number of caches available.
+	if respType == "boards" {
+		threshold = api.Timestamp(time.Now().Add(
+			-time.Duration(globals.BackendConfig.GetNetworkMemoryDays()*24) * time.Hour).Unix())
+	} else {
+		threshold = api.Timestamp(time.Now().Add(
+			-time.Duration(globals.BackendConfig.GetNetworkHeadDays()*24) * time.Hour).Unix())
+	}
+	oldestCacheEnd := api.Timestamp(time.Now().Unix())
+	for _, cache := range cacheIndex.Results {
+		if oldestCacheEnd > cache.EndsAt {
+			oldestCacheEnd = cache.EndsAt
+		}
+	}
+	if threshold > oldestCacheEnd {
+		// We have more caches than needed. We need to delete some starting from the oldest.
+		logging.Log(1, fmt.Sprintf("We have caches for a longer duration of time than we need. (The oldest cache.EndsAt is %d, the threshold is %d) Caches will be purged starting from the oldest. Purge is starting.", oldestCacheEnd, threshold))
+		oldCaches := []api.ResultCache{}
+		stillValidCaches := []api.ResultCache{}
+		for _, cache := range cacheIndex.Results {
+			if cache.EndsAt < threshold {
+				// This cache is too old.
+				oldCaches = append(oldCaches, cache)
+			} else {
+				// This is not too old. We keep this.
+				stillValidCaches = append(stillValidCaches, cache)
+			}
+		}
+		cacheIndex.Results = stillValidCaches
+		for _, cache := range oldCaches {
+			// Figure out the location of the cache and nuke it.
+			location := entityCacheDir + "/" + cache.ResponseUrl
+			os.RemoveAll(location)
+		}
+		logging.Log(1, fmt.Sprintf("Old cache purging is complete. We've deleted these caches from both index and from the local file system: %#v", oldCaches))
+	}
 }
 
 // saveCacheToDisk saves an entire cache's data (entities and indexes, inside a folder named based on the cache name) into the proper location on the disk.
@@ -1098,6 +1155,7 @@ func CreateCache(respType string, start api.Timestamp, end api.Timestamp) error 
 	// - Pull the data from the DB
 	// - Look at the cache folder. If there is a cache folder and an index there, save the cache and add to index.
 	// - If there is no cache present there, create the index and add it as the first entry.
+	fmt.Printf("create cache was asked to generate a cache for the resp type %#vthat ended at the timestamp: %#v\n", respType, end)
 	cacheData, err := GenerateCacheResponse(respType, start, end)
 	if err != nil {
 		if strings.Contains(err.Error(), "The result for this cache is empty") {
@@ -1109,9 +1167,9 @@ func CreateCache(respType string, start api.Timestamp, end api.Timestamp) error 
 	}
 	var entityCacheDir string
 	if respType == "boards" || respType == "threads" || respType == "posts" || respType == "votes" || respType == "keys" || respType == "truststates" {
-		entityCacheDir = fmt.Sprint(globals.CachesLocation, "/c0/", respType)
+		entityCacheDir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/c0/", respType)
 	} else if respType == "addresses" {
-		entityCacheDir = fmt.Sprint(globals.CachesLocation, "/", respType)
+		entityCacheDir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/", respType)
 	} else {
 		return errors.New(fmt.Sprintf("Unknown response type: %s", respType))
 	}
@@ -1138,6 +1196,7 @@ func CreateCache(respType string, start api.Timestamp, end api.Timestamp) error 
 	}
 	// If the file exists, go through with regular processing.
 	updateCacheIndex(&apiResp, &cacheData)
+	deleteTooOldCaches(respType, &apiResp, entityCacheDir)
 	json, err4 := ConvertApiResponseToJson(&apiResp)
 	if err4 != nil {
 		return err
@@ -1156,9 +1215,9 @@ func CreateCache(respType string, start api.Timestamp, end api.Timestamp) error 
 func readCacheIndex(etype string) (api.ApiResponse, error) {
 	var cacheDir string
 	if etype == "boards" || etype == "threads" || etype == "posts" || etype == "votes" || etype == "keys" || etype == "truststates" {
-		cacheDir = globals.UserDirectory + "/statics/caches/v0/c0/" + etype
+		cacheDir = globals.BackendConfig.GetCachesDirectory() + "/v0/c0/" + etype
 	} else if etype == "addresses" {
-		cacheDir = globals.UserDirectory + "/statics/caches/v0/" + etype
+		cacheDir = globals.BackendConfig.GetCachesDirectory() + "/v0/" + etype
 	}
 	cacheIndex := cacheDir + "/index.json"
 	dat, err := ioutil.ReadFile(cacheIndex)
@@ -1184,8 +1243,9 @@ func determineLastCacheEnd(etype string) api.Timestamp {
 		// logging.LogCrash(err)
 		// TODO add tampered caches gating
 		if strings.Contains(err.Error(), "no such file or directory") {
-			var blankTs api.Timestamp
-			return blankTs
+			logging.Log(1, fmt.Sprintf("The cache for this entity type does not exist yet. We'll be generating this from scratch. Entity type: %#v", etype))
+			// var blankTs api.Timestamp
+			// return blankTs
 		} else {
 			logging.LogCrash(err)
 		}
@@ -1197,6 +1257,21 @@ func determineLastCacheEnd(etype string) api.Timestamp {
 			mostRecentExtantCacheEndTs = cache.EndsAt
 		}
 	}
+	// If the most recent extant cache end is lesser than our network head, make it network head (so that we don't have to generate caches starting from 1970s)
+	networkHeadThreshold := api.Timestamp(time.Now().Add(-time.Duration(globals.BackendConfig.GetNetworkHeadDays()*24) * time.Hour).Unix())
+	networkMemoryThreshold := api.Timestamp(time.Now().Add(-time.Duration(globals.BackendConfig.GetNetworkMemoryDays()*24) * time.Hour).Unix())
+	// If entity type is a board, the threshold is network memory.
+	if etype == "boards" {
+		if mostRecentExtantCacheEndTs < networkMemoryThreshold {
+			mostRecentExtantCacheEndTs = networkMemoryThreshold
+		}
+	} else {
+		// If not a board, then the threshold is network head.
+		if mostRecentExtantCacheEndTs < networkHeadThreshold {
+			mostRecentExtantCacheEndTs = networkHeadThreshold
+		}
+	}
+	// fmt.Printf("Most recent extant cache end for type %#v is %#v.\n", etype, mostRecentExtantCacheEndTs)
 	return mostRecentExtantCacheEndTs
 }
 
@@ -1208,16 +1283,18 @@ func generateRequestedCachesTable(mostRecentExtantCacheEndTs api.Timestamp) []ap
 	currentEndTs := mostRecentExtantCacheEndTs
 	// So long as the current end + a day is lesser than timestamp of now, iterate
 	for currentEndTs < now {
-		newEnd := api.Timestamp(time.Unix(int64(currentEndTs), 0).AddDate(0, 0, 1).Unix())
+		// fmt.Println("current end ts smaller than now")
+		newEnd := api.Timestamp(time.Unix(int64(currentEndTs), 0).Add(24 * time.Hour).Unix())
 		cache := api.ResultCache{
 			StartsFrom: currentEndTs,
 			EndsAt:     newEnd,
 		}
 		currentEndTs = newEnd
 		dayTable = append(dayTable, cache)
-
 	}
-
+	if len(dayTable) == 0 {
+		logging.LogCrash(fmt.Sprintf("Day table length turned out to be zero. Your Time block size and past blocks to check values are invalid. If you have not changed them, please delete the backend configuration file and restart the application."))
+	}
 	// After this table generation is done, check the last cache bracket (start>end). If the time difference of its start and now() is less than 12 hours, delete the last bracket, and set the n-1th cache bracket's end timestamp to now.
 	/*
 		e.g.
@@ -1243,13 +1320,15 @@ func generateRequestedCachesTable(mostRecentExtantCacheEndTs api.Timestamp) []ap
 	*/
 	lastDTItemEndTs := dayTable[len(dayTable)-1].EndsAt
 	halfDayIntoFuture := api.Timestamp(time.Now().Add(12 * time.Hour).Unix())
-	if halfDayIntoFuture < lastDTItemEndTs {
-		// The last cache covers less than 12 hours (i.e. it captures more than 12 hours of not-happened-yet)
+	if halfDayIntoFuture < lastDTItemEndTs && len(dayTable) > 1 {
+		// The last cache covers less than 12 hours (i.e. it captures more than 12 hours of not-happened-yet) AND it's not just one item in the day table (in which case, don't do anything.)
 		// Chop the last item off.
 		dayTable = dayTable[:len(dayTable)-1]
 	}
-	// Make the last item of the day table come up to now.
+	// Make the last item of the day table come up to now, not to future.
 	dayTable[len(dayTable)-1].EndsAt = api.Timestamp(time.Now().Unix())
+	// fmt.Printf("Day table length is: %#v\n", len(dayTable))
+	// fmt.Printf("Day table is: %#v", dayTable)
 	return dayTable
 }
 
@@ -1257,71 +1336,37 @@ func generateRequestedCachesTable(mostRecentExtantCacheEndTs api.Timestamp) []ap
 func GenerateCacheSet(etype string) {
 	// Read the end of the last cache, or if there are none, start from the beginning.
 	lastCacheEndTs := determineLastCacheEnd(etype)
-	// If the lastCacheEndTs is younger than 13 (cache generation duration / 2 + 1) hours, we do nothing. Why 13? Because if it had been 24, and the user had started the machine 23 hours after the last cache generation, it's gonna pre-empt, and it'll try again in 24 hours, which at that point would have been 47 hours without cache generation.
+	// If the lastCacheEndTs is younger than 23 hours, we do nothing. The cache generator cycle will attempt to create a cache every hour, so this is where we gate how often we create caches.
 
-	// If last cache end is more than 13 hours ago
-	thirteenHoursAgo := api.Timestamp(time.Now().Add(-13 * time.Hour).Unix())
-	if thirteenHoursAgo > lastCacheEndTs {
+	// If last cache end is more than 23 hours ago
+	cachegenThreshold := api.Timestamp(
+		time.Now().Add(-time.Duration(globals.BackendConfig.GetCacheGenerationIntervalHours()-1) * time.Hour).Unix())
+	// fmt.Println("Cachegen threshold: ", cachegenThreshold)
+	// fmt.Println("Last cache end TS: ", lastCacheEndTs)
+	if cachegenThreshold > lastCacheEndTs {
 		cachesTable := generateRequestedCachesTable(lastCacheEndTs)
-		/*
-			Based on the max cache size in days, we need to delete if the delta is bigger than the needed number of caches.
-
-			Ex: If the cache size for threads is 14 days, we only need the last 14 days of the caches table, the rest is beyond our event horizon.
-		*/
-		if etype == "boards" {
-			if len(cachesTable) > globals.CacheSizes.Board {
-				// Grab the last N items of the table, as requested.
-				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Board:]
-			}
-		} else if etype == "threads" {
-			if len(cachesTable) > globals.CacheSizes.Thread {
-				// Grab the last N items of the table, as requested.
-				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Thread:]
-			}
-		} else if etype == "posts" {
-			if len(cachesTable) > globals.CacheSizes.Post {
-				// Grab the last N items of the table, as requested.
-				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Post:]
-			}
-		} else if etype == "votes" {
-			if len(cachesTable) > globals.CacheSizes.Vote {
-				// Grab the last N items of the table, as requested.
-				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Vote:]
-			}
-		} else if etype == "keys" {
-			if len(cachesTable) > globals.CacheSizes.Key {
-				// Grab the last N items of the table, as requested.
-				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Key:]
-			}
-		} else if etype == "truststates" {
-			if len(cachesTable) > globals.CacheSizes.Truststate {
-				// Grab the last N items of the table, as requested.
-				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Truststate:]
-			}
-		} else if etype == "addresses" {
-			if len(cachesTable) > globals.CacheSizes.Address {
-				// Grab the last N items of the table, as requested.
-				cachesTable = cachesTable[len(cachesTable)-globals.CacheSizes.Address:]
-			}
-		}
 		for _, val := range cachesTable {
 			CreateCache(etype, val.StartsFrom, val.EndsAt)
 		}
 	} else {
-		logging.Log(1, fmt.Sprintf("Last cache that was created was newer than 13 hours ago. Please wait until at least 13 hours have passed to file a new day cache creation request. Entity type: %s", etype))
+		logging.Log(1, fmt.Sprintf("Last cache that was created was newer than 23 hours ago. Please wait until at least 23 hours have passed to file a new day cache creation request. Entity type: %s", etype))
 	}
 }
 
 // GenerateCaches generates all day caches for all entities and saves them to disk.
 func GenerateCaches() {
-	// NOTE: We are no longer keeping the last cache timestamp in the globals, but actually reading the existing last cache in the filesystem.
 	entityTypes := []string{"boards", "threads", "posts", "votes", "keys", "truststates", "addresses"}
-	for _, val := range entityTypes {
-		GenerateCacheSet(val)
+	nodeIsUpToDate, err := syncconfirmations.NodeIsTrackingHead()
+	if err != nil {
+		logging.Log(1, fmt.Sprintf("The function that checks whether the local node is up to date returned an error. Because of that, this cache generation cycle is pre-empted. It'll be attempted again in the next interval. Error: %#v", err))
+		return // If the node is not up to date, bail
 	}
-	globals.LastCacheGenerationTimestamp = time.Now().Unix()
+	// If the node IS up to date, generate the caches.
+	if nodeIsUpToDate {
+		for _, val := range entityTypes {
+			GenerateCacheSet(val)
+		}
+		// We're setting this for the purposes of denying POST requests with a timestamp that is partially or wholly available within our cache bracket. (That is, it's not used to determine where to start generating caches from, we read the actual saved cache for that.)
+		globals.BackendConfig.SetLastCacheGenerationTimestamp(time.Now().Unix())
+	}
 }
-
-// TODO: We need to make read cache index throw a reasonable error if a cache is not found, or if caches are tampered with.
-
-// TODO: We need to take a look at mature / immature cycle and determine how we actually deal with this. We have some logic that splits time into blocks, we need to implement that.

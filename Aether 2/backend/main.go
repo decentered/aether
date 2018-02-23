@@ -5,37 +5,39 @@
 package main
 
 import (
-	// "aether-core/backend/dispatch"
+	"aether-core/backend/dispatch"
 	"aether-core/backend/responsegenerator"
 	"aether-core/backend/server"
 	"aether-core/io/api"
 	"aether-core/io/persistence"
+	"aether-core/services/configstore"
 	"aether-core/services/globals"
 	// "aether-core/services/verify"
 	// "crypto/ecdsa"
 	"aether-core/services/logging"
-	// "aether-core/services/scheduling"
-	// "aether-core/services/upnp"
+	"aether-core/services/scheduling"
+	"aether-core/services/upnp"
 	"flag"
 	"fmt"
 	"os"
-	// "time"
+	// "strings"
+	"time"
 )
 
 func StartSchedules() {
 	logging.Log(1, "Setting up cyclical tasks is starting.")
 	defer logging.Log(1, "Setting up cyclical tasks is complete.")
 	// The dispatcher that seeks live nodes runs every minute.
-	// globals.StopLiveDispatcherCycle = scheduling.Schedule(func() { dispatch.Dispatcher(2) }, 1*time.Second)
-	// // The dispatcher that seeks static nodes runs every hour.
-	// globals.StopStaticDispatcherCycle = scheduling.Schedule(func() { dispatch.Dispatcher(255) }, 1*time.Minute)
-	// // Address scanner goes through all prior unconnected addresses and attempts to connect to them to establish a relationship.
-	// globals.StopAddressScannerCycle = scheduling.Schedule(func() { dispatch.AddressScanner() }, 6*time.Hour)
-	// // UPNP tries to port map every 10 minutes.
-	// globals.StopUPNPCycle = scheduling.Schedule(func() { upnp.MapPort() }, 10*time.Minute)
-	fmt.Println("Caches are starting to be generated...")
-	responsegenerator.GenerateCaches()
-	fmt.Println("Caches generation is complete.")
+	globals.StopLiveDispatcherCycle = scheduling.Schedule(func() { dispatch.Dispatcher(2) }, 1*time.Second)
+	// The dispatcher that seeks static nodes runs every hour.
+	globals.StopStaticDispatcherCycle = scheduling.Schedule(func() { dispatch.Dispatcher(255) }, 1*time.Minute)
+	// Address scanner goes through all prior unconnected addresses and attempts to connect to them to establish a relationship.
+	globals.StopAddressScannerCycle = scheduling.Schedule(func() { dispatch.AddressScanner() }, 6*time.Hour)
+	// UPNP tries to port map every 10 minutes.
+	globals.StopUPNPCycle = scheduling.Schedule(func() { upnp.MapPort() }, 10*time.Minute)
+	// Attempt cache generation every hour, but it will be pre-empted if the last cache generation is less than 23 hours old, so that this will run effectively every day, only.
+	globals.StopCacheGenerationCycle = scheduling.Schedule(func() { responsegenerator.GenerateCaches() }, 1*time.Hour)
+
 	// time.AfterFunc(5*time.Second, func() {
 	// })
 
@@ -63,7 +65,7 @@ func StartSchedules() {
 func ReadFlags() {
 	logIntPtr := flag.Int("logginglevel", 0, "Determines the logging level of the application. Logging level 1 is core messages, 2 is everything. Mind that the more logging you have enabled, the more the app will slow down.")
 	flag.Parse()
-	globals.LoggingLevel = *logIntPtr
+	globals.BackendConfig.SetLoggingLevel(*logIntPtr)
 }
 
 func ShowIntro() {
@@ -97,14 +99,60 @@ func ShowIntro() {
 	fmt.Println("Aether Runtime Environment. Version: dev.v0.0.1")
 }
 
+func EstablishConfigs() {
+	becfg, err := configstore.EstablishBackendConfig()
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	becfg.Cycle()
+	globals.BackendConfig = becfg
+
+	fecfg, err := configstore.EstablishFrontendConfig()
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	fecfg.Cycle()
+	globals.FrontendConfig = fecfg
+
+	// if err != nil {
+	// 	if strings.Contains(err.Error(), "We do not have a configuration store in place. Please generate a new configuration store.") {
+	// 		be, err2 := configstore.CreateDefaultBackendConfig()
+	// 		if err2 != nil {
+	// 			logging.LogCrash(err2)
+	// 		}
+	// 		becfg = be
+	// 	} else {
+	// 		logging.LogCrash(err)
+	// 	}
+	// }
+	// This generates any new fields that might have been added since the last update by forcing a push to save into the file.
+
+	// FEConfig, err3 := configstore.EstablishFrontendConfig()
+	// if err3 != nil {
+	// 	if strings.Contains(err3.Error(), "We do not have a configuration store in place. Please generate a new configuration store.") {
+	// 		fe, err4 := configstore.CreateDefaultFrontendConfig()
+	// 		if err4 != nil {
+	// 			logging.LogCrash(err4)
+	// 		}
+	// 		FEConfig = fe
+	// 	} else {
+	// 		logging.LogCrash(err3)
+	// 	}
+	// }
+
+	// globals.FEConfig = FEConfig
+}
+
 func Startup() {
-	globals.SetGlobals()
+	EstablishConfigs()
+	// globals.SetGlobals()
 	persistence.CreateDatabase()
 	ShowIntro()
 	ReadFlags()
-	StartSchedules()
-	logging.Log(1, "Startup complete.")
+	// Start the config store.
 	// TEST Insert the localhost data.
+
+	// TODO MOVE THESE TO CONFIGSTORE
 	var addrLocal api.Address
 	addrLocal.Location = "127.0.0.1"
 	addrLocal.Sublocation = ""
@@ -120,6 +168,8 @@ func Startup() {
 	addrLocal.Client.ClientName = "Aether"
 	persistence.BatchInsert([]interface{}{addrLocal})
 	// dispatch.Sync(addrLocal)
+	StartSchedules()
+	logging.Log(1, "Startup complete.")
 }
 
 func Shutdown() {

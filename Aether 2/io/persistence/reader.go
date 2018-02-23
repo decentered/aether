@@ -13,27 +13,6 @@ import (
 	"time"
 )
 
-// These are utility methods that need to read from the database for miscelleaneous purposes.
-
-// func LocalNodeIsMature() (bool, error) {
-// 	var nrOfRows int
-// 	err := DbInstance.Get(&nrOfRows, "SELECT count(1) FROM Nodes;")
-// 	if err != nil {
-// 		return false, errors.New(fmt.Sprintf("LocalNodeIsMature failed to get the number of rows from the Nodes database. Error: %#v", err))
-// 	}
-// 	if nrOfRows >= 3 {
-// 		logging.Log(2, "A maturity check was requested. Local node is mature.")
-// 		return true, nil
-// 	}
-// 	logging.Log(2, "A maturity check was requested. Local node is NOT mature.")
-// 	return false, nil
-// }
-
-// // LocalNodeIsCurrent determines whether there was at least 5 syncs in the last hour.
-// func LocalNodeIsCurrent() (bool, error) {
-
-// }
-
 // ReadNode provides the ability to seek a specific node.
 func ReadNode(fingerprint api.Fingerprint) (DbNode, error) {
 	var n DbNode
@@ -94,8 +73,8 @@ func sanitiseTimeRange(
 	// Internal processing starts.
 
 	// If beginTimestamp is older than our last cache, start from the end of the last cache. If there are no caches, lastCache will be 0 and this will return everything in the database.
-	if beginTimestamp < api.Timestamp(globals.LastCacheGenerationTimestamp) {
-		beginTimestamp = api.Timestamp(globals.LastCacheGenerationTimestamp)
+	if beginTimestamp < api.Timestamp(globals.BackendConfig.GetLastCacheGenerationTimestamp()) {
+		beginTimestamp = api.Timestamp(globals.BackendConfig.GetLastCacheGenerationTimestamp())
 		endTimestamp = now // Because, in thecase of begin 3 and end 5, begin going to 145000000 will make begin much bigger than end. Prevent that by moving the end also.
 	}
 	//If beginTimestamp is in the future, return error.

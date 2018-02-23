@@ -133,14 +133,14 @@ var c http.Client
 func Fetch(host string, subhost string, port uint16, location string, method string, postBody []byte) ([]byte, error) {
 	// Gotcha of setting these here, these will be repeated every time this is called. Maybe we can run this somehow one time...
 	dialer := &d
-	dialer.Timeout = globals.TCPConnectTimeout
+	dialer.Timeout = globals.BackendConfig.GetTCPConnectTimeout()
 	// Dialer configuration inserted here.
 	t.Dial = dialer.Dial
-	t.TLSHandshakeTimeout = globals.TLSHandshakeTimeout
+	t.TLSHandshakeTimeout = globals.BackendConfig.GetTLSHandshakeTimeout()
 	transport := &t
 	// Transport configuration settings inserted here.
 	c.Transport = transport
-	c.Timeout = globals.ConnectionTimeout
+	c.Timeout = globals.BackendConfig.GetConnectionTimeout()
 	client := &c
 
 	// fmt.Println(client.Timeout)
@@ -171,7 +171,7 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 		return []byte{}, errors.New("Unsupported HTTP method. Available methods are: GET, POST")
 	}
 	if err != nil {
-		if strings.Contains(err.Error(), "getsockopt: connection refused") {
+		if strings.Contains(err.Error(), "connection refused") {
 			return []byte{}, errors.New(
 				fmt.Sprint(
 					"The host refused the connection. Host:", host,
@@ -308,11 +308,8 @@ func GetCache(host string, subhost string, port uint16, location string) (Respon
 	return response, nil
 }
 
-// GetEndpoint returns an entire endpoint from the remote node.
-func GetEndpoint(host string, subhost string, port uint16, endpoint string, lastCheckin Timestamp) (Response, error) {
-	// This is where the mapping for an endpoint to its respective subprotocol folder is mapped. Below this level, you have to supply your own subprotocol string.
-	logging.Log(1, fmt.Sprintf("GetEndpoint was called for the endpoint: %s", endpoint))
-	// Structure the endpoint -> location map
+// mapEndpointToEndpointAddress generates the address that needs to be called for the endpoint that is being requested.
+func mapEndpointToEndpointAddress(endpoint string) string {
 	endpointsMap := map[string]string{
 		"boards":      "c0/boards",
 		"threads":     "c0/threads",
@@ -321,9 +318,22 @@ func GetEndpoint(host string, subhost string, port uint16, endpoint string, last
 		"addresses":   "addresses", // Addresses is a mim entity, not a c0 entity.
 		"keys":        "c0/keys",
 		"truststates": "c0/truststates"}
+	epAddress := endpointsMap[endpoint]
+	// If we don't know which endpoint this is, attempt to call it directly.
+	if epAddress == "" {
+		epAddress = endpoint
+	}
+	return epAddress
+}
+
+// GetEndpoint returns an entire endpoint from the remote node.
+func GetEndpoint(host string, subhost string, port uint16, endpoint string, lastCheckin Timestamp) (Response, error) {
+	// This is where the mapping for an endpoint to its respective subprotocol folder is mapped. Below this level, you have to supply your own subprotocol string.
+	logging.Log(1, fmt.Sprintf("GetEndpoint was called for the endpoint: %s", endpoint))
+	epAddress := mapEndpointToEndpointAddress(endpoint)
 	var response Response
 	// Get raw page, because we need to access index links.
-	result, err := getIndexOfEndpoint(host, subhost, port, endpointsMap[endpoint])
+	result, err := getIndexOfEndpoint(host, subhost, port, epAddress)
 	indexes := result.CacheLinks
 	if err != nil {
 		return response, errors.New(
@@ -349,7 +359,7 @@ func GetEndpoint(host string, subhost string, port uint16, endpoint string, last
 		if val.EndsAt >= lastCheckin {
 			// Get the first page of the cache.
 			cache, err := GetCache(host, subhost, port,
-				fmt.Sprint(endpointsMap[endpoint], "/", val.ResponseUrl))
+				fmt.Sprint(epAddress, "/", val.ResponseUrl))
 			response = concatResponses(response, cache)
 			if err == nil {
 				missingCacheCounter = 0 // Zero out the missing cache counter.
@@ -593,7 +603,8 @@ func Query(host string, subhost string, port uint16, q QueryData) (Response, err
 	if q.EntityType == "posts" || q.EntityType == "threads" {
 		updateFieldEnabled = false
 	}
-	result, err := getIndexOfEndpoint(host, subhost, port, q.EntityType)
+	epAddress := mapEndpointToEndpointAddress(q.EntityType)
+	result, err := getIndexOfEndpoint(host, subhost, port, epAddress)
 	endpointIndex := result.CacheLinks
 	if err != nil {
 		return r, nil
@@ -627,7 +638,7 @@ func Query(host string, subhost string, port uint16, q QueryData) (Response, err
 
 CacheIterator: // Naming the for loop CacheIterator.
 	for _, cache := range cachesSlice {
-		cacheLocation := fmt.Sprint(q.EntityType, "/", cache.ResponseUrl)
+		cacheLocation := fmt.Sprint(epAddress, "/", cache.ResponseUrl)
 		cIndex := getIndexOfCache(host, subhost, port, cacheLocation)
 		// Save the EntityIndexes into proper locations on Response.
 		switch q.EntityType {

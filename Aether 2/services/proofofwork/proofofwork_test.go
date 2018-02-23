@@ -2,7 +2,9 @@ package proofofwork_test
 
 import (
 	"aether-core/io/api"
+	"aether-core/services/configstore"
 	"aether-core/services/globals"
+	"aether-core/services/logging"
 	"aether-core/services/signaturing"
 	// "fmt"
 	// "log"
@@ -40,10 +42,23 @@ func TestMain(m *testing.M) {
 }
 
 func setup() {
+
+	becfg, err := configstore.EstablishBackendConfig()
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	becfg.Cycle()
+	globals.BackendConfig = becfg
+
+	fecfg, err := configstore.EstablishFrontendConfig()
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	fecfg.Cycle()
+	globals.FrontendConfig = fecfg
+
 	// Set up the min PoW strengths from services. This is normally in main()
-	minPowStrength = 16
-	globals.SetMinPoWStrengths(minPowStrength)
-	globals.SetBailoutTime()
+	globals.BackendConfig.SetMinimumPoWStrengths(16)
 
 	newboard.Fingerprint = "my random fingerprint"
 	newboard.Creation = 4564654
@@ -163,9 +178,9 @@ func TestVerifyPoW_Fail_Malformed(t *testing.T) {
 
 func TestVerifyPoW_Fail_NotStrongEnough(t *testing.T) {
 	// For the test, ncrease min pow strength to something above the board.
-	globals.SetMinPoWStrengths(30)
+	globals.BackendConfig.SetMinimumPoWStrengths(30)
 	_, err := weakPoWBoard.VerifyPoW("")
-	globals.SetMinPoWStrengths(minPowStrength)
+	globals.BackendConfig.SetMinimumPoWStrengths(16)
 	errMessage := "This proof of work is not strong enough."
 	if err == nil {
 		t.Errorf("Did not return error on malformed PoW.")

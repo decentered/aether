@@ -85,14 +85,14 @@ func getValidEntity(entityType string) (string, api.Timestamp, api.Timestamp) {
 	var returnVal string
 	var creation api.Timestamp
 	var lastUpdate api.Timestamp
-	if entityType == "cache" {
-		postsDir := fmt.Sprint(nodeLocation, "/v0/posts")
+	if entityType == "cache" { // Heads up you're in api_test. This is just for testing - Don't get freaked out by this only being for posts.
+		postsDir := fmt.Sprint(nodeLocation, "/v0/c0/posts")
 		flist := []string{}
 		// Get all paths in that directory.
 		filepath.Walk(postsDir,
 			func(path string, f os.FileInfo, err error) error {
 				_, fname := filepath.Split(path)
-				flist = append(flist, fmt.Sprint("posts/", fname))
+				flist = append(flist, fmt.Sprint("c0/posts/", fname))
 				return nil
 			})
 		// fmt.Printf("flist: %#v\n", flist)
@@ -106,13 +106,13 @@ func getValidEntity(entityType string) (string, api.Timestamp, api.Timestamp) {
 	} else {
 		var dir string
 		if entityType == "boards" {
-			dir = fmt.Sprint(nodeLocation, "/v0/boards")
+			dir = fmt.Sprint(nodeLocation, "/v0/c0/boards")
 		} else if entityType == "posts" {
-			dir = fmt.Sprint(nodeLocation, "/v0/posts")
+			dir = fmt.Sprint(nodeLocation, "/v0/c0/posts")
 		} else if entityType == "truststates" {
-			dir = fmt.Sprint(nodeLocation, "/v0/truststates")
+			dir = fmt.Sprint(nodeLocation, "/v0/c0/truststates")
 		} else if entityType == "threads_index" { // this is so that we can pull a nonexistent entity from index, delete it from the actual source. This is a test case to have index but not data.
-			dir = fmt.Sprint(nodeLocation, "/v0/threads")
+			dir = fmt.Sprint(nodeLocation, "/v0/c0/threads")
 		} else {
 			log.Fatal("The type of entity that is requested to bring a valid instance of could not be determined.")
 		}
@@ -171,14 +171,14 @@ func setup(testNodeAddress string, testNodePort uint16) {
 
 	if len(nodeLocation) == 0 {
 		// If no node location is given, assume default. This will break when you move that folder off desktop...
-		nodeLocation = "/Users/Helios/Desktop/generated nodes/node-newest_14/static_mim_node"
+		nodeLocation = "/Users/Helios/Desktop/generated nodes/node-newest_16/static_mim_node"
 	}
 
 	// // Vote endpoint borkage test setup start.
 
 	// This breaks the index.json of the vote endpoint. This is to test how the protocol behaves under broken endpoints.
 
-	votesIndex := fmt.Sprint(nodeLocation, "/v0/votes/index.json")
+	votesIndex := fmt.Sprint(nodeLocation, "/v0/c0/votes/index.json")
 	vI, _ := ioutil.ReadFile(votesIndex)
 	var votesIndexResp api.ApiResponse
 	json.Unmarshal(vI, &votesIndexResp)
@@ -196,7 +196,7 @@ func setup(testNodeAddress string, testNodePort uint16) {
 
 	threadIndexFp, _, _ := getValidEntity("threads_index")
 	// fmt.Printf("threadIndexFp: %#v\n", threadIndexFp)
-	dir := fmt.Sprint(nodeLocation, "/v0/threads")
+	dir := fmt.Sprint(nodeLocation, "/v0/c0/threads")
 	fileList := []string{}
 	// Get all paths in that directory.
 	filepath.Walk(dir,
@@ -229,7 +229,7 @@ func setup(testNodeAddress string, testNodePort uint16) {
 	// 2) Cache: Missing cache
 	// 3) Cache: Huge pages count as a DDoS attack on oneself?
 	// Build the directory. We're using posts because it usually has a lot of items.
-	postsDir := fmt.Sprint(nodeLocation, "/v0/posts")
+	postsDir := fmt.Sprint(nodeLocation, "/v0/c0/posts")
 	fileList2 := []string{}
 	// Get all paths in that directory.
 	filepath.Walk(postsDir,
@@ -271,7 +271,7 @@ func setup(testNodeAddress string, testNodePort uint16) {
 
 	// // Endpoint tests setup start.
 
-	// votesEndpointIndex := fmt.Sprint(nodeLocation, "/v0/votes/index.json")
+	// votesEndpointIndex := fmt.Sprint(nodeLocation, "/v0/c0/votes/index.json")
 	// editExistingJson(
 	// 	votesEndpointIndex,
 	// 	`cache_20fd7dc96e6ec13b3afcb2d417709e7e407fb47a6d2f6e0c1914af0df17b41a1`, `broken_cache_20fd7dc96e6ec13b3afcb2d417709e7e407fb47a6d2f6e0c1914af0df17b41a1`)
@@ -285,13 +285,13 @@ func setup(testNodeAddress string, testNodePort uint16) {
 	// 	votesEndpointIndex,
 	// 	`cache_c71472ac4d44c1a90e7656f2b0783182a4e07dbe7e584e5900083425ac9a3a50`, `broken_cache_c71472ac4d44c1a90e7656f2b0783182a4e07dbe7e584e5900083425ac9a3a50`)
 
-	fakeEndpointDir := fmt.Sprint(nodeLocation, "/v0/invalidendpoint")
+	fakeEndpointDir := fmt.Sprint(nodeLocation, "/v0/c0/invalidendpoint")
 	copyDirectory(postsDir, fakeEndpointDir)
 
 	// // Endpoint tests setup end.
 
 	// // Query tests setup start.
-	threadsDir := fmt.Sprint(nodeLocation, "/v0/threads")
+	threadsDir := fmt.Sprint(nodeLocation, "/v0/c0/threads")
 	flist := []string{}
 	// Get all paths in that directory.
 	filepath.Walk(threadsDir,
@@ -322,7 +322,7 @@ func setup(testNodeAddress string, testNodePort uint16) {
 	http.HandleFunc("/v0/timeouter", func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(30000 * time.Second)
 	})
-	http.HandleFunc("/v0/invalid_data.json", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/v0/c0/invalid_data.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("This is some invalid JSON."))
 	})
 	go http.ListenAndServe(fmt.Sprint(testNodeAddress, ":", testNodePort), nil)
@@ -375,7 +375,7 @@ func TestFetch_Timeout(t *testing.T) {
 
 // Get Page tests
 func TestGetPageRaw_Success(t *testing.T) {
-	resp, err := api.GetPageRaw(testNodeAddress, "", testNodePort, "boards/index.json", "GET", []byte{})
+	resp, err := api.GetPageRaw(testNodeAddress, "", testNodePort, "c0/boards/index.json", "GET", []byte{})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Results) == 0 {
@@ -384,14 +384,14 @@ func TestGetPageRaw_Success(t *testing.T) {
 }
 
 func TestGetPageRaw_Unparsable(t *testing.T) {
-	_, err := api.GetPageRaw(testNodeAddress, "", testNodePort, "invalid_data.json", "GET", []byte{})
-	expected := "The JSON that arrived over the network is malformed. JSON: This is some invalid JSON., Host: 127.0.0.1, Subhost: , Port: 8089, Location: invalid_data.json"
+	_, err := api.GetPageRaw(testNodeAddress, "", testNodePort, "c0/invalid_data.json", "GET", []byte{})
+	expected := "The JSON that arrived over the network is malformed. JSON: This is some invalid JSON., Host: 127.0.0.1, Subhost: , Port: 8089, Location: c0/invalid_data.json"
 	actual := err.Error()
 	ValidateTest(expected, actual, t)
 }
 
 func TestGetPage_Success(t *testing.T) {
-	resp, err := api.GetPage(testNodeAddress, "", testNodePort, "boards/index.json", "GET", []byte{})
+	resp, err := api.GetPage(testNodeAddress, "", testNodePort, "c0/boards/index.json", "GET", []byte{})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.CacheLinks) == 0 {
@@ -414,7 +414,7 @@ func TestGetCache_Success(t *testing.T) {
 }
 
 func TestGetCache_InvalidPageCount_CountNegative(t *testing.T) {
-	_, err := api.GetCache(testNodeAddress, "", testNodePort, "posts/cache_negative_page_count/")
+	_, err := api.GetCache(testNodeAddress, "", testNodePort, "c0/posts/cache_negative_page_count/")
 	errMessage := "The JSON that arrived over the network is malformed"
 	if err == nil {
 		t.Errorf("JSON parser failed to catch the error. No error from parser.")
@@ -425,7 +425,7 @@ func TestGetCache_InvalidPageCount_CountNegative(t *testing.T) {
 
 func TestGetCache_InvalidPageCount_HugePageCount(t *testing.T) {
 	// This also tests for the 3 consequent missing pages safeguard, as the huge fake page count is stopped by the 3 pages after the last real page failing.
-	_, err := api.GetCache(testNodeAddress, "", testNodePort, "posts/cache_huge_page_number/")
+	_, err := api.GetCache(testNodeAddress, "", testNodePort, "c0/posts/cache_huge_page_number/")
 	errMessage := "3 Consequent missing pages."
 	if err == nil {
 		t.Errorf("GetCache failed to stop when 3 missing pages followed each other.")
@@ -435,7 +435,7 @@ func TestGetCache_InvalidPageCount_HugePageCount(t *testing.T) {
 }
 
 func TestGetCache_MissingPage(t *testing.T) {
-	resp, err := api.GetCache(testNodeAddress, "", testNodePort, "posts/cache_missing_pages/")
+	resp, err := api.GetCache(testNodeAddress, "", testNodePort, "c0/posts/cache_missing_pages/")
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Posts) == 0 {

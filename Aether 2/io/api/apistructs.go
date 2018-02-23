@@ -339,7 +339,7 @@ type Fingerprintable interface {
 
 type PoWAble interface {
 	GetProofOfWork() ProofOfWork // Field accessor
-	CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error
+	CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error
 	VerifyPoW(pubKey string) (bool, error)
 }
 
@@ -359,7 +359,7 @@ type Provable interface {
 type Updateable interface {
 	GetUpdateProofOfWork() ProofOfWork // Field accessor
 	GetUpdateSignature() Signature     // Field accessor
-	CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error
+	CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error
 	CreateUpdateSignature(keyPair *ecdsa.PrivateKey) error
 }
 
@@ -419,7 +419,7 @@ func (entity *Truststate) GetOwner() Fingerprint { return entity.Owner }
 
 // // Create ProofOfWork
 
-func (b *Board) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
+func (b *Board) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 	cpI := *b
 	// Updateable
 	cpI.Fingerprint = ""
@@ -439,7 +439,7 @@ func (b *Board) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
 	return nil
 }
 
-func (t *Thread) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
+func (t *Thread) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 	cpI := *t
 	// Non-updateable
 	cpI.Fingerprint = ""
@@ -456,7 +456,7 @@ func (t *Thread) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
 	return nil
 }
 
-func (p *Post) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
+func (p *Post) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 	cpI := *p
 	// Non-updateable
 	cpI.Fingerprint = ""
@@ -473,7 +473,7 @@ func (p *Post) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
 	return nil
 }
 
-func (v *Vote) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
+func (v *Vote) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 	cpI := *v
 	// Updateable
 	cpI.Fingerprint = ""
@@ -493,7 +493,7 @@ func (v *Vote) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
 	return nil
 }
 
-func (k *Key) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
+func (k *Key) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 	cpI := *k
 	// Updateable
 	cpI.Fingerprint = ""
@@ -513,7 +513,7 @@ func (k *Key) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
 	return nil
 }
 
-func (ts *Truststate) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
+func (ts *Truststate) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 	cpI := *ts
 	// Updateable
 	cpI.Fingerprint = ""
@@ -535,7 +535,7 @@ func (ts *Truststate) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) err
 
 // Create UpdateProofOfWork
 
-func (b *Board) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
+func (b *Board) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 	cpI := *b
 	// Updateable
 	cpI.UpdateProofOfWork = ""
@@ -550,7 +550,7 @@ func (b *Board) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) err
 	return nil
 }
 
-func (v *Vote) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
+func (v *Vote) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 	cpI := *v
 	// Updateable
 	cpI.UpdateProofOfWork = ""
@@ -565,7 +565,7 @@ func (v *Vote) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) erro
 	return nil
 }
 
-func (k *Key) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
+func (k *Key) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 	cpI := *k
 	// Updateable
 	cpI.UpdateProofOfWork = ""
@@ -580,7 +580,7 @@ func (k *Key) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error
 	return nil
 }
 
-func (ts *Truststate) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int64) error {
+func (ts *Truststate) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 	cpI := *ts
 	// Updateable
 	cpI.UpdateProofOfWork = ""
@@ -600,14 +600,14 @@ func (ts *Truststate) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int6
 func (b *Board) VerifyPoW(pubKey string) (bool, error) {
 	cpI := *b
 	var pow string
-	var neededStrength int64
+	var neededStrength int
 	// Determine if we are checking for original or update PoW
 	if len(cpI.UpdateProofOfWork) > 0 {
 		// This is a VerifyUpdatePoW. (The object was subject to some updates.)
 		// Updateable
 		// Save PoW to be verified
 		pow = string(cpI.UpdateProofOfWork)
-		neededStrength = globals.MinPoWStrengths.Board
+		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
 		// Delete PoW so that the PoW will match
 		cpI.UpdateProofOfWork = ""
 	} else {
@@ -619,7 +619,7 @@ func (b *Board) VerifyPoW(pubKey string) (bool, error) {
 		cpI.UpdateSignature = ""
 		// Save PoW to be verified
 		pow = string(cpI.ProofOfWork)
-		neededStrength = globals.MinPoWStrengths.Board
+		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
 		// Delete PoW so that the PoW will match
 		cpI.ProofOfWork = ""
 	}
@@ -663,7 +663,7 @@ func (t *Thread) VerifyPoW(pubKey string) (bool, error) {
 	// If the PoW is valid
 	if verifyResult {
 		// Check if satisfies required minimum
-		if strength >= globals.MinPoWStrengths.Thread {
+		if strength >= globals.BackendConfig.GetMinimumPoWStrengths().Thread {
 			return true, nil
 		} else {
 			return false, errors.New(fmt.Sprint(
@@ -693,7 +693,7 @@ func (p *Post) VerifyPoW(pubKey string) (bool, error) {
 	// If the PoW is valid
 	if verifyResult {
 		// Check if satisfies required minimum
-		if strength >= globals.MinPoWStrengths.Post {
+		if strength >= globals.BackendConfig.GetMinimumPoWStrengths().Post {
 			return true, nil
 		} else {
 			return false, errors.New(fmt.Sprint(
@@ -708,14 +708,14 @@ func (p *Post) VerifyPoW(pubKey string) (bool, error) {
 func (v *Vote) VerifyPoW(pubKey string) (bool, error) {
 	cpI := *v
 	var pow string
-	var neededStrength int64
+	var neededStrength int
 	// Determine if we are checking for original or update PoW
 	if len(cpI.UpdateProofOfWork) > 0 {
 		// This is a VerifyUpdatePoW. (The object was subject to some updates.)
 		// Updateable
 		// Save PoW to be verified
 		pow = string(cpI.UpdateProofOfWork)
-		neededStrength = globals.MinPoWStrengths.Board
+		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
 		// Delete PoW so that the PoW will match
 		cpI.UpdateProofOfWork = ""
 	} else {
@@ -727,7 +727,7 @@ func (v *Vote) VerifyPoW(pubKey string) (bool, error) {
 		cpI.UpdateSignature = ""
 		// Save PoW to be verified
 		pow = string(cpI.ProofOfWork)
-		neededStrength = globals.MinPoWStrengths.Board
+		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
 		// Delete PoW so that the PoW will match
 		cpI.ProofOfWork = ""
 	}
@@ -756,14 +756,14 @@ func (v *Vote) VerifyPoW(pubKey string) (bool, error) {
 func (k *Key) VerifyPoW(pubKey string) (bool, error) {
 	cpI := *k
 	var pow string
-	var neededStrength int64
+	var neededStrength int
 	// Determine if we are checking for original or update PoW
 	if len(cpI.UpdateProofOfWork) > 0 {
 		// This is a VerifyUpdatePoW. (The object was subject to some updates.)
 		// Updateable
 		// Save PoW to be verified
 		pow = string(cpI.UpdateProofOfWork)
-		neededStrength = globals.MinPoWStrengths.Board
+		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
 		// Delete PoW so that the PoW will match
 		cpI.UpdateProofOfWork = ""
 	} else {
@@ -775,7 +775,7 @@ func (k *Key) VerifyPoW(pubKey string) (bool, error) {
 		cpI.UpdateSignature = ""
 		// Save PoW to be verified
 		pow = string(cpI.ProofOfWork)
-		neededStrength = globals.MinPoWStrengths.Board
+		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
 		// Delete PoW so that the PoW will match
 		cpI.ProofOfWork = ""
 	}
@@ -804,14 +804,14 @@ func (k *Key) VerifyPoW(pubKey string) (bool, error) {
 func (ts *Truststate) VerifyPoW(pubKey string) (bool, error) {
 	cpI := *ts
 	var pow string
-	var neededStrength int64
+	var neededStrength int
 	// Determine if we are checking for original or update PoW
 	if len(cpI.UpdateProofOfWork) > 0 {
 		// This is a VerifyUpdatePoW. (The object was subject to some updates.)
 		// Updateable
 		// Save PoW to be verified
 		pow = string(cpI.UpdateProofOfWork)
-		neededStrength = globals.MinPoWStrengths.Board
+		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
 		// Delete PoW so that the PoW will match
 		cpI.UpdateProofOfWork = ""
 	} else {
@@ -823,7 +823,7 @@ func (ts *Truststate) VerifyPoW(pubKey string) (bool, error) {
 		cpI.UpdateSignature = ""
 		// Save PoW to be verified
 		pow = string(cpI.ProofOfWork)
-		neededStrength = globals.MinPoWStrengths.Board
+		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
 		// Delete PoW so that the PoW will match
 		cpI.ProofOfWork = ""
 	}
