@@ -7,6 +7,7 @@ package globals
 
 import (
 	"aether-core/services/configstore"
+	"github.com/jmoiron/sqlx"
 	"time"
 )
 
@@ -30,5 +31,10 @@ var AddressesScannerActive bool
 var LiveDispatchRunning bool
 var StaticDispatchRunning bool
 
-var FrontendConfig configstore.FrontendConfig
-var BackendConfig configstore.BackendConfig
+var FrontendConfig *configstore.FrontendConfig
+var FrontendTransientConfig *configstore.FrontendTransientConfig
+
+var BackendConfig *configstore.BackendConfig
+var BackendTransientConfig *configstore.BackendTransientConfig
+
+var DbInstance *sqlx.DB

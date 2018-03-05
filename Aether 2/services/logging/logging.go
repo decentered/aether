@@ -5,6 +5,7 @@ package logging
 
 import (
 	"aether-core/services/globals"
+	"fmt"
 	"log"
 )
 
@@ -12,7 +13,11 @@ import (
 func Log(level int, input interface{}) {
 	// TODO: Check whether debug is enabled ONCE at application launch. If so, print to the log file. If not, be a noop.
 	if globals.BackendConfig.GetLoggingLevel() >= level {
-		log.Println(input)
+		if globals.BackendTransientConfig.PrintToStdout {
+			fmt.Println(input)
+		} else {
+			log.Println(input)
+		}
 	}
 }
 func LogCrash(input interface{}) {

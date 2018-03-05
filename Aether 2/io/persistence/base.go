@@ -4,10 +4,12 @@
 package persistence
 
 import (
-	"github.com/jmoiron/sqlx"
-	// _ "github.com/mattn/go-sqlite3"
+	"aether-core/services/globals"
+	"aether-core/services/logging"
+	"fmt"
 	_ "github.com/go-sql-driver/mysql"
-	// "fmt"
+	// "github.com/jmoiron/sqlx"
+	_ "github.com/mattn/go-sqlite3"
 	// _ "github.com/lib/pq"
 	// "os"
 )
@@ -16,7 +18,10 @@ import (
 
 // Creates the database connection to be used from this point on.
 // var DbInstance = sqlx.MustConnect("sqlite3", "./test.db")
-var DbInstance = sqlx.MustConnect("mysql", "root:@/aether_test")
+
+// var DbInstance = *globals.DbInstance
+
+// var DbInstance = sqlx.MustConnect("mysql", "root:@/aether_test")
 
 // var DbInstance = sqlx.MustConnect("postgres", "user=burak password=12345 dbname=aether_test sslmode=disable")
 
@@ -27,166 +32,350 @@ var DbInstance = sqlx.MustConnect("mysql", "root:@/aether_test")
 // DeleteDatabase removes the existing database in the default location.
 func DeleteDatabase() {
 	// os.Remove("./test.db")
-	DbInstance.MustExec("DROP TABLE `aether_test`.`Addresses`, `aether_test`.`BoardOwners`, `aether_test`.`Boards`, `aether_test`.`CurrencyAddresses`, `aether_test`.`Posts`, `aether_test`.`PublicKeys`, `aether_test`.`Threads`, `aether_test`.`Truststates`, `aether_test`.`Votes`;")
+	globals.DbInstance.MustExec("DROP TABLE `aether_test`.`Addresses`, `aether_test`.`BoardOwners`, `aether_test`.`Boards`, `aether_test`.`CurrencyAddresses`, `aether_test`.`Posts`, `aether_test`.`PublicKeys`, `aether_test`.`Threads`, `aether_test`.`Truststates`, `aether_test`.`Votes`;")
 }
 
 // CreateDatabase creates a new database in the default location and places into it the database schema.
 func CreateDatabase() {
-	schema1 := `
-    CREATE TABLE IF NOT EXISTS BoardOwners (
-      BoardFingerprint VARCHAR(64) NOT NULL,
-      KeyFingerprint VARCHAR(64) NOT NULL,
-      Expiry BIGINT NOT NULL,
-      Level SMALLINT NOT NULL,
-      PRIMARY KEY(BoardFingerprint, KeyFingerprint)
-    );
-    `
-	schema2 := `
-    CREATE TABLE IF NOT EXISTS CurrencyAddresses (
-      KeyFingerprint VARCHAR(64) NOT NULL,
-      CurrencyCode VARCHAR(5) NOT NULL,
-      Address VARCHAR(512) NOT NULL, -- Changed from 1024
-      PRIMARY KEY(KeyFingerprint, Address)
-    );`
-	schema3 := `
-    CREATE TABLE IF NOT EXISTS Boards (
-      Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
-      Name VARCHAR(255) NOT NULL,
-      Owner VARCHAR(64) NOT NULL,
-      -- BoardOwners field will have to be constructed on the fly.
-      Description TEXT NOT NULL,  -- Converted from varchar(65535) to text, because it doesn't fit into a MYSQL table. Enforce max 65535 chars on the application layer.
-      Creation BIGINT NOT NULL,
-      ProofOfWork VARCHAR(1024) NOT NULL,
-      Signature VARCHAR(512) NOT NULL,
-      LastUpdate BIGINT NOT NULL,
-      UpdateProofOfWork VARCHAR(1024) NOT NULL,
-      UpdateSignature VARCHAR(512) NOT NULL,
-      LocalArrival BIGINT NOT NULL
-    );`
-	schema4 := `
-    CREATE TABLE IF NOT EXISTS Threads (
-      Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
-      Board VARCHAR(64) NOT NULL,
-      Name VARCHAR(255) NOT NULL,
-      Body TEXT NOT NULL,
-      Link VARCHAR(5000) NOT NULL,
-      Owner VARCHAR(64) NOT NULL,
-      Creation BIGINT NOT NULL,
-      ProofOfWork VARCHAR(1024) NOT NULL,
-      Signature VARCHAR(512) NOT NULL,
-      LocalArrival BIGINT NOT NULL,
-      INDEX (Board)
-    );`
-	schema5 := `
-    CREATE TABLE IF NOT EXISTS Posts (
-      Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
-      Board VARCHAR(64) NOT NULL,
-      Thread VARCHAR(64) NOT NULL,
-      Parent VARCHAR(64) NOT NULL,
-      Body TEXT NOT NULL,
-      Owner VARCHAR(64) NOT NULL,
-      Creation BIGINT NOT NULL,
-      ProofOfWork VARCHAR(1024) NOT NULL,
-      Signature VARCHAR(512) NOT NULL,
-      LocalArrival BIGINT NOT NULL,
-      INDEX (Thread)
-    );`
-	schema6 := `
-    CREATE TABLE IF NOT EXISTS Votes (
-      Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
-      Board VARCHAR(64) NOT NULL,
-      Thread VARCHAR(64) NOT NULL,
-      Target VARCHAR(64) NOT NULL,
-      Owner VARCHAR(64) NOT NULL,
-      Type SMALLINT NOT NULL,
-      Creation BIGINT NOT NULL,
-      ProofOfWork VARCHAR(1024) NOT NULL,
-      Signature VARCHAR(512) NOT NULL,
-      LastUpdate BIGINT NOT NULL,
-      UpdateProofOfWork VARCHAR(1024) NOT NULL,
-      UpdateSignature VARCHAR(512) NOT NULL,
-      LocalArrival BIGINT NOT NULL,
-      INDEX (Target)
-    );`
-	schema7 := `
-    CREATE TABLE IF NOT EXISTS Addresses (
-      Location VARCHAR(256) NOT NULL, -- From 2500
-      Sublocation VARCHAR(256) NOT NULL, -- From 2500
-      Port INTEGER NOT NULL,
-      IPType SMALLINT NOT NULL,
-      AddressType SMALLINT NOT NULL,
-      LastOnline BIGINT NOT NULL,
-      ProtocolVersionMajor SMALLINT NOT NULL,
-      ProtocolVersionMinor INTEGER NOT NULL,
-      ClientVersionMajor SMALLINT NOT NULL,
-      ClientVersionMinor INTEGER NOT NULL,
-      ClientVersionPatch INTEGER NOT NULL,
-      ClientName VARCHAR(255) NOT NULL,
-      LocalArrival BIGINT NOT NULL,
-      PRIMARY KEY(Location, Sublocation, Port)
-    );`
-	schema8 := `
-    CREATE TABLE IF NOT EXISTS PublicKeys (
-      Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
-      Type VARCHAR(64) NOT NULL,
-      PublicKey TEXT NOT NULL,
-      Name VARCHAR(64) NOT NULL,
-      -- CurrencyAddresses will have to be constructed on the fly.
-      Info VARCHAR(1024) NOT NULL,
-      Creation BIGINT NOT NULL,
-      ProofOfWork VARCHAR(1024) NOT NULL,
-      Signature VARCHAR(512) NOT NULL,
-      LastUpdate BIGINT NOT NULL,
-      UpdateProofOfWork VARCHAR(1024) NOT NULL,
-      UpdateSignature VARCHAR(512) NOT NULL,
-      LocalArrival BIGINT NOT NULL
-    );`
-	schema9 := `
-    CREATE TABLE IF NOT EXISTS Truststates (
-      Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
-      Target VARCHAR(64) NOT NULL,
-      Owner VARCHAR(64) NOT NULL,
-      Type SMALLINT NOT NULL,
-      Domains VARCHAR(7000) NOT NULL,
-      Expiry BIGINT NOT NULL,
-      Creation BIGINT NOT NULL,
-      ProofOfWork VARCHAR(1024) NOT NULL,
-      Signature VARCHAR(512) NOT NULL,
-      LastUpdate BIGINT NOT NULL,
-      UpdateProofOfWork VARCHAR(1024) NOT NULL,
-      UpdateSignature VARCHAR(512) NOT NULL,
-      LocalArrival BIGINT NOT NULL
-    );
-  `
-	schema10 := `
-      CREATE TABLE IF NOT EXISTS Nodes (
-        Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
-        BoardsLastCheckin BIGINT NOT NULL,
-        ThreadsLastCheckin BIGINT NOT NULL,
-        PostsLastCheckin BIGINT NOT NULL,
-        VotesLastCheckin BIGINT NOT NULL,
-        AddressesLastCheckin BIGINT NOT NULL,
-        KeysLastCheckin BIGINT NOT NULL,
-        TruststatesLastCheckin BIGINT NOT NULL
-      );
-    `
-	schema11 := `
-      CREATE TABLE IF NOT EXISTS Subprotocols (
-        Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
-        Name VARCHAR(64) NOT NULL,
-        VersionMajor SMALLINT NOT NULL,
-        VersionMinor INTEGER NOT NULL,
-        SupportedEntities VARCHAR(5000) NOT NULL
-      );`
+	var schema1 string
+	var schema2 string
+	var schema3 string
+	var schema4 string
+	var schema5 string
+	var schema6 string
+	var schema7 string
+	var schema8 string
+	var schema9 string
+	var schema10 string
+	var schema11 string
+	var schema12 string
+	var schema13 string
+	var schema14 string
+	var schema15 string
 
-	schema12 := `
-      CREATE TABLE IF NOT EXISTS AddressesSubprotocols (
-        AddressLocation VARCHAR(256) NOT NULL,
-        AddressSublocation VARCHAR(256) NOT NULL,
-        AddressPort INTEGER NOT NULL,
-        SubprotocolFingerprint VARCHAR(64) NOT NULL,
-        PRIMARY KEY(AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint)
-      );`
+	if globals.BackendConfig.DbEngine == "mysql" {
+		schema1 = `
+        CREATE TABLE IF NOT EXISTS BoardOwners (
+          BoardFingerprint VARCHAR(64) NOT NULL,
+          KeyFingerprint VARCHAR(64) NOT NULL,
+          Expiry BIGINT NOT NULL,
+          Level SMALLINT NOT NULL,
+          PRIMARY KEY(BoardFingerprint, KeyFingerprint)
+        );
+        `
+		schema2 = `
+        CREATE TABLE IF NOT EXISTS CurrencyAddresses (
+          KeyFingerprint VARCHAR(64) NOT NULL,
+          CurrencyCode VARCHAR(5) NOT NULL,
+          Address VARCHAR(512) NOT NULL, -- Changed from 1024
+          PRIMARY KEY(KeyFingerprint, Address)
+        );`
+		schema3 = `
+        CREATE TABLE IF NOT EXISTS Boards (
+          Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
+          Name VARCHAR(255) NOT NULL,
+          Owner VARCHAR(64) NOT NULL,
+          -- BoardOwners field will have to be constructed on the fly.
+          Description TEXT NOT NULL,  -- Converted from varchar(65535) to text, because it doesn't fit into a MYSQL table. Enforce max 65535 chars on the application layer.
+          Creation BIGINT NOT NULL,
+          ProofOfWork VARCHAR(1024) NOT NULL,
+          Signature VARCHAR(512) NOT NULL,
+          LastUpdate BIGINT NOT NULL,
+          UpdateProofOfWork VARCHAR(1024) NOT NULL,
+          UpdateSignature VARCHAR(512) NOT NULL,
+          LocalArrival BIGINT NOT NULL
+        );`
+		schema4 = `
+        CREATE TABLE IF NOT EXISTS Threads (
+          Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
+          Board VARCHAR(64) NOT NULL,
+          Name VARCHAR(255) NOT NULL,
+          Body TEXT NOT NULL,
+          Link VARCHAR(5000) NOT NULL,
+          Owner VARCHAR(64) NOT NULL,
+          Creation BIGINT NOT NULL,
+          ProofOfWork VARCHAR(1024) NOT NULL,
+          Signature VARCHAR(512) NOT NULL,
+          LocalArrival BIGINT NOT NULL,
+          INDEX (Board)
+        );`
+		schema5 = `
+        CREATE TABLE IF NOT EXISTS Posts (
+          Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
+          Board VARCHAR(64) NOT NULL,
+          Thread VARCHAR(64) NOT NULL,
+          Parent VARCHAR(64) NOT NULL,
+          Body TEXT NOT NULL,
+          Owner VARCHAR(64) NOT NULL,
+          Creation BIGINT NOT NULL,
+          ProofOfWork VARCHAR(1024) NOT NULL,
+          Signature VARCHAR(512) NOT NULL,
+          LocalArrival BIGINT NOT NULL,
+          INDEX (Thread)
+        );`
+		schema6 = `
+        CREATE TABLE IF NOT EXISTS Votes (
+          Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
+          Board VARCHAR(64) NOT NULL,
+          Thread VARCHAR(64) NOT NULL,
+          Target VARCHAR(64) NOT NULL,
+          Owner VARCHAR(64) NOT NULL,
+          Type SMALLINT NOT NULL,
+          Creation BIGINT NOT NULL,
+          ProofOfWork VARCHAR(1024) NOT NULL,
+          Signature VARCHAR(512) NOT NULL,
+          LastUpdate BIGINT NOT NULL,
+          UpdateProofOfWork VARCHAR(1024) NOT NULL,
+          UpdateSignature VARCHAR(512) NOT NULL,
+          LocalArrival BIGINT NOT NULL,
+          INDEX (Target)
+        );`
+		schema7 = `
+        CREATE TABLE IF NOT EXISTS Addresses (
+          Location VARCHAR(256) NOT NULL, -- From 2500
+          Sublocation VARCHAR(256) NOT NULL, -- From 2500
+          Port INTEGER NOT NULL,
+          IPType SMALLINT NOT NULL,
+          AddressType SMALLINT NOT NULL,
+          LastOnline BIGINT NOT NULL,
+          ProtocolVersionMajor SMALLINT NOT NULL,
+          ProtocolVersionMinor INTEGER NOT NULL,
+          ClientVersionMajor SMALLINT NOT NULL,
+          ClientVersionMinor INTEGER NOT NULL,
+          ClientVersionPatch INTEGER NOT NULL,
+          ClientName VARCHAR(255) NOT NULL,
+          LocalArrival BIGINT NOT NULL,
+          PRIMARY KEY(Location, Sublocation, Port)
+        );`
+		schema8 = `
+        CREATE TABLE IF NOT EXISTS PublicKeys (
+          Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
+          Type VARCHAR(64) NOT NULL,
+          PublicKey TEXT NOT NULL,
+          Name VARCHAR(64) NOT NULL,
+          -- CurrencyAddresses will have to be constructed on the fly.
+          Info VARCHAR(1024) NOT NULL,
+          Creation BIGINT NOT NULL,
+          ProofOfWork VARCHAR(1024) NOT NULL,
+          Signature VARCHAR(512) NOT NULL,
+          LastUpdate BIGINT NOT NULL,
+          UpdateProofOfWork VARCHAR(1024) NOT NULL,
+          UpdateSignature VARCHAR(512) NOT NULL,
+          LocalArrival BIGINT NOT NULL
+        );`
+		schema9 = `
+        CREATE TABLE IF NOT EXISTS Truststates (
+          Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
+          Target VARCHAR(64) NOT NULL,
+          Owner VARCHAR(64) NOT NULL,
+          Type SMALLINT NOT NULL,
+          Domains VARCHAR(7000) NOT NULL,
+          Expiry BIGINT NOT NULL,
+          Creation BIGINT NOT NULL,
+          ProofOfWork VARCHAR(1024) NOT NULL,
+          Signature VARCHAR(512) NOT NULL,
+          LastUpdate BIGINT NOT NULL,
+          UpdateProofOfWork VARCHAR(1024) NOT NULL,
+          UpdateSignature VARCHAR(512) NOT NULL,
+          LocalArrival BIGINT NOT NULL
+        );
+      `
+		schema10 = `
+          CREATE TABLE IF NOT EXISTS Nodes (
+            Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
+            BoardsLastCheckin BIGINT NOT NULL,
+            ThreadsLastCheckin BIGINT NOT NULL,
+            PostsLastCheckin BIGINT NOT NULL,
+            VotesLastCheckin BIGINT NOT NULL,
+            AddressesLastCheckin BIGINT NOT NULL,
+            KeysLastCheckin BIGINT NOT NULL,
+            TruststatesLastCheckin BIGINT NOT NULL
+          );
+        `
+		schema11 = `
+          CREATE TABLE IF NOT EXISTS Subprotocols (
+            Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
+            Name VARCHAR(64) NOT NULL,
+            VersionMajor SMALLINT NOT NULL,
+            VersionMinor INTEGER NOT NULL,
+            SupportedEntities VARCHAR(5000) NOT NULL
+          );`
+
+		schema12 = `
+          CREATE TABLE IF NOT EXISTS AddressesSubprotocols (
+            AddressLocation VARCHAR(256) NOT NULL,
+            AddressSublocation VARCHAR(256) NOT NULL,
+            AddressPort INTEGER NOT NULL,
+            SubprotocolFingerprint VARCHAR(64) NOT NULL,
+            PRIMARY KEY(AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint)
+          );`
+	} else if globals.BackendConfig.DbEngine == "sqlite" {
+		schema1 = `
+        CREATE TABLE IF NOT EXISTS "BoardOwners" (
+          "BoardFingerprint" varchar(64) NOT NULL
+        ,  "KeyFingerprint" varchar(64) NOT NULL
+        ,  "Expiry" integer NOT NULL
+        ,  "Level" integer NOT NULL
+        ,  PRIMARY KEY ("BoardFingerprint","KeyFingerprint")
+        );`
+		schema2 = `
+        CREATE TABLE IF NOT EXISTS "CurrencyAddresses" (
+          "KeyFingerprint" varchar(64) NOT NULL
+        ,  "CurrencyCode" varchar(5) NOT NULL
+        ,  "Address" varchar(512) NOT NULL
+        ,  PRIMARY KEY ("KeyFingerprint","Address")
+        );`
+		schema3 = `
+        CREATE TABLE IF NOT EXISTS "Boards" (
+          "Fingerprint" varchar(64) NOT NULL
+        ,  "Name" varchar(255) NOT NULL
+        ,  "Owner" varchar(64) NOT NULL
+        ,  "Description" text NOT NULL
+        ,  "Creation" integer NOT NULL
+        ,  "ProofOfWork" varchar(1024) NOT NULL
+        ,  "Signature" varchar(512) NOT NULL
+        ,  "LastUpdate" integer NOT NULL
+        ,  "UpdateProofOfWork" varchar(1024) NOT NULL
+        ,  "UpdateSignature" varchar(512) NOT NULL
+        ,  "LocalArrival" integer NOT NULL
+        ,  PRIMARY KEY ("Fingerprint")
+        );`
+		schema4 = `
+        CREATE TABLE IF NOT EXISTS "Threads" (
+          "Fingerprint" varchar(64) NOT NULL
+        ,  "Board" varchar(64) NOT NULL
+        ,  "Name" varchar(255) NOT NULL
+        ,  "Body" text NOT NULL
+        ,  "Link" varchar(5000) NOT NULL
+        ,  "Owner" varchar(64) NOT NULL
+        ,  "Creation" integer NOT NULL
+        ,  "ProofOfWork" varchar(1024) NOT NULL
+        ,  "Signature" varchar(512) NOT NULL
+        ,  "LocalArrival" integer NOT NULL
+        ,  PRIMARY KEY ("Fingerprint")
+        );`
+		schema5 = `
+        CREATE TABLE IF NOT EXISTS "Posts" (
+          "Fingerprint" varchar(64) NOT NULL
+        ,  "Board" varchar(64) NOT NULL
+        ,  "Thread" varchar(64) NOT NULL
+        ,  "Parent" varchar(64) NOT NULL
+        ,  "Body" text NOT NULL
+        ,  "Owner" varchar(64) NOT NULL
+        ,  "Creation" integer NOT NULL
+        ,  "ProofOfWork" varchar(1024) NOT NULL
+        ,  "Signature" varchar(512) NOT NULL
+        ,  "LocalArrival" integer NOT NULL
+        ,  PRIMARY KEY ("Fingerprint")
+        );`
+		schema6 = `
+        CREATE TABLE IF NOT EXISTS "Votes" (
+          "Fingerprint" varchar(64) NOT NULL
+        ,  "Board" varchar(64) NOT NULL
+        ,  "Thread" varchar(64) NOT NULL
+        ,  "Target" varchar(64) NOT NULL
+        ,  "Owner" varchar(64) NOT NULL
+        ,  "Type" integer NOT NULL
+        ,  "Creation" integer NOT NULL
+        ,  "ProofOfWork" varchar(1024) NOT NULL
+        ,  "Signature" varchar(512) NOT NULL
+        ,  "LastUpdate" integer NOT NULL
+        ,  "UpdateProofOfWork" varchar(1024) NOT NULL
+        ,  "UpdateSignature" varchar(512) NOT NULL
+        ,  "LocalArrival" integer NOT NULL
+        ,  PRIMARY KEY ("Fingerprint")
+        );`
+		schema7 = `
+        CREATE TABLE IF NOT EXISTS "Addresses" (
+          "Location" varchar(256) NOT NULL
+        ,  "Sublocation" varchar(256) NOT NULL
+        ,  "Port" integer NOT NULL
+        ,  "IPType" integer NOT NULL
+        ,  "AddressType" integer NOT NULL
+        ,  "LastOnline" integer NOT NULL
+        ,  "ProtocolVersionMajor" integer NOT NULL
+        ,  "ProtocolVersionMinor" integer NOT NULL
+        ,  "ClientVersionMajor" integer NOT NULL
+        ,  "ClientVersionMinor" integer NOT NULL
+        ,  "ClientVersionPatch" integer NOT NULL
+        ,  "ClientName" varchar(255) NOT NULL
+        ,  "LocalArrival" integer NOT NULL
+        ,  PRIMARY KEY ("Location","Sublocation","Port")
+        );`
+		schema8 = `
+        CREATE TABLE IF NOT EXISTS "PublicKeys" (
+          "Fingerprint" varchar(64) NOT NULL
+        ,  "Type" varchar(64) NOT NULL
+        ,  "PublicKey" text NOT NULL
+        ,  "Name" varchar(64) NOT NULL
+        ,  "Info" varchar(1024) NOT NULL
+        ,  "Creation" integer NOT NULL
+        ,  "ProofOfWork" varchar(1024) NOT NULL
+        ,  "Signature" varchar(512) NOT NULL
+        ,  "LastUpdate" integer NOT NULL
+        ,  "UpdateProofOfWork" varchar(1024) NOT NULL
+        ,  "UpdateSignature" varchar(512) NOT NULL
+        ,  "LocalArrival" integer NOT NULL
+        ,  PRIMARY KEY ("Fingerprint")
+        );`
+		schema9 = `
+        CREATE TABLE IF NOT EXISTS "Truststates" (
+          "Fingerprint" varchar(64) NOT NULL
+        ,  "Target" varchar(64) NOT NULL
+        ,  "Owner" varchar(64) NOT NULL
+        ,  "Type" integer NOT NULL
+        ,  "Domains" varchar(7000) NOT NULL
+        ,  "Expiry" integer NOT NULL
+        ,  "Creation" integer NOT NULL
+        ,  "ProofOfWork" varchar(1024) NOT NULL
+        ,  "Signature" varchar(512) NOT NULL
+        ,  "LastUpdate" integer NOT NULL
+        ,  "UpdateProofOfWork" varchar(1024) NOT NULL
+        ,  "UpdateSignature" varchar(512) NOT NULL
+        ,  "LocalArrival" integer NOT NULL
+        ,  PRIMARY KEY ("Fingerprint")
+        );`
+		schema10 = `
+          CREATE TABLE IF NOT EXISTS "Nodes" (
+            "Fingerprint" varchar(64) NOT NULL
+          ,  "BoardsLastCheckin" integer NOT NULL
+          ,  "ThreadsLastCheckin" integer NOT NULL
+          ,  "PostsLastCheckin" integer NOT NULL
+          ,  "VotesLastCheckin" integer NOT NULL
+          ,  "AddressesLastCheckin" integer NOT NULL
+          ,  "KeysLastCheckin" integer NOT NULL
+          ,  "TruststatesLastCheckin" integer NOT NULL
+          ,  PRIMARY KEY ("Fingerprint")
+          );`
+		schema11 = `
+          CREATE TABLE IF NOT EXISTS "Subprotocols" (
+            "Fingerprint" varchar(64) NOT NULL
+          ,  "Name" varchar(64) NOT NULL
+          ,  "VersionMajor" integer NOT NULL
+          ,  "VersionMinor" integer NOT NULL
+          ,  "SupportedEntities" varchar(5000) NOT NULL
+          ,  PRIMARY KEY ("Fingerprint")
+          );`
+		schema12 = `
+          CREATE TABLE IF NOT EXISTS "AddressesSubprotocols" (
+            "AddressLocation" varchar(256) NOT NULL
+          ,  "AddressSublocation" varchar(256) NOT NULL
+          ,  "AddressPort" integer NOT NULL
+          ,  "SubprotocolFingerprint" varchar(64) NOT NULL
+          ,  PRIMARY KEY ("AddressLocation","AddressSublocation","AddressPort","SubprotocolFingerprint")
+          );`
+		schema13 = `
+          CREATE INDEX IF NOT EXISTS "idx_Posts_Thread" ON "Posts" ("Thread");
+          `
+		schema14 = `
+          CREATE INDEX IF NOT EXISTS "idx_Threads_Board" ON "Threads" ("Board");
+          `
+		schema15 = `
+          CREATE INDEX IF NOT EXISTS "idx_Votes_Target" ON "Votes" ("Target");
+          `
+	} else {
+		logging.LogCrash(fmt.Sprintf("Storage engine you've inputted is not supported. Please change it from the backend user config into something that is supported. You've provided: %s", globals.BackendConfig.GetDbEngine()))
+	}
 
 	var creationSchemas []string
 	creationSchemas = append(creationSchemas, schema1)
@@ -201,10 +390,16 @@ func CreateDatabase() {
 	creationSchemas = append(creationSchemas, schema10)
 	creationSchemas = append(creationSchemas, schema11)
 	creationSchemas = append(creationSchemas, schema12)
+	// Indexes in SQLite require separate statements
+	if len(schema13) > 0 && len(schema14) > 0 && len(schema15) > 0 {
+		creationSchemas = append(creationSchemas, schema13)
+		creationSchemas = append(creationSchemas, schema14)
+		creationSchemas = append(creationSchemas, schema15)
+	}
 
 	for _, schema := range creationSchemas {
 		// fmt.Println(schema)
-		DbInstance.MustExec(schema)
+		globals.DbInstance.MustExec(schema)
 	}
 }
 
@@ -245,8 +440,25 @@ var boardOwnerInsert = `REPLACE INTO BoardOwners
 // Deletion for BoardOwner. This triggers when a person is no longer a moderator, etc. This is the only deletion here because nothing else really gets deleted.
 var boardOwnerDelete = `DELETE FROM BoardOwners WHERE BoardFingerprint = :BoardFingerprint AND KeyFingerprint = :KeyFingerprint`
 
+/*
+
+Main difference between MySQL and SQLite: it seems that MySQL prefers 'INSERT IGNORE' and SQLite prefers 'INSERT OR IGNORE'. It's a minor difference, but apparently it causes them to break, so we have to have different copies for mysql and sqlite.
+
+All immutables below have MySQL and SQLite versions.
+
+*/
+
 // Immutable
-var threadInsert = `INSERT IGNORE INTO Threads
+var threadInsertMySQL = `INSERT IGNORE INTO Threads
+(
+  Fingerprint, Board, Name, Body, Link, Owner, LocalArrival,
+  Creation, ProofOfWork, Signature
+) VALUES (
+  :Fingerprint, :Board, :Name, :Body, :Link, :Owner, :LocalArrival,
+  :Creation, :ProofOfWork, :Signature
+)`
+
+var threadInsertSQLite = `INSERT OR IGNORE INTO Threads
 (
   Fingerprint, Board, Name, Body, Link, Owner, LocalArrival,
   Creation, ProofOfWork, Signature
@@ -256,7 +468,16 @@ var threadInsert = `INSERT IGNORE INTO Threads
 )`
 
 // Immutable
-var postInsert = `INSERT IGNORE INTO Posts
+var postInsertMySQL = `INSERT IGNORE INTO Posts
+(
+  Fingerprint, Board, Thread, Parent, Body, Owner, LocalArrival,
+  Creation, ProofOfWork, Signature
+) VALUES (
+  :Fingerprint, :Board, :Thread, :Parent, :Body, :Owner, :LocalArrival,
+  :Creation, :ProofOfWork, :Signature
+)`
+
+var postInsertSQLite = `INSERT OR IGNORE INTO Posts
 (
   Fingerprint, Board, Thread, Parent, Body, Owner, LocalArrival,
   Creation, ProofOfWork, Signature
@@ -286,7 +507,20 @@ var voteInsert = `REPLACE INTO Votes
   OR Votes.Fingerprint IS NULL`
 
 // Address insert is immutable. This is used for when a node receives data from an address from a node that is not at the aforementioned address. In other words, an address object coming from a third party node not at that address cannot change an existing address saved in the database.
-var addressInsert = `INSERT IGNORE INTO Addresses
+var addressInsertMySQL = `INSERT IGNORE INTO Addresses
+(
+  Location, Sublocation, Port, IPType, AddressType, LastOnline,
+  ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
+  ClientVersionMinor, ClientVersionPatch, ClientName,
+  LocalArrival
+) VALUES (
+  :Location, :Sublocation, :Port,:IPType, :AddressType, :LastOnline,
+  :ProtocolVersionMajor, :ProtocolVersionMinor, :ClientVersionMajor,
+  :ClientVersionMinor, :ClientVersionPatch, :ClientName,
+  :LocalArrival
+)`
+
+var addressInsertSQLite = `INSERT OR IGNORE INTO Addresses
 (
   Location, Sublocation, Port, IPType, AddressType, LastOnline,
   ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
@@ -323,12 +557,19 @@ var subprotocolInsert = `REPLACE INTO Subprotocols
 
 // AddressSubprotocolInsert inserts into the many to many junction table so that we can keep track of the subprotocols an address uses.
 
-var addressSubprotocolInsert = `INSERT IGNORE INTO AddressesSubprotocols
+var addressSubprotocolInsertMySQL = `INSERT IGNORE INTO AddressesSubprotocols
  (
    AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint
  ) VALUES (
    :AddressLocation, :AddressSublocation, :AddressPort, :SubprotocolFingerprint
  )`
+
+var addressSubprotocolInsertSQLite = `INSERT OR IGNORE INTO AddressesSubprotocols
+  (
+    AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint
+  ) VALUES (
+    :AddressLocation, :AddressSublocation, :AddressPort, :SubprotocolFingerprint
+  )`
 
 // Key insert does insert or replace without checking because we're handling the logic that decides whether we should update or not in the database layer.
 var keyInsert = `REPLACE INTO PublicKeys

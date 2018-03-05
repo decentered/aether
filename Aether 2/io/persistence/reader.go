@@ -21,7 +21,7 @@ func ReadNode(fingerprint api.Fingerprint) (DbNode, error) {
 		if err != nil {
 			return n, err
 		}
-		rows, err := DbInstance.Queryx(query, args...)
+		rows, err := globals.DbInstance.Queryx(query, args...)
 		if err != nil {
 			return n, err
 		}
@@ -291,7 +291,7 @@ func ReadThreadEmbed(entities []api.Provable) ([]api.Thread, error) {
 		if err != nil {
 			return arr, err
 		}
-		rows, err := DbInstance.Queryx(query, args...)
+		rows, err := globals.DbInstance.Queryx(query, args...)
 		if err != nil {
 			return arr, err
 		}
@@ -334,7 +334,7 @@ func ReadPostEmbed(entities []api.Provable) ([]api.Post, error) {
 		if err != nil {
 			return arr, err
 		}
-		rows, err := DbInstance.Queryx(query, args...)
+		rows, err := globals.DbInstance.Queryx(query, args...)
 		if err != nil {
 			return arr, err
 		}
@@ -377,7 +377,7 @@ func ReadVoteEmbed(entities []api.Provable) ([]api.Vote, error) {
 		if err != nil {
 			return arr, err
 		}
-		rows, err := DbInstance.Queryx(query, args...)
+		rows, err := globals.DbInstance.Queryx(query, args...)
 		if err != nil {
 			return arr, err
 		}
@@ -443,7 +443,7 @@ func ReadKeyEmbed(entities []api.Provable, firstEmbedCache []api.Provable) ([]ap
 	if err != nil {
 		return arr, err
 	}
-	rows, err := DbInstance.Queryx(query, args...)
+	rows, err := globals.DbInstance.Queryx(query, args...)
 	if err != nil {
 		return arr, err
 	}
@@ -477,7 +477,7 @@ func ReadBoards(
 		if err != nil {
 			return arr, err
 		}
-		rows, err := DbInstance.Queryx(query, args...)
+		rows, err := globals.DbInstance.Queryx(query, args...)
 		if err != nil {
 			return arr, err
 		}
@@ -498,7 +498,7 @@ func ReadBoards(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Boards WHERE (LocalArrival > ? AND LocalArrival < ? ) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Boards WHERE (LocalArrival > ? AND LocalArrival < ? ) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
 		if err != nil {
 			return arr, err
 		}
@@ -531,7 +531,7 @@ func ReadThreads(
 		if err != nil {
 			return arr, err
 		}
-		rows, err := DbInstance.Queryx(query, args...)
+		rows, err := globals.DbInstance.Queryx(query, args...)
 		if err != nil {
 			return arr, err
 		}
@@ -552,7 +552,7 @@ func ReadThreads(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Threads WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Threads WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
 		if err != nil {
 			return arr, err
 		}
@@ -577,7 +577,7 @@ func ReadThreads(
 // func ReadThreads(Fingerprint api.Fingerprint) (
 // 	[]api.Thread, error) {
 // 	var arr []api.Thread
-// 	rows, err := DbInstance.Queryx("SELECT * from Threads WHERE Fingerprint = ?", Fingerprint)
+// 	rows, err := globals.DbInstance.Queryx("SELECT * from Threads WHERE Fingerprint = ?", Fingerprint)
 // 	if err != nil {
 // 		logging.LogCrash(err)
 // 	}
@@ -609,7 +609,7 @@ func ReadPosts(
 		if err != nil {
 			return arr, err
 		}
-		rows, err := DbInstance.Queryx(query, args...)
+		rows, err := globals.DbInstance.Queryx(query, args...)
 		if err != nil {
 			return arr, err
 		}
@@ -630,7 +630,7 @@ func ReadPosts(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Posts WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Posts WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
 		if err != nil {
 			return arr, err
 		}
@@ -663,7 +663,7 @@ func ReadVotes(
 		if err != nil {
 			return arr, err
 		}
-		rows, err := DbInstance.Queryx(query, args...)
+		rows, err := globals.DbInstance.Queryx(query, args...)
 		if err != nil {
 			return arr, err
 		}
@@ -684,7 +684,7 @@ func ReadVotes(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Votes WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Votes WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
 		if err != nil {
 			return arr, err
 		}
@@ -708,7 +708,7 @@ func ReadVotes(
 
 // func ReadVotes(Fingerprint api.Fingerprint) ([]api.Vote, error) {
 // 	var arr []api.Vote
-// 	rows, err := DbInstance.Queryx("SELECT * from Votes WHERE Fingerprint = ?", Fingerprint)
+// 	rows, err := globals.DbInstance.Queryx("SELECT * from Votes WHERE Fingerprint = ?", Fingerprint)
 // 	if err != nil {
 // 		logging.LogCrash(err)
 // 	}
@@ -747,7 +747,7 @@ func ReadAddresses(
 	// TODO: Split this into 3 functions, probably.
 	var arr []api.Address
 	if len(Location) > 0 && Port > 0 && maxResults == 0 { // Regular address search.
-		rows, err := DbInstance.Queryx("SELECT * from Addresses WHERE Location = ? AND Sublocation = ? AND Port = ?", Location, Sublocation, Port)
+		rows, err := globals.DbInstance.Queryx("SELECT * from Addresses WHERE Location = ? AND Sublocation = ? AND Port = ?", Location, Sublocation, Port)
 		if err != nil {
 			return arr, err
 		}
@@ -772,7 +772,7 @@ func ReadAddresses(
 		var err error
 		// You have to provide a addrtype, if you search for 0, that will find the nodes you haven't connected yet.
 		query = "SELECT * from Addresses WHERE AddressType = ? ORDER BY LocalArrival DESC LIMIT ? OFFSET ?"
-		rows, err = DbInstance.Queryx(query, addrType, maxResults, offset)
+		rows, err = globals.DbInstance.Queryx(query, addrType, maxResults, offset)
 		if err != nil {
 			return arr, err
 		}
@@ -800,7 +800,7 @@ func ReadAddresses(
 		} else {
 			endTs = endTimestamp
 		}
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Addresses WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTs)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Addresses WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTs)
 		if err != nil {
 			return arr, err
 		}
@@ -828,7 +828,7 @@ func ReadAddresses(
 // func ReadAddresses(Location api.Location,
 // 	Sublocation api.Location, Port uint16) ([]api.Address, error) {
 // 	var arr []api.Address
-// 	rows, err := DbInstance.Queryx("SELECT * from Addresses WHERE Location = ? AND Sublocation = ? AND Port = ?", Location, Sublocation, Port)
+// 	rows, err := globals.DbInstance.Queryx("SELECT * from Addresses WHERE Location = ? AND Sublocation = ? AND Port = ?", Location, Sublocation, Port)
 // 	if err != nil {
 // 		logging.LogCrash(err)
 // 	}
@@ -860,7 +860,7 @@ func ReadKeys(
 		if err != nil {
 			return arr, err
 		}
-		rows, err := DbInstance.Queryx(query, args...)
+		rows, err := globals.DbInstance.Queryx(query, args...)
 		if err != nil {
 			return arr, err
 		}
@@ -881,7 +881,7 @@ func ReadKeys(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from PublicKeys WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from PublicKeys WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
 		if err != nil {
 			return arr, err
 		}
@@ -905,7 +905,7 @@ func ReadKeys(
 
 // func ReadKeys(Fingerprint api.Fingerprint) ([]api.Key, error) {
 // 	var arr []api.Key
-// 	rows, err := DbInstance.Queryx("SELECT * from PublicKeys WHERE Fingerprint = ?", Fingerprint)
+// 	rows, err := globals.DbInstance.Queryx("SELECT * from PublicKeys WHERE Fingerprint = ?", Fingerprint)
 // 	if err != nil {
 // 		logging.LogCrash(err)
 // 	}
@@ -937,7 +937,7 @@ func ReadTruststates(
 		if err != nil {
 			return arr, err
 		}
-		rows, err := DbInstance.Queryx(query, args...)
+		rows, err := globals.DbInstance.Queryx(query, args...)
 		if err != nil {
 			return arr, err
 		}
@@ -958,7 +958,7 @@ func ReadTruststates(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := DbInstance.Queryx("SELECT DISTINCT * from Truststates WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Truststates WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
 		if err != nil {
 			return arr, err
 		}
@@ -983,7 +983,7 @@ func ReadTruststates(
 // func ReadTruststates(Fingerprint api.Fingerprint) (
 // 	[]api.Truststate, error) {
 // 	var arr []api.Truststate
-// 	rows, err := DbInstance.Queryx("SELECT * from Truststates WHERE Fingerprint = ?", Fingerprint)
+// 	rows, err := globals.DbInstance.Queryx("SELECT * from Truststates WHERE Fingerprint = ?", Fingerprint)
 // 	if err != nil {
 // 		logging.LogCrash(err)
 // 	}
@@ -1014,7 +1014,7 @@ func ReadDBCurrencyAddresses(KeyFingerprint api.Fingerprint,
 	var arr []DbCurrencyAddress
 	// If this query is without address (we want all addresses with that key fingerprint), change the query as such.
 	if Address == "" {
-		rows, err := DbInstance.Queryx("SELECT * from CurrencyAddresses WHERE KeyFingerprint = ?", KeyFingerprint)
+		rows, err := globals.DbInstance.Queryx("SELECT * from CurrencyAddresses WHERE KeyFingerprint = ?", KeyFingerprint)
 		if err != nil {
 			logging.LogCrash(err)
 		}
@@ -1027,7 +1027,7 @@ func ReadDBCurrencyAddresses(KeyFingerprint api.Fingerprint,
 			arr = append(arr, currencyAddress)
 		}
 	} else {
-		rows, err := DbInstance.Queryx("SELECT * from CurrencyAddresses WHERE KeyFingerprint = ? AND Address = ?", KeyFingerprint, Address)
+		rows, err := globals.DbInstance.Queryx("SELECT * from CurrencyAddresses WHERE KeyFingerprint = ? AND Address = ?", KeyFingerprint, Address)
 		if err != nil {
 			logging.LogCrash(err)
 		}
@@ -1051,7 +1051,7 @@ func ReadDBBoardOwners(BoardFingerprint api.Fingerprint,
 	var arr []DbBoardOwner
 	// If this query is without a key fingerprint (we want all addresses with that board fingerprint), change the query as such.
 	if KeyFingerprint == "" {
-		rows, err := DbInstance.Queryx("SELECT * from BoardOwners WHERE BoardFingerprint = ?", BoardFingerprint)
+		rows, err := globals.DbInstance.Queryx("SELECT * from BoardOwners WHERE BoardFingerprint = ?", BoardFingerprint)
 		if err != nil {
 			logging.LogCrash(err)
 		}
@@ -1064,7 +1064,7 @@ func ReadDBBoardOwners(BoardFingerprint api.Fingerprint,
 			arr = append(arr, boardOwner)
 		}
 	} else {
-		rows, err := DbInstance.Queryx("SELECT * from BoardOwners WHERE BoardFingerprint = ? AND KeyFingerprint = ?", BoardFingerprint, KeyFingerprint)
+		rows, err := globals.DbInstance.Queryx("SELECT * from BoardOwners WHERE BoardFingerprint = ? AND KeyFingerprint = ?", BoardFingerprint, KeyFingerprint)
 		if err != nil {
 			logging.LogCrash(err)
 		}
@@ -1084,7 +1084,7 @@ func ReadDBBoardOwners(BoardFingerprint api.Fingerprint,
 
 func ReadDBSubprotocols(Location api.Location, Sublocation api.Location, Port uint16) ([]DbSubprotocol, error) {
 	var fpArr []api.Fingerprint
-	rows, err := DbInstance.Queryx("SELECT * from AddressesSubprotocols WHERE AddressLocation = ? AND AddressSublocation = ? AND AddressPort = ?", Location, Sublocation, Port)
+	rows, err := globals.DbInstance.Queryx("SELECT * from AddressesSubprotocols WHERE AddressLocation = ? AND AddressSublocation = ? AND AddressPort = ?", Location, Sublocation, Port)
 	if err != nil {
 		logging.LogCrash(err)
 	}
@@ -1100,7 +1100,7 @@ func ReadDBSubprotocols(Location api.Location, Sublocation api.Location, Port ui
 	// For each fingerprint, get the matching subprotocol.
 	var subprotArr []DbSubprotocol
 	for _, val := range fpArr {
-		rows, err := DbInstance.Queryx("SELECT * from Subprotocols WHERE Fingerprint = ?", val)
+		rows, err := globals.DbInstance.Queryx("SELECT * from Subprotocols WHERE Fingerprint = ?", val)
 		if err != nil {
 			logging.LogCrash(err)
 		}

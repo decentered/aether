@@ -104,7 +104,7 @@ func Sync(a api.Address) error {
 		if err6 != nil {
 			logging.Log(1, fmt.Sprintf("Getting GET Endpoint for the entity type '%s' failed. Error: %s, Address: %#v", key, err6, a))
 		}
-		logging.Log(1, fmt.Sprintf("Response to be moved to the interface pack: %#v", resp))
+		logging.Log(2, fmt.Sprintf("Response to be moved to the interface pack: %#v", resp))
 		// Move the objects into an interface to prepare them to be committed.
 		iface := moveEntitiesToInterfacePack(&resp)
 		// Save the response to the database.

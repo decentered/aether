@@ -145,6 +145,7 @@ const (
 	defaultExternalIp                              = "0.0.0.0" // Localhost, if this is still 0.0.0.0 at any point in the future we failed at finding this out.
 	defaultExternalIpType                          = 4         // IPv4
 	defaultExternalPort                            = 49999
+	defaultDbEngine                                = "sqlite" // 'sqlite' or 'mysql'
 )
 
 // Default entity page sizes
@@ -289,9 +290,28 @@ Where we save the caches. This directory is given by the OS.
 ## Initialised
 Whether the configuration file is properly initialised. If this is false, the initialisation did not complete.
 
+## DbEngine
+DbEngine allows the user to choose the database they want to use. SQLite is better for local installations where the app stays running on a desktop machine. It is simple and fast. MySQL is better when there are multiple users on the same backend, and it's a lot more robust against concurrent accesses. The preferred MySQL implementation is MariaDB, but original MySQL should also work.
+
+Important: Do not forget that you have to create a DB called "aetherdb" in your preferred SQL engine with read/write access for the Username you give below.
+
+(I thought of making this an iota and saving the numbers in this slot instead of string, but then that would make other parts of the code harder to read, because a DbEngine named 0 gives no information about what db engine it is, and you'd need to refer to this file to understand. I'd rather be infinitesimally less efficient and require less human RAM to read.)
+
+## DbIP
+This is the IP of the SQL server, if not SQLite3. By default, it's 127.0.0.1.
+
+## DbPort
+Port of the SQL server, if not SQLite3. By default, it's 3306 (MySQL default port)
+
+## DbUsername
+DbUsername is the username of the account that has read/write access to the "aetherdb" database, if not SQLite3. By default it's "aether-app-db-access-user".
+
+## DbPassword
+The password of the DB user, if not SQLite3. By default it's "exventoveritas". It's highly recommended that you change this.
+
 */
 
-// Every time you add a new item here, please add getters, setters and to setdefaults method
+// Every time you add a new item here, please add getters, setters and to blankcheck method
 
 // Backend config base
 type BackendConfig struct {
@@ -331,7 +351,11 @@ type BackendConfig struct {
 	UserDirectory                           string
 	CachesDirectory                         string
 	Initialised                             bool // False by default, init to set true
-
+	DbEngine                                string
+	DbIp                                    string // Only applies to non-sqlite
+	DbPort                                  uint16 // Only applies to non-sqlite
+	DbUsername                              string // Only applies to non-sqlite
+	DbPassword                              string // Only applies to non-sqlite
 }
 
 // GETTERS AND SETTERS
@@ -660,7 +684,6 @@ func (config *BackendConfig) GetLastLiveAddressConnectionTimestamp() int64 {
 func (config *BackendConfig) GetInitialised() bool {
 	return config.Initialised
 }
-
 func (config *BackendConfig) GetServingSubprotocols() []SubprotocolShim {
 	for _, val := range config.ServingSubprotocols {
 		if len(val.SupportedEntities) == 0 {
@@ -678,7 +701,6 @@ func (config *BackendConfig) GetExternalIpType() uint8 {
 	log.Fatal("This should never happen." + trace())
 	return 0
 }
-
 func (config *BackendConfig) GetNodeId() string {
 	if len(config.NodeId) == 64 {
 		return config.NodeId
@@ -688,7 +710,6 @@ func (config *BackendConfig) GetNodeId() string {
 	log.Fatal("This should never happen." + trace())
 	return ""
 }
-
 func (config *BackendConfig) GetExternalPort() uint16 {
 	if config.ExternalPort < maxUint16 && config.ExternalPort > 0 {
 		return config.ExternalPort
@@ -708,7 +729,6 @@ func (config *BackendConfig) GetUserDirectory() string {
 	log.Fatal("This should never happen." + trace())
 	return ""
 }
-
 func (config *BackendConfig) GetCachesDirectory() string {
 	if len(config.CachesDirectory) < maxUint16 &&
 		len(config.CachesDirectory) > 0 {
@@ -719,6 +739,56 @@ func (config *BackendConfig) GetCachesDirectory() string {
 	log.Fatal("This should never happen." + trace())
 	return ""
 }
+func (config *BackendConfig) GetDbEngine() string {
+	if config.DbEngine == "sqlite" || config.DbEngine == "mysql" {
+		return config.DbEngine
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.DbEngine) + " Trace: " + trace()))
+	}
+	log.Fatal("This should never happen." + trace())
+	return ""
+}
+func (config *BackendConfig) GetDbIp() string {
+	if len(config.DbIp) < maxLocationSize &&
+		len(config.DbIp) > 0 {
+		return config.DbIp
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.DbIp) + " Trace: " + trace()))
+	}
+	log.Fatal("This should never happen." + trace())
+	return ""
+}
+func (config *BackendConfig) GetDbPort() uint16 {
+	if config.DbPort < maxUint16 && config.DbPort > 0 {
+		return config.DbPort
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.DbPort) + " Trace: " + trace()))
+	}
+	log.Fatal("This should never happen." + trace())
+	return 0
+}
+func (config *BackendConfig) GetDbUsername() string {
+	if len(config.DbUsername) < maxUint8 &&
+		len(config.DbUsername) > 0 {
+		return config.DbUsername
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.DbUsername) + " Trace: " + trace()))
+	}
+	log.Fatal("This should never happen." + trace())
+	return ""
+}
+func (config *BackendConfig) GetDbPassword() string {
+	if len(config.DbPassword) < maxUint8 &&
+		len(config.DbPassword) > 0 {
+		return config.DbPassword
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.DbPassword) + " Trace: " + trace()))
+	}
+	log.Fatal("This should never happen." + trace())
+	return ""
+}
+
+/*****************************************************************************/
 
 // Setters
 
@@ -1115,7 +1185,7 @@ func (config *BackendConfig) SetLoggingLevel(val int) error {
 	return nil
 }
 func (config *BackendConfig) SetExternalIp(val string) error {
-	if len(val) > 0 {
+	if len(val) > 0 && len(val) < maxLocationSize {
 		config.ExternalIp = val
 		commitErr := config.Commit()
 		if commitErr != nil {
@@ -1156,7 +1226,6 @@ func (config *BackendConfig) SetLastLiveAddressConnectionTimestamp(val int64) er
 	log.Fatal("This should never happen." + trace())
 	return nil
 }
-
 func (config *BackendConfig) SetInitialised(val bool) error {
 	config.Initialised = true
 	commitErr := config.Commit()
@@ -1165,7 +1234,6 @@ func (config *BackendConfig) SetInitialised(val bool) error {
 	}
 	return nil
 }
-
 func (config *BackendConfig) SetServingSubprotocols(subprotocols []interface{}) error {
 	var castSubprots []SubprotocolShim
 	for _, val := range subprotocols {
@@ -1182,7 +1250,6 @@ func (config *BackendConfig) SetServingSubprotocols(subprotocols []interface{}) 
 	}
 	return nil
 }
-
 func (config *BackendConfig) SetExternalIpType(val int) error {
 	if val == 6 || val == 4 || val == 3 {
 		config.ExternalIpType = uint8(val)
@@ -1197,7 +1264,6 @@ func (config *BackendConfig) SetExternalIpType(val int) error {
 	log.Fatal("This should never happen." + trace())
 	return nil
 }
-
 func (config *BackendConfig) SetNodeId(val string) error {
 	if len(val) == 64 {
 		config.NodeId = val
@@ -1212,7 +1278,6 @@ func (config *BackendConfig) SetNodeId(val string) error {
 	log.Fatal("This should never happen." + trace())
 	return nil
 }
-
 func (config *BackendConfig) SetExternalPort(val int) error {
 	if val > 0 && val < maxUint16 {
 		config.ExternalPort = uint16(val)
@@ -1227,7 +1292,6 @@ func (config *BackendConfig) SetExternalPort(val int) error {
 	log.Fatal("This should never happen." + trace())
 	return nil
 }
-
 func (config *BackendConfig) SetUserDirectory(val string) error {
 	if len(val) > 0 && len(val) < maxUint16 {
 		config.UserDirectory = val
@@ -1242,7 +1306,6 @@ func (config *BackendConfig) SetUserDirectory(val string) error {
 	log.Fatal("This should never happen." + trace())
 	return nil
 }
-
 func (config *BackendConfig) SetCachesDirectory(val string) error {
 	if len(val) > 0 && len(val) < maxUint16 {
 		config.CachesDirectory = val
@@ -1257,6 +1320,78 @@ func (config *BackendConfig) SetCachesDirectory(val string) error {
 	log.Fatal("This should never happen." + trace())
 	return nil
 }
+func (config *BackendConfig) SetDbEngine(val string) error {
+	if val == "mysql" || val == "sqlite" {
+		config.DbEngine = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + trace())
+	}
+	log.Fatal("This should never happen." + trace())
+	return nil
+}
+func (config *BackendConfig) SetDbIp(val string) error {
+	if len(val) > 0 && len(val) < maxLocationSize {
+		config.DbIp = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + trace())
+	}
+	log.Fatal("This should never happen." + trace())
+	return nil
+}
+func (config *BackendConfig) SetDbPort(val int) error {
+	if val > 0 && val < maxUint16 {
+		config.DbPort = uint16(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + trace())
+	}
+	log.Fatal("This should never happen." + trace())
+	return nil
+}
+func (config *BackendConfig) SetDbUsername(val string) error {
+	if len(val) > 0 && len(val) < maxUint8 {
+		config.DbUsername = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + trace())
+	}
+	log.Fatal("This should never happen." + trace())
+	return nil
+}
+func (config *BackendConfig) SetDbPassword(val string) error {
+	if len(val) > 0 && len(val) < maxUint8 {
+		config.DbPassword = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + trace())
+	}
+	log.Fatal("This should never happen." + trace())
+	return nil
+}
+
+/*****************************************************************************/
 
 // BlankCheck looks at all variables and if it finds they're at their zero value, sets the default value for it. This is a guard against a new item being added to the config store as a result of a version update, but it being zero value. If a zero'd value is found, we change it to its default before anything else happens. This also effectively runs at the first pass to set the defaults.
 
@@ -1389,13 +1524,28 @@ func (config *BackendConfig) BlankCheck() {
 		config.SetNodeId(rndHash)
 	}
 	if len(config.UserDirectory) == 0 {
-		config.SetUserDirectory(cdir.New("Air Labs", "Aether").QueryFolders(cdir.Global)[0].Path)
+		config.SetUserDirectory(cdir.New(Btc.OrgIdentifier, Btc.AppIdentifier).QueryFolders(cdir.Global)[0].Path)
 	}
 	if len(config.CachesDirectory) == 0 {
-		config.SetCachesDirectory(cdir.New("Air Labs", "Aether").QueryCacheFolder().Path)
+		config.SetCachesDirectory(cdir.New(Btc.OrgIdentifier, Btc.AppIdentifier).QueryCacheFolder().Path)
 	}
 	if !config.Initialised {
 		config.SetInitialised(true)
+	}
+	if len(config.DbEngine) == 0 {
+		config.SetDbEngine("sqlite")
+	}
+	if len(config.DbIp) == 0 {
+		config.SetDbIp("127.0.0.1")
+	}
+	if config.DbPort == 0 {
+		config.SetDbPort(3306)
+	}
+	if len(config.DbUsername) == 0 {
+		config.SetDbUsername("aether-app-db-access-user")
+	}
+	if len(config.DbPassword) == 0 {
+		config.SetDbPassword("exventoveritas")
 	}
 
 }
@@ -1439,6 +1589,10 @@ func (config *BackendConfig) SanityCheck() {
 		config.GetLastLiveAddressConnectionTimestamp()
 		config.GetServingSubprotocols()
 		config.GetNodeId()
+		config.GetDbEngine()
+		config.GetDbIp()
+		config.GetDbPort()
+		config.GetDbPassword()
 	}
 }
 
@@ -1446,6 +1600,9 @@ func (config *BackendConfig) SanityCheck() {
 Commit saves the file to memory. This is usually called after a Set operation.
 */
 func (config *BackendConfig) Commit() error {
+	if Btc.PermConfigReadOnly {
+		return nil
+	}
 	var mu sync.Mutex
 	mu.Lock()
 	defer mu.Unlock()
@@ -1453,7 +1610,7 @@ func (config *BackendConfig) Commit() error {
 	if err3 != nil {
 		log.Fatal(fmt.Sprintf("JSON marshaler encountered an error while marshaling this config into JSON. Config: %#v, Error: %#v", config, err3))
 	}
-	configDirs := cdir.New("Air Labs", "Aether")
+	configDirs := cdir.New(Btc.OrgIdentifier, Btc.AppIdentifier)
 	folders := configDirs.QueryFolders(cdir.Global)
 	err := folders[0].WriteFile("backend_config.json", confAsByte)
 	if err != nil {
@@ -1532,8 +1689,13 @@ func (config *FrontendConfig) SetUserKeyPair(val *ecdsa.PrivateKey) error {
 	return nil
 }
 
-func (config *FrontendConfig) SetInitialised(val bool) {
+func (config *FrontendConfig) SetInitialised(val bool) error {
 	config.Initialised = val
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
 }
 
 // Frontend config methods
@@ -1562,6 +1724,9 @@ func (config *FrontendConfig) SanityCheck() {
 Commit saves the file to memory. This is usually called after a Set operation.
 */
 func (config *FrontendConfig) Commit() error {
+	if Ftc.PermConfigReadOnly {
+		return nil
+	}
 	var mu sync.Mutex
 	mu.Lock()
 	defer mu.Unlock()
@@ -1569,7 +1734,7 @@ func (config *FrontendConfig) Commit() error {
 	if err3 != nil {
 		log.Fatal(fmt.Sprintf("JSON marshaler encountered an error while marshaling this config into JSON. Config: %#v, Error: %#v", config, err3))
 	}
-	configDirs := cdir.New("Air Labs", "Aether")
+	configDirs := cdir.New(Btc.OrgIdentifier, Btc.AppIdentifier)
 	folders := configDirs.QueryFolders(cdir.Global)
 	err := folders[0].WriteFile("frontend_config.json", confAsByte)
 	if err != nil {
@@ -1592,39 +1757,88 @@ func (config *FrontendConfig) Cycle() error {
 /*
 EstablishBackendConfig establishes the connection with the config file, and makes it available as an object to the rest of the application.
 */
-func EstablishBackendConfig() (BackendConfig, error) {
+func EstablishBackendConfig() (*BackendConfig, error) {
 	var config BackendConfig
-	configDirs := cdir.New("Air Labs", "Aether")
+	configDirs := cdir.New(Btc.OrgIdentifier, Btc.AppIdentifier)
 	folder := configDirs.QueryFolderContainsFile("backend_config.json")
 	if folder != nil {
 		configJson, _ := folder.ReadFile("backend_config.json")
 		err := json.Unmarshal(configJson, &config)
 		if err != nil || fmt.Sprintf("%#v", string(configJson)) == "\"{}\"" {
-			return config, errors.New(fmt.Sprintf("Back-end configuration file is corrupted. Please fix the configuration file, or delete it. If deleted a new configuration will be generated with default values. Error: %#v, ConfigJson: %#v", err, string(configJson)))
+			return &config, errors.New(fmt.Sprintf("Back-end configuration file is corrupted. Please fix the configuration file, or delete it. If deleted a new configuration will be generated with default values. Error: %#v, ConfigJson: %#v", err, string(configJson)))
 		}
 	}
 	// Folder is nil - the configuration file in question does not exist. Ask to create.
 	config.BlankCheck()
 	config.SanityCheck()
-	return config, nil
+	return &config, nil
 }
 
 /*
 EstablishFrontendConfig establishes the connection with the config file, and makes it available as an object to the rest of the application.
 */
-func EstablishFrontendConfig() (FrontendConfig, error) {
+func EstablishFrontendConfig() (*FrontendConfig, error) {
 	var config FrontendConfig
-	configDirs := cdir.New("Air Labs", "Aether")
+	configDirs := cdir.New(Btc.OrgIdentifier, Btc.AppIdentifier)
 	folder := configDirs.QueryFolderContainsFile("frontend_config.json")
 	if folder != nil {
 		configJson, _ := folder.ReadFile("frontend_config.json")
 		err := json.Unmarshal(configJson, &config)
 		if err != nil || fmt.Sprintf("%#v", string(configJson)) == "\"{}\"" {
-			return config, errors.New(fmt.Sprintf("Front-end configuration file is corrupted. Please fix the configuration file, or delete it. If deleted a new configuration will be generated with default values. Error: %#v, ConfigJson: %#v", err, string(configJson)))
+			return &config, errors.New(fmt.Sprintf("Front-end configuration file is corrupted. Please fix the configuration file, or delete it. If deleted a new configuration will be generated with default values. Error: %#v, ConfigJson: %#v", err, string(configJson)))
 		}
 	}
 	// Folder is nil - the configuration file in question does not exist. Ask to create.
 	config.BlankCheck()
 	config.SanityCheck()
-	return config, nil
+	return &config, nil
+}
+
+// TRANSIENT CONFIG
+
+// These are the items that are set in runtime, and do not change until the application closes. This is different from the application state in the way that they're set-once for the runtime.
+
+// These do not have getters and setters.
+
+var Btc BackendTransientConfig
+var Ftc FrontendTransientConfig
+
+// Backend
+
+/*
+#### NONCOMMITTED ITEMS
+
+## PermConfigReadOnly
+When enabled, this prevents anything from saved into the config. This value itself is NOT saved into the config, so when the application restarts, this value is reset to false. This is useful in the case that you provide flags to the executable, but you don't want the values in the flags to be permanently saved into the config file. Any flags being provided into the executable will set this to true, therefore any runs with flags will effectively treat the config as read-only.
+
+## AppIdentifier
+This is the name of the app as registered to the operating system. This is useful to have here, because what we can do is
+*/
+
+type BackendTransientConfig struct {
+	PermConfigReadOnly bool
+	AppIdentifier      string
+	OrgIdentifier      string
+	PrintToStdout      bool
+}
+
+// Set transient backend config defaults
+
+func (config *BackendTransientConfig) SetDefaults() {
+	config.PermConfigReadOnly = false
+	config.AppIdentifier = "Aether"
+	config.OrgIdentifier = "Air Labs"
+	config.PrintToStdout = false
+}
+
+// Frontend
+
+type FrontendTransientConfig struct {
+	PermConfigReadOnly bool
+}
+
+// Set transient frontend config defaults
+
+func (config *FrontendTransientConfig) SetDefaults() {
+	config.PermConfigReadOnly = false
 }

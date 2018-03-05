@@ -10,8 +10,18 @@ import (
 	"aether-core/services/globals"
 	"aether-core/services/logging"
 	"errors"
+	"runtime"
 	"time"
 )
+
+func trace() string {
+	pc := make([]uintptr, 15)
+	n := runtime.Callers(2, pc)
+	frames := runtime.CallersFrames(pc[:n])
+	frame, _ := frames.Next()
+	result := fmt.Sprintf("%s,:%d %s", frame.File, frame.Line, frame.Function)
+	return result
+}
 
 // Node is a non-communicating entity that holds the LastCheckin timestamps of each of the entities provided in the remote node. There is no way to send this data over to somebody, this is entirely local. There is also no batch processing because there is no situation in which you would need to insert multiple nodes at the same time (since you won't be connecting to multiple nodes simultaneously)
 func InsertNode(n DbNode) error {
@@ -21,7 +31,7 @@ func InsertNode(n DbNode) error {
 	if api.Fingerprint(globals.BackendConfig.GetNodeId()) == n.Fingerprint {
 		return errors.New(fmt.Sprintf("The node ID that was attempted to be inserted is the SAME AS the local node's ID. This could be an attempted attack. Node ID of the remote: %s", n.Fingerprint))
 	}
-	tx, err := DbInstance.Beginx()
+	tx, err := globals.DbInstance.Beginx()
 	if err != nil {
 		return err
 	}
@@ -65,7 +75,7 @@ func InsertOrUpdateAddress(a api.Address) error {
 	// 	// If this unit does have empty identity fields, we pass on adding it to the database.
 	// 	logging.Log(err3)
 	// }
-	tx, err4 := DbInstance.Beginx()
+	tx, err4 := globals.DbInstance.Beginx()
 	if err4 != nil {
 		logging.LogCrash(err4)
 	}
@@ -85,7 +95,15 @@ func InsertOrUpdateAddress(a api.Address) error {
 		addressSubprot.AddressPort = addressPack.Address.Port
 		addressSubprot.SubprotocolFingerprint = dbSubprot.Fingerprint
 		// Insert the constructed entity into the junction table.
-		_, err7 := tx.NamedExec(addressSubprotocolInsert, addressSubprot)
+		var inserter string
+		if globals.BackendConfig.GetDbEngine() == "mysql" {
+			inserter = addressSubprotocolInsertMySQL
+		} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
+			inserter = addressSubprotocolInsertSQLite
+		} else {
+			logging.LogCrash(fmt.Sprintf("Db Engine type not recognised. Trace: %#v", trace()))
+		}
+		_, err7 := tx.NamedExec(inserter, addressSubprot)
 		if err7 != nil {
 			logging.LogCrash(err7)
 		}
@@ -101,15 +119,15 @@ func InsertOrUpdateAddress(a api.Address) error {
 // TODO: Should this take a pointer instead? It's dealing with some big amounts of data.
 // BatchInsert insert a set of objects in a batch as a transaction.
 func BatchInsert(apiObjects []interface{}) error {
-	logging.Log(2, "Batch insert starting.")
-	defer logging.Log(2, "Batch insert is complete.")
+	logging.Log(1, "Batch insert starting.")
+	defer logging.Log(1, "Batch insert is complete.")
 	numberOfObjectsCommitted := len(apiObjects)
 	logging.Log(2, fmt.Sprintf("%v objects are being committed.", numberOfObjectsCommitted))
 
 	start := time.Now()
 	// fmt.Printf("%#v\n", apiObjects)
 	// Begin transaction.
-	tx, err := DbInstance.Beginx()
+	tx, err := globals.DbInstance.Beginx()
 	if err != nil {
 		logging.LogCrash(err)
 	}
@@ -124,13 +142,13 @@ func BatchInsert(apiObjects []interface{}) error {
 		err2 := enforceNoEmptyIdentityFields(dbo)
 		if err2 != nil {
 			// If this unit does have empty identity fields, we pass on adding it to the database.
-			logging.Log(1, err2)
+			logging.Log(2, err2)
 			continue
 		}
 		err3 := enforceNoEmptyRequiredFields(dbo)
 		if err3 != nil {
 			// If this unit does have empty identity fields, we pass on adding it to the database.
-			logging.Log(1, err3)
+			logging.Log(2, err3)
 			continue
 		}
 		switch dbObject := dbo.(type) {
@@ -175,12 +193,28 @@ func BatchInsert(apiObjects []interface{}) error {
 				}
 			}
 		case DbThread:
-			_, err := tx.NamedExec(threadInsert, dbObject)
+			var inserter string
+			if globals.BackendConfig.GetDbEngine() == "mysql" {
+				inserter = threadInsertMySQL
+			} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
+				inserter = threadInsertSQLite
+			} else {
+				logging.LogCrash(fmt.Sprintf("Db Engine type not recognised. Trace: %#v", trace()))
+			}
+			_, err := tx.NamedExec(inserter, dbObject)
 			if err != nil {
 				logging.LogCrash(err)
 			}
 		case DbPost:
-			_, err := tx.NamedExec(postInsert, dbObject)
+			var inserter string
+			if globals.BackendConfig.GetDbEngine() == "mysql" {
+				inserter = postInsertMySQL
+			} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
+				inserter = postInsertSQLite
+			} else {
+				logging.LogCrash(fmt.Sprintf("Db Engine type not recognised. Trace: %#v", trace()))
+			}
+			_, err := tx.NamedExec(inserter, dbObject)
 			if err != nil {
 				logging.LogCrash(err)
 			}
@@ -206,7 +240,15 @@ func BatchInsert(apiObjects []interface{}) error {
 			dbObject.Address.ClientVersionMinor = 0
 			dbObject.Address.ClientVersionPatch = 0
 			dbObject.Address.ClientName = ""
-			_, err := tx.NamedExec(addressInsert, dbObject.Address)
+			var inserter string
+			if globals.BackendConfig.GetDbEngine() == "mysql" {
+				inserter = addressInsertMySQL
+			} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
+				inserter = addressInsertSQLite
+			} else {
+				logging.LogCrash(fmt.Sprintf("Db Engine type not recognised. Trace: %#v", trace()))
+			}
+			_, err := tx.NamedExec(inserter, dbObject.Address)
 			if err != nil {
 				logging.LogCrash(err)
 			}
@@ -257,7 +299,7 @@ func BatchInsert(apiObjects []interface{}) error {
 		return err
 	}
 	elapsed := time.Since(start)
-	logging.Log(2, fmt.Sprintf("It took %v to insert %v objects.", elapsed, numberOfObjectsCommitted))
+	logging.Log(1, fmt.Sprintf("It took %v to insert %v objects.", elapsed.Round(time.Millisecond), numberOfObjectsCommitted))
 	return nil
 }
 
@@ -315,7 +357,7 @@ func packShouldBeCommitted(pack interface{}) bool {
 func getBoardOwnersBeforeTx(boardFingerprint api.Fingerprint) ([]DbBoardOwner, error) {
 	var boardBoardOwnersBeforeTx []DbBoardOwner
 	// Fetch all Board BoardOwners of this board that is already in database.
-	rowsOfBoardOwnersBeforeTx, err := DbInstance.Queryx("SELECT * from BoardOwners WHERE BoardFingerprint = ?", boardFingerprint)
+	rowsOfBoardOwnersBeforeTx, err := globals.DbInstance.Queryx("SELECT * from BoardOwners WHERE BoardFingerprint = ?", boardFingerprint)
 	if err != nil {
 		return boardBoardOwnersBeforeTx, err
 	}
@@ -336,7 +378,7 @@ func getBoardOwnersBeforeTx(boardFingerprint api.Fingerprint) ([]DbBoardOwner, e
 func getCurrencyAddressesBeforeTx(keyFingerprint api.Fingerprint) ([]DbCurrencyAddress, error) {
 	var currencyAddressesBeforeTx []DbCurrencyAddress
 	// Fetch all currency addresses of this key that is already in database.
-	rowsOfCurrencyAddressesBeforeTx, err := DbInstance.Queryx("SELECT * from CurrencyAddresses WHERE KeyFingerprint = ?", keyFingerprint)
+	rowsOfCurrencyAddressesBeforeTx, err := globals.DbInstance.Queryx("SELECT * from CurrencyAddresses WHERE KeyFingerprint = ?", keyFingerprint)
 	if err != nil {
 		return currencyAddressesBeforeTx, err
 	}

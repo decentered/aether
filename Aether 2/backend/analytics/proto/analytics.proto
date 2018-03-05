@@ -1,0 +1,118 @@
+// Metrics Protobufs
+
+syntax = "proto3";
+
+package metrics;
+
+service Metrics {
+  rpc SendIntro(Intro) returns (Ack) {}
+  //rpc SendCurrentObjectSet(ObjectSet) returns (Ack) {}
+  rpc RequestMetricsToken(Identifier) returns (MetricsToken) {}
+  rpc DeliverMetrics(Metrics) returns (MetricsDeliveryResponse) {}
+  rpc DeliverArrivingEntityFingerprints(Fingerprints) returns (InboundEntityFingerprintResponse) {}
+}
+
+// Empty responses
+message MetricsDeliveryResponse {}
+message DeliverArrivingEntityFingerprints {}
+
+
+message Identifier {
+  string nodeId = 1;
+  MetricsToken metricsToken = 2;
+  repeated Protocol protocols = 3;
+  Client client = 4;
+  int32 externalPort = 5;
+}
+
+message Client {
+  string name = 1;
+  int32 versionMajor = 2;
+  int32 versionMinor = 3;
+  int32 versionPatch = 4;
+}
+
+message Protocol {
+  string name = 1;
+  int32 versionMajor = 2;
+  int32 versionMinor = 3;
+  repeated string supportedEntities = 4;
+}
+
+message MetricsToken {
+  string token = 1;
+}
+
+message Fingerprints {
+  repeated EntityFingerprint entityFingerprints = 1;
+}
+
+message EntityFingerprint {
+  string entityType = 1;
+  string entityFingerprint = 2;
+}
+
+message Metrics {
+  Identifier identifier = 1;
+  Persistence persistence = 2;
+  Network network = 3;
+  Node node = 4;
+  Validation validation = 5;
+  Frontend frontend = 6;
+  reserved 10 to 15;
+
+  message Persistence {
+    int64 currentDatabaseSize = 1;
+    int64 currentCacheSsize = 2;
+    repeated EntityFingerprint arrivedEntitiesSinceLastMetrics = 3; // this should be its own method
+    repeated EntityFingerprint orphans = 4;
+  }
+
+  message Network {
+    // inbound / outbound / static / live bandwitdth consumption
+    // currently online nodes
+    // last inbound / outbound connection timestamp
+    // connection failures
+  }
+
+  message Node {
+    // System uptime
+    // satrtup shutdown notification
+    // is the node tracking head
+    // is this node behind a router
+  }
+
+  message Validation {
+    // invalid data failed validation. check
+  }
+
+  message Frontend {
+    // all page loads
+    // all user actions
+
+  }
+}
+
+
+///
+
+message Intro {
+  string nodeId = 1;
+  string localIp = 2;
+  string localPort = 3;
+}
+
+message Ack {
+  string message = 1;
+}
+
+message Obj {
+  string objectType = 1;
+  string objectId = 2;
+}
+
+message ObjectSet {
+  Intro intro = 1;
+  repeated Obj objects = 2;
+  int64 timestamp = 3;
+}
