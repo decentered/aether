@@ -44,14 +44,31 @@ func enforceReadValidity(
 	beginTimestamp api.Timestamp,
 	endTimestamp api.Timestamp) error {
 	valid := false
-	if beginTimestamp == 0 && endTimestamp == 0 && len(fingerprints) > 0 {
-		// This is a fingerprints search.
-		valid = true
-	} else if (beginTimestamp != 0 || endTimestamp != 0) &&
-		len(fingerprints) == 0 {
-		// If begin and end timestamps are not both zero, this is a time range search.
+	/*
+		IF:
+			A: BeginTS blank AND EndTS blank AND fingerprint filter extant: GOOD. Fingerprint search.
+
+			B: BeginTS OR EndTS is blank (or both are not), and fingerprint filter blank: GOOD. One-way bounded  or two-way bounded time range search.
+
+			C: All fields are blank: GOOD. Time range search where BeginTS is last cache generation timestamp or network head.
+
+			D: Anything else: BAD.
+	*/
+
+	if (beginTimestamp == 0 && endTimestamp == 0 && len(fingerprints) > 0) ||
+		((beginTimestamp != 0 || endTimestamp != 0) && len(fingerprints) == 0) ||
+		(beginTimestamp == 0 && endTimestamp == 0 && len(fingerprints) == 0) {
 		valid = true
 	}
+
+	// if beginTimestamp == 0 && endTimestamp == 0 && len(fingerprints) > 0 {
+	// 	// This is a fingerprints search.
+	// 	valid = true
+	// } else if (beginTimestamp != 0 || endTimestamp != 0) &&
+	// 	len(fingerprints) == 0 {
+	// 	// If begin and end timestamps are not both zero, this is a time range search.
+	// 	valid = true
+	// }
 	if !valid {
 		return errors.New(fmt.Sprintf("You can either search for a time range, or for fingerprint(s). You can't do both or neither at the same time - you have to do one. Asked fingerprints: %#v, BeginTimestamp: %s, EndTimestamp: %s", fingerprints, beginTimestamp, endTimestamp))
 	}
@@ -72,10 +89,16 @@ func sanitiseTimeRange(
 	}
 	// Internal processing starts.
 
-	// If beginTimestamp is older than our last cache, start from the end of the last cache. If there are no caches, lastCache will be 0 and this will return everything in the database.
+	// If beginTimestamp is older than our last cache, start from the end of the last cache.
 	if beginTimestamp < api.Timestamp(globals.BackendConfig.GetLastCacheGenerationTimestamp()) {
 		beginTimestamp = api.Timestamp(globals.BackendConfig.GetLastCacheGenerationTimestamp())
 		endTimestamp = now // Because, in thecase of begin 3 and end 5, begin going to 145000000 will make begin much bigger than end. Prevent that by moving the end also.
+	}
+	if beginTimestamp == 0 {
+		// If there are no caches, lastCache will be 0 and this will return everything in the database. To prevent this, we limit the results to the duration of the network head.
+		nhd := globals.BackendConfig.GetNetworkHeadDays()
+		delta := time.Duration(nhd) * time.Hour * 24
+		beginTimestamp = api.Timestamp(time.Now().Add(-delta).Unix())
 	}
 	//If beginTimestamp is in the future, return error.
 	if beginTimestamp > now {

@@ -6,6 +6,7 @@ package upnp
 import (
 	"aether-core/services/globals"
 	"aether-core/services/logging"
+	"aether-core/services/ports"
 	"fmt"
 	extUpnp "github.com/NebulousLabs/go-upnp"
 )
@@ -14,6 +15,12 @@ import (
 // var err error
 
 func MapPort() {
+	// First, make sure that the port we want to map is actually available on the local machine. This call below will make sure that it is, and if it is not, the port in memory will be replaced with something that it is.
+
+	// This gating is important because this is supposed to run repeatedly. What will happen if this is not gated is that it will run at the first shot, but when the server binds to this port permanently, it will start to return 'port not available' and skip to a new port. If that happens, it will start to tell the wrong port to the network.
+	if !globals.BackendTransientConfig.ExternalPortVerified {
+		ports.VerifyExternalPort()
+	}
 	router, err := extUpnp.Discover()
 	if err != nil {
 		// Either could not be found, or connected to the internet directly.

@@ -20,6 +20,13 @@ import (
 	"time"
 )
 
+// Config interface, so that we can actually have methods that take either frontend or backend config.
+
+type Config interface {
+	BlankCheck()
+	SanityCheck()
+}
+
 /*
 This package handles any data that gets saved to the user profile. This is important because everything that does not get saved into the database gets saved into this. Also important is this is where we allow multiple users to use the same database.
 */
@@ -139,7 +146,7 @@ const (
 	defaultTLSHandshakeTimeout                     = 1 * time.Second
 	defaultPingerPageSize                          = 100
 	defaultOnlineAddressFinderPageSize             = 99
-	defaultDispatchExclusionExpiryForLiveAddress   = 5 * time.Minute
+	defaultDispatchExclusionExpiryForLiveAddress   = 5 * time.Second // this is normally minute TODO
 	defaultDispatchExclusionExpiryForStaticAddress = 72 * time.Hour
 	defaultPowStrength                             = 20
 	defaultExternalIp                              = "0.0.0.0" // Localhost, if this is still 0.0.0.0 at any point in the future we failed at finding this out.
@@ -356,6 +363,8 @@ type BackendConfig struct {
 	DbPort                                  uint16 // Only applies to non-sqlite
 	DbUsername                              string // Only applies to non-sqlite
 	DbPassword                              string // Only applies to non-sqlite
+	MetricsLevel                            uint8  // 0: no metrics transmitted
+	MetricsToken                            string // If metrics level is not zero, metrics token is the anonymous identifier for the metrics server. Resetting this to 0 makes this node behave like a new node as far as metrics go, but if you don't want metrics to be collected, you can set it through the application or set the metrics level to zero in the JSON settings file.
 }
 
 // GETTERS AND SETTERS
@@ -626,7 +635,7 @@ func (config *BackendConfig) GetOnlineAddressFinderPageSize() int {
 	return 0
 }
 func (config *BackendConfig) GetDispatchExclusionExpiryForLiveAddress() time.Duration {
-	if config.DispatchExclusionExpiryForLiveAddress >= 1*time.Minute { // Any value under is probably an attack.
+	if config.DispatchExclusionExpiryForLiveAddress >= 1*time.Microsecond { // Any value under is probably an attack. TODO THIS IS NORMALLY A MINUTE
 		return config.DispatchExclusionExpiryForLiveAddress
 	} else {
 		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.DispatchExclusionExpiryForLiveAddress) + " Trace: " + trace()))
@@ -783,6 +792,27 @@ func (config *BackendConfig) GetDbPassword() string {
 		return config.DbPassword
 	} else {
 		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.DbPassword) + " Trace: " + trace()))
+	}
+	log.Fatal("This should never happen." + trace())
+	return ""
+}
+
+func (config *BackendConfig) GetMetricsLevel() uint8 {
+	if config.MetricsLevel == 0 || config.MetricsLevel == 1 { // 0: no metrics, 1: anonymous metrics
+		return config.MetricsLevel
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.MetricsLevel) + " Trace: " + trace()))
+	}
+	log.Fatal("This should never happen." + trace())
+	return 0
+}
+
+func (config *BackendConfig) GetMetricsToken() string {
+	if len(config.MetricsToken) < 65 &&
+		len(config.MetricsToken) >= 0 {
+		return config.MetricsToken
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.MetricsToken) + " Trace: " + trace()))
 	}
 	log.Fatal("This should never happen." + trace())
 	return ""
@@ -1143,7 +1173,7 @@ func (config *BackendConfig) SetOnlineAddressFinderPageSize(val int) error {
 	return nil
 }
 func (config *BackendConfig) SetDispatchExclusionExpiryForLiveAddress(val time.Duration) error {
-	if val >= 1*time.Minute { // Any value under is probably an attack.
+	if val >= 1*time.Microsecond { // TODO THIS IS NORMALLY A MINUTE Any value under is probably an attack.
 		config.DispatchExclusionExpiryForLiveAddress = val
 		commitErr := config.Commit()
 		if commitErr != nil {
@@ -1391,6 +1421,36 @@ func (config *BackendConfig) SetDbPassword(val string) error {
 	return nil
 }
 
+func (config *BackendConfig) SetMetricsLevel(val int) error {
+	if val == 0 || val == 1 {
+		config.MetricsLevel = uint8(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + trace())
+	}
+	log.Fatal("This should never happen." + trace())
+	return nil
+}
+
+func (config *BackendConfig) SetMetricsToken(val string) error {
+	if len(val) >= 0 && len(val) < 65 {
+		config.MetricsToken = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + trace())
+	}
+	log.Fatal("This should never happen." + trace())
+	return nil
+}
+
 /*****************************************************************************/
 
 // BlankCheck looks at all variables and if it finds they're at their zero value, sets the default value for it. This is a guard against a new item being added to the config store as a result of a version update, but it being zero value. If a zero'd value is found, we change it to its default before anything else happens. This also effectively runs at the first pass to set the defaults.
@@ -1547,6 +1607,8 @@ func (config *BackendConfig) BlankCheck() {
 	if len(config.DbPassword) == 0 {
 		config.SetDbPassword("exventoveritas")
 	}
+	// ::MetricsLevel: can be zero, no need to blank check.
+	// ::MetricsToken: can be zero, no need to blank check.
 
 }
 
@@ -1593,6 +1655,8 @@ func (config *BackendConfig) SanityCheck() {
 		config.GetDbIp()
 		config.GetDbPort()
 		config.GetDbPassword()
+		config.GetMetricsLevel()
+		config.GetMetricsToken()
 	}
 }
 
@@ -1654,8 +1718,10 @@ func (config *BackendConfig) setDefaultEntityPageSizes() {
 
 // Frontend config base
 type FrontendConfig struct {
-	UserKeyPair []byte
-	Initialised bool // False by default, init to set true
+	UserKeyPair  []byte
+	Initialised  bool   // False by default, init to set true
+	MetricsLevel uint8  // 0: no metrics transmitted
+	MetricsToken string // If metrics level is not zero, metrics token is the anonymous identifier for the metrics server. Resetting this to 0 makes this node behave like a new node as far as metrics go, but if you don't want metrics to be collected, you can set it through the application or set the metrics level to zero in the JSON settings file.
 }
 
 // Getters and setters
@@ -1673,6 +1739,29 @@ func (config *FrontendConfig) GetUserKeyPair() *ecdsa.PrivateKey {
 func (config *FrontendConfig) GetInitialised() bool {
 	return config.Initialised
 }
+
+func (config *FrontendConfig) GetMetricsLevel() uint8 {
+	if config.MetricsLevel == 0 || config.MetricsLevel == 1 { // 0: no metrics, 1: anonymous metrics
+		return config.MetricsLevel
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.MetricsLevel) + " Trace: " + trace()))
+	}
+	log.Fatal("This should never happen." + trace())
+	return 0
+}
+
+func (config *FrontendConfig) GetMetricsToken() string {
+	if len(config.MetricsToken) < 65 &&
+		len(config.MetricsToken) >= 0 {
+		return config.MetricsToken
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.MetricsToken) + " Trace: " + trace()))
+	}
+	log.Fatal("This should never happen." + trace())
+	return ""
+}
+
+/*****************************************************************************/
 
 // Setters
 
@@ -1698,6 +1787,38 @@ func (config *FrontendConfig) SetInitialised(val bool) error {
 	return nil
 }
 
+func (config *FrontendConfig) SetMetricsLevel(val int) error {
+	if val == 0 || val == 1 {
+		config.MetricsLevel = uint8(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + trace())
+	}
+	log.Fatal("This should never happen." + trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetMetricsToken(val string) error {
+	if len(val) >= 0 && len(val) < 65 {
+		config.MetricsToken = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + trace())
+	}
+	log.Fatal("This should never happen." + trace())
+	return nil
+}
+
+/*****************************************************************************/
+
 // Frontend config methods
 
 func (config *FrontendConfig) BlankCheck() {
@@ -1708,15 +1829,16 @@ func (config *FrontendConfig) BlankCheck() {
 	if !config.Initialised {
 		config.SetInitialised(true)
 	}
-
-	//config.MarshaledPubKey = hex.EncodeToString(elliptic.Marshal(elliptic.P521(), privKey.PublicKey.X, privKey.PublicKey.Y))
-
+	// ::MetricsLevel: can be zero, no need to blank check.
+	// ::MetricsToken: can be zero, no need to blank check.
 }
 func (config *FrontendConfig) SanityCheck() {
 	if !config.GetInitialised() {
 		log.Fatal("Frontend configuration is not initialised. Please initialise it before use.")
 	} else {
 		config.GetUserKeyPair()
+		config.GetMetricsLevel()
+		config.GetMetricsToken()
 	}
 }
 
@@ -1751,6 +1873,8 @@ func (config *FrontendConfig) Cycle() error {
 	}
 	return nil
 }
+
+/*****************************************************************************/
 
 // 3) CONFIG METHODS
 
@@ -1794,6 +1918,8 @@ func EstablishFrontendConfig() (*FrontendConfig, error) {
 	return &config, nil
 }
 
+/*****************************************************************************/
+
 // TRANSIENT CONFIG
 
 // These are the items that are set in runtime, and do not change until the application closes. This is different from the application state in the way that they're set-once for the runtime.
@@ -1812,29 +1938,43 @@ var Ftc FrontendTransientConfig
 When enabled, this prevents anything from saved into the config. This value itself is NOT saved into the config, so when the application restarts, this value is reset to false. This is useful in the case that you provide flags to the executable, but you don't want the values in the flags to be permanently saved into the config file. Any flags being provided into the executable will set this to true, therefore any runs with flags will effectively treat the config as read-only.
 
 ## AppIdentifier
-This is the name of the app as registered to the operating system. This is useful to have here, because what we can do is
+This is the name of the app as registered to the operating system. This is useful to have here, because what we can do is we can vary this number in the swarm testing (petridish) and each of these nodes will act like a network in a single local machine, each with their own databases and different config files.
+
+## OrgIdentifier
+Same as above, but it's probably best to keep it under the same org name just to keep the local machine clean.
+
+## PrintToStdout
+This is useful because the logging things the normal kind does not pass the output to the swarm test orchestrator. This flag being enabled routes the logs to stdout so that the orchestrator can show it.
+
+## MetricsDebugMode
+This being enabled temporarily makes this node send much more detailed metrics more frequently, so that network connectivity issues can be debugged. This is a transient config on purpose, so that this cannot be enabled permanently. If a frontend connects to a backend with debug mode enabled, it has to show a warning to its user that says this backend node has debugging enabled, and only connect if the user agrees. Mind that the backend doesn't have to be truthful about whether it has the debug mode on. Having this mode on does not immediately compromise the frontend's privacy / identity, but the longer the frontend stays on that backend and the more actions a user commits, the higher the likelihood.
+
+## ExternalPortVerified
+Whether the port that was in the config was actually checked to be free and clear. This is important because we'll check once before the server starts to run, and when it starts, that port will no longer be available, and will start to return 'not available'. That will make all subsequent checks fail and that will trigger the port to be moved to a port that is free - but not bound to any server, since the server is bound to the old port, and that in fact is the reason the checks return false.
 */
 
 type BackendTransientConfig struct {
-	PermConfigReadOnly bool
-	AppIdentifier      string
-	OrgIdentifier      string
-	PrintToStdout      bool
+	PermConfigReadOnly   bool
+	AppIdentifier        string
+	OrgIdentifier        string
+	PrintToStdout        bool
+	MetricsDebugMode     bool
+	TooManyConnections   bool
+	ExternalPortVerified bool
 }
 
-// Set transient backend config defaults
+// Set transient backend config defaults. Only need to set defaults that are not the type default.
 
 func (config *BackendTransientConfig) SetDefaults() {
-	config.PermConfigReadOnly = false
 	config.AppIdentifier = "Aether"
 	config.OrgIdentifier = "Air Labs"
-	config.PrintToStdout = false
 }
 
 // Frontend
 
 type FrontendTransientConfig struct {
 	PermConfigReadOnly bool
+	MetricsDebugMode   bool
 }
 
 // Set transient frontend config defaults

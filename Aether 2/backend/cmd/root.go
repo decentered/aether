@@ -141,6 +141,11 @@ func establishConfigs(cmd *cobra.Command) flags {
 		globals.BackendConfig.SetExternalIp(flgs.externalIp.value.(string))
 	}
 	globals.BackendTransientConfig.PrintToStdout = flgs.printToStdout.value.(bool)
+	globals.BackendTransientConfig.MetricsDebugMode = flgs.metricsDebugMode.value.(bool)
+	if flgs.appName.changed {
+		// Also change the client name so that the name change communicates out into the analytics server when under orchestrate test harness. This is different than AppIdentifier which determines the folders that the node saves to the local drive.
+		globals.BackendConfig.SetClientName(flgs.appName.value.(string))
+	}
 	// Set up the DB Instance so that we get access to the database.
 	if globals.BackendConfig.GetDbEngine() == "sqlite" {
 		globals.DbInstance = sqlx.MustConnect(
@@ -176,16 +181,19 @@ type flag struct {
 
 // Struct for flags. When there's a new flag, add it here.
 type flags struct {
-	loggingLevel  flag // int
-	orgName       flag // string
-	appName       flag // string
-	port          flag // int
-	externalIp    flag // string
-	bootstrapIp   flag
-	bootstrapPort flag
-	bootstrapType flag
-	syncAndQuit   flag
-	printToStdout flag
+	loggingLevel     flag // int
+	orgName          flag // string
+	appName          flag // string
+	port             flag // int
+	externalIp       flag // string
+	bootstrapIp      flag // string
+	bootstrapPort    flag // int
+	bootstrapType    flag // int
+	syncAndQuit      flag // bool
+	printToStdout    flag // bool
+	metricsDebugMode flag // bool
+	swarmPlan        flag // string
+	killTimeout      flag // int
 	// Flags will be all lowercase in terminal input, heads up.
 }
 
@@ -269,6 +277,30 @@ func renderFlags(cmd *cobra.Command) flags {
 	}
 	fl.printToStdout.value = so
 	fl.printToStdout.changed = cmd.Flags().Changed("printtostdout")
+
+	dm, err11 := cmd.Flags().GetBool("metricsdebugmode")
+	if err11 != nil && !strings.Contains(
+		err11.Error(), "flag accessed but not defined") {
+		logging.LogCrash(err11)
+	}
+	fl.metricsDebugMode.value = dm
+	fl.metricsDebugMode.changed = cmd.Flags().Changed("metricsdebugmode")
+
+	sp, err12 := cmd.Flags().GetString("swarmplan")
+	if err12 != nil && !strings.Contains(
+		err12.Error(), "flag accessed but not defined") {
+		logging.LogCrash(err12)
+	}
+	fl.swarmPlan.value = sp
+	fl.swarmPlan.changed = cmd.Flags().Changed("swarmplan")
+
+	kt, err13 := cmd.Flags().GetInt("killtimeout")
+	if err13 != nil && !strings.Contains(
+		err13.Error(), "flag accessed but not defined") {
+		logging.LogCrash(err13)
+	}
+	fl.killTimeout.value = kt
+	fl.killTimeout.changed = cmd.Flags().Changed("killtimeout")
 
 	return fl
 }

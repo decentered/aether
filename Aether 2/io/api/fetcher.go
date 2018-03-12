@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/fatih/color"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -194,6 +195,7 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 					", Location: ", location))
 		} else {
 			fmt.Println("Fatal error in api.Fetch. Quitting.")
+			fmt.Println(err)
 			logging.LogCrash(err)
 		}
 	}
@@ -206,13 +208,16 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 		}
 		return body, nil
 	} else {
+		fmt.Println("FULL LINK IN FETCH FOR THIS FAILED REQUEST:")
+		fmt.Println(fullLink)
 		return []byte{}, errors.New(
 			fmt.Sprint(
 				"Non-200 status code returned from Fetch. Received status code: ", resp.StatusCode,
 				", Host: ", host,
 				", Subhost: ", subhost,
 				", Port: ", port,
-				", Location: ", location))
+				", Location: ", location,
+				", Method: ", method))
 	}
 	return []byte{}, errors.New("This should never have happened.")
 }
@@ -236,6 +241,10 @@ func GetPageRaw(host string, subhost string, port uint16, location string, metho
 				", Location: ", location))
 	}
 	// Map over everything you have.
+	if method == "POST" {
+		color.Red("We're made a POST request and this was its body:")
+		color.Cyan(fmt.Sprintf("%#v", string(postBody)))
+	}
 	return apiresp, nil
 }
 

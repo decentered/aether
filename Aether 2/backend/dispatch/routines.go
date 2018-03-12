@@ -63,10 +63,8 @@ func Sync(a api.Address) error {
 	}
 	// FULLY TRUSTED ADDRESS ENTRY
 	// Anything here will be committed in and will write over existing data, since all of this data is either coming from a first-party remote, or from the client.
-	err3 := persistence.InsertOrUpdateAddress(addr)
-	if err3 != nil {
-		return err3
-	}
+	addrs := []api.Address{addr}
+	persistence.InsertOrUpdateAddresses(&addrs)
 
 	// - Check if there is a record of this node in the nodes table. If not so, create and commit.
 	var n persistence.DbNode
@@ -122,12 +120,24 @@ func Sync(a api.Address) error {
 			//  {"type":"timestamp", "values": ["0", "1483641920"]}
 			//  ]
 			// which allows us to filter. But if you create an empty request for POST to an entity endpoint, it will give you all the entities for that endpoint since the last cache generation, automatically. There are no filters required for that kind of query.
+
+			// But before anything, we need to create the mapping for the endpoint URLs.
+			endpointsMap := map[string]string{
+				"boards":      "c0/boards",
+				"threads":     "c0/threads",
+				"posts":       "c0/posts",
+				"votes":       "c0/votes",
+				"keys":        "c0/keys",
+				"truststates": "c0/truststates",
+				"addresses":   "addresses",
+			}
+
 			apiReq := responsegenerator.GeneratePrefilledApiResponse()
 			reqAsJson, jsonErr := responsegenerator.ConvertApiResponseToJson(apiReq)
 			if jsonErr != nil {
 				return jsonErr
 			}
-			postApiResp, err7 := api.GetPageRaw(string(a.Location), string(a.Sublocation), a.Port, key, "POST", reqAsJson) // Raw call instead of regular one because we need access to the inbound remote timestamp.
+			postApiResp, err7 := api.GetPageRaw(string(a.Location), string(a.Sublocation), a.Port, endpointsMap[key], "POST", reqAsJson) // Raw call instead of regular one because we need access to the inbound remote timestamp.
 			if err7 != nil {
 				return errors.New(fmt.Sprintf("Getting POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", key, err7))
 			}
@@ -135,7 +145,10 @@ func Sync(a api.Address) error {
 			postResp = api.InsertApiResponseToResponse(postResp, postApiResp)
 			// Now, check if this is an one-page response, or links to another location for a cache hit.
 			if len(postResp.CacheLinks) > 0 { // This response needed more than one page, so the remote split it into multiple pages, and saved it to a cache.
-				postResultResp, err8 := api.GetCache(string(a.Location), string(a.Sublocation), a.Port, postResp.CacheLinks[0].ResponseUrl) // There is only one if it's a prepared request.
+				fmt.Println("THese are the cache links we received.")
+				fmt.Println(postResp.CacheLinks)
+				// We're adding /responses/ because that's where the singular responses will be.
+				postResultResp, err8 := api.GetCache(string(a.Location), string(a.Sublocation), a.Port, fmt.Sprintf("responses/%s", postResp.CacheLinks[0].ResponseUrl)) // There is only one if it's a prepared request.
 				if err8 != nil {
 					return errors.New(fmt.Sprintf("Getting Multi page POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", key, err8))
 				}
@@ -256,6 +269,7 @@ func Check(a api.Address) (api.Address, bool, api.ApiResponse, error) {
 		addr.LocationType = 4
 	}
 	addr.Port = a.Port
+	// todo: lastonline should have its own logic for static
 	addr.LastOnline = api.Timestamp(time.Now().Unix())
 	// fmt.Printf("Resulting address at the end of the check process %#v", addr)
 	// Addr is the container for the newly obtained address data.

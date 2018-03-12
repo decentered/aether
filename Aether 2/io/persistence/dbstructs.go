@@ -263,7 +263,6 @@ func APItoDB(object interface{}) (interface{}, error) {
 		return dbObj, nil
 
 	case api.Address:
-		// Corner case, parsing protocol extensions into single field.
 		var dbObj DbAddress
 		dbObj.Location = obj.Location
 		dbObj.Sublocation = obj.Sublocation
@@ -273,26 +272,12 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.LastOnline = obj.LastOnline
 		dbObj.ProtocolVersionMajor = obj.Protocol.VersionMajor
 		dbObj.ProtocolVersionMinor = obj.Protocol.VersionMinor
-		// for _, protExt := range obj.Protocol.Extensions {
-		// 	// Convert to comma separated list.
-		// 	if len(dbObj.ProtocolExtensions) == 0 {
-		// 		dbObj.ProtocolExtensions = string(protExt)
-		// 	} else {
-		// 		dbObj.ProtocolExtensions = fmt.Sprint(
-		// 			dbObj.ProtocolExtensions, ",", protExt)
-		// 	}
-		// }
 		dbObj.ClientVersionMajor = obj.Client.VersionMajor
 		dbObj.ClientVersionMinor = obj.Client.VersionMinor
 		dbObj.ClientVersionPatch = obj.Client.VersionPatch
 		dbObj.ClientName = obj.Client.ClientName
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
-		// parsedStr, err := parseStringSliceToCommaSeparatedString(obj.Protocol.Extensions, 64, 100)
-		// if err != nil {
-		// 	return dbObj, err
-		// }
-		// dbObj.ProtocolExtensions = parsedStr
 		var ap AddressPack
 		ap.Address = dbObj
 		// Loop over subprotocols and insert to pack.

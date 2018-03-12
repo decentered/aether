@@ -23,7 +23,6 @@ import (
 
 // GeneratePrefilledApiResponse constructs the basic ApiResponse and fills it with the data about the local machine.
 func GeneratePrefilledApiResponse() *api.ApiResponse {
-	// TODO MOVE THESE TO CONFIG
 	subprotsAsShims := globals.BackendConfig.GetServingSubprotocols()
 	subprotsSupported := []api.Subprotocol{}
 	for _, val := range subprotsAsShims {
@@ -32,6 +31,7 @@ func GeneratePrefilledApiResponse() *api.ApiResponse {
 	var resp api.ApiResponse
 	resp.NodeId = api.Fingerprint(globals.BackendConfig.GetNodeId())
 	resp.Address.LocationType = globals.BackendConfig.GetExternalIpType()
+	resp.Address.Type = 2 // This is a live node.
 	resp.Address.Port = uint16(globals.BackendConfig.GetExternalPort())
 	resp.Address.Protocol.VersionMajor = globals.BackendConfig.GetProtocolVersionMajor()
 	resp.Address.Protocol.VersionMinor = globals.BackendConfig.GetProtocolVersionMinor()
@@ -703,7 +703,7 @@ func bakeFinalApiResponse(resultPages *[]api.ApiResponse) (*api.ApiResponse, err
 		}
 		// Generate the responses directory if doesn't exist. Add the expiry date to the folder name to be searched for.
 		foldername := fmt.Sprint(generateExpiryTimestamp(), "_", dirname)
-		responsedir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/statics/responses/", foldername)
+		responsedir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/responses/", foldername)
 		os.MkdirAll(responsedir, 0755)
 		var jsons [][]byte
 		// For each response, number it, set timestamps etc. And save to disk.
@@ -774,6 +774,8 @@ func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) 
 		resp = *finalResponse
 		// resp.Endpoint = "entity"
 	case "addresses": // Addresses can't do address search by loc/subloc/port. Only time search is available, since addresses don't have fingerprints defined.
+		fmt.Println("we've gotten an address request with the filters:")
+		fmt.Println(filters)
 		addresses, dbError := persistence.ReadAddresses("", "", 0, filters.TimeStart, filters.TimeEnd, 0, 0, 0)
 		var localData api.Response
 		localData.Addresses = addresses

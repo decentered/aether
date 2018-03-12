@@ -9,6 +9,7 @@ import (
 	"aether-core/io/persistence"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
+	"aether-core/services/ports"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,9 +21,9 @@ import (
 
 // Server responds to GETs with the caches and to POSTS with the live data from the database.
 func Serve() {
-	http.HandleFunc("/responses/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/v0/responses/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			dir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/statics", r.URL.Path)
+			dir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), r.URL.Path)
 			w.Header().Set("Content-Type", "application/json")
 			http.ServeFile(w, r, dir)
 		} else { // If not GET we bail.
@@ -71,7 +72,6 @@ func Serve() {
 
 		} else if r.Method == "POST" {
 			switch r.URL.Path {
-
 			case "/v0/node", "/v0/node/":
 				resp, err := NodePOST(r)
 				if err != nil {
@@ -144,7 +144,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/c0/addresses", "/v0/c0/addresses/":
+			case "/v0/addresses", "/v0/addresses/":
 				resp, err := AddressesPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -169,21 +169,25 @@ func Serve() {
 				}
 
 			default:
+				logging.Log(1, fmt.Sprintf("A remote reached out to this node with a request that this node does not have a route for. The requested route: %s, The node requesting: %v", r.URL.Path, r.Body))
 				w.WriteHeader(http.StatusNotFound)
 			}
 		} else { // If not GET or POST, we bail.
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
+	// Make sure the port we are about to get is actually free, and if not so, change it back to one that is free and update the user config appropriately.
+	ports.VerifyExternalPort()
 	port := globals.BackendConfig.GetExternalPort()
 	logging.Log(1, fmt.Sprintf("Serving setup complete. Starting to serve publicly on port %d", port))
-	http.ListenAndServe(fmt.Sprint("127.0.0.1", ":", port), nil)
+	http.ListenAndServe(fmt.Sprint(":", port), nil)
 }
 
 // MaybeSaveRemote checks if the database has data about the remote that is reaching out. If not, save a new address.
 func MaybeSaveRemote(req api.ApiResponse) {
 	// We don't insert the node, only the address. Because the remote data is untrustable.
-	persistence.InsertOrUpdateAddress(req.Address)
+	addrs := []api.Address{req.Address}
+	persistence.InsertOrUpdateAddresses(&addrs)
 }
 
 // insertLocallySourcedRemoteAddressDetails Inserts the locally sourced data about the remote into the address entity that is coming with the POST request.

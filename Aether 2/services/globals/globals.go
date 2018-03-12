@@ -6,6 +6,7 @@
 package globals
 
 import (
+	pb "aether-core/backend/metrics/proto"
 	"aether-core/services/configstore"
 	"github.com/jmoiron/sqlx"
 	"time"
@@ -22,8 +23,6 @@ Why is this an interface instead of api.Address? Because I can't import address 
 var DispatcherExclusions map[*interface{}]time.Time
 var StopLiveDispatcherCycle chan bool
 var StopStaticDispatcherCycle chan bool
-var StopMatureCacheGenerationCycle chan bool
-var StopImmatureCacheGenerationCycle chan bool
 var StopAddressScannerCycle chan bool
 var StopUPNPCycle chan bool
 var StopCacheGenerationCycle chan bool
@@ -38,3 +37,4 @@ var BackendConfig *configstore.BackendConfig
 var BackendTransientConfig *configstore.BackendTransientConfig
 
 var DbInstance *sqlx.DB
+var CurrentMetricsPage pb.Metrics

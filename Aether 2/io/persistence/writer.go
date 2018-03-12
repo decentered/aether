@@ -7,10 +7,13 @@ import (
 	"aether-core/io/api"
 	"fmt"
 	// _ "github.com/mattn/go-sqlite3"
+	"aether-core/backend/metrics"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
 	"errors"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -43,22 +46,46 @@ func InsertNode(n DbNode) error {
 	if err3 != nil {
 		return err3
 	}
+	nodeAsMap := make(map[string]string)
+	nodeAsMap["Fingerprint"] = string(n.Fingerprint)
+	nodeAsMap["BoardsLastCheckin"] = strconv.Itoa(int(n.BoardsLastCheckin))
+	nodeAsMap["ThreadsLastCheckin"] = strconv.Itoa(int(n.ThreadsLastCheckin))
+	nodeAsMap["PostsLastCheckin"] = strconv.Itoa(int(n.PostsLastCheckin))
+	nodeAsMap["VotesLastCheckin"] = strconv.Itoa(int(n.VotesLastCheckin))
+	nodeAsMap["KeysLastCheckin"] = strconv.Itoa(int(n.KeysLastCheckin))
+	nodeAsMap["TruststatesLastCheckin"] = strconv.Itoa(int(n.TruststatesLastCheckin))
+	nodeAsMap["AddressesLastCheckin"] = strconv.Itoa(int(n.AddressesLastCheckin))
+	metrics.CollateMetrics("NodeInsertionsSinceLastMetricsDbg", nodeAsMap)
+	client, conn := metrics.StartConnection()
+	defer conn.Close()
+	metrics.SendMetrics(client)
 	return nil
 }
 
-// InsertOrUpdateAddresses is the multi-entry of the core function InsertOrUpdateAddress.
+// InsertOrUpdateAddresses is the multi-entry of the core function InsertOrUpdateAddress. This is the only public API, and it should be used exclusively, because this is where we have the connection retry logic that we need.
 func InsertOrUpdateAddresses(a *[]api.Address) {
 	addresses := *a
 	for i, _ := range addresses {
-		err := InsertOrUpdateAddress(addresses[i])
+		err := insertOrUpdateAddress(addresses[i])
 		if err != nil {
 			logging.Log(1, err)
+			if strings.Contains(err.Error(), "Database was locked") {
+				logging.Log(1, "This transaction was not committed because database was locked. We'll wait 10 seconds and retry the transaction.")
+				time.Sleep(10 * time.Second)
+				logging.Log(1, "Retrying the previously failed InsertOrUpdateAddresses transaction.")
+				err2 := insertOrUpdateAddress(addresses[i])
+				if err2 != nil {
+					logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
+				} else { // If the reattempted transaction succeeds
+					logging.Log(1, "The retry attempt of the failed transaction succeeded.")
+				}
+			}
 		}
 	}
 }
 
-// InsertOrUpdateAddress is the ONLY way to update an address in the database. Be very careful with this, careless use of this function can result in entry of untrusted data from the remotes into the local database. The only legitimate use of this is to put in the details of nodes that this local machine has personally connected to.
-func InsertOrUpdateAddress(a api.Address) error {
+// insertOrUpdateAddress is the ONLY way to update an address in the database. Be very careful with this, careless use of this function can result in entry of untrusted data from the remotes into the local database. The only legitimate use of this is to put in the details of nodes that this local machine has personally connected to.
+func insertOrUpdateAddress(a api.Address) error {
 	addressPackAsInterface, err := APItoDB(a)
 	addressPack := addressPackAsInterface.(AddressPack)
 	if err != nil {
@@ -110,15 +137,44 @@ func InsertOrUpdateAddress(a api.Address) error {
 	}
 	err8 := tx.Commit()
 	if err8 != nil {
+		logging.Log(1, fmt.Sprintf("InsertOrUpdateAddress encountered an error when trying to commit to the database. Error is: %s", err8))
+		/*
+			Surprisingly enough, the 10 second wait solves the 'database is locked' issue when the app is improperly closed and SQLite was in the middle of a transaction. This type of DB is locked happens because at the beginning of the app SQLite is actually repairing the database using the hot journal. For some reason, attempting to write to the database while that is in progress seems to disrupt the repair and restarts it, so if you have no timeout, what will happen is that your thing will breathlessly try 5 times and then fail, giving exactly zero time for SQLite to repair.
+
+			Ideally, this would not be an issue if SQLite could communicate some form of 'WAIT I'm doing something'. But that goes into the territory of queues and SQLite has expressly decided to not provide queues, so we have to approximate here.
+		*/
+		if strings.Contains(err8.Error(), "database is locked") {
+			logging.Log(1, fmt.Sprintf("This database seems to be locked. We'll sleep 10 seconds to give it the time it needs to recover. This mostly happens when the app has crashed and there is a hot journal - and SQLite is in the process of repairing the database. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY."))
+			return errors.New("Database was locked. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY.")
+		}
 		return err8
 	}
 	return nil
 }
 
+// This is where we capture DB errors like 'DB is locked' and take action, such as retrying.
+func BatchInsert(apiObjects []interface{}) error {
+	err := batchInsert(apiObjects)
+	if err != nil {
+		if strings.Contains(err.Error(), "Database was locked") {
+			logging.Log(1, "This transaction was not committed because database was locked. We'll wait 10 seconds and retry the transaction.")
+			time.Sleep(10 * time.Second)
+			logging.Log(1, "Retrying the previously failed BatchInsert transaction.")
+			err2 := batchInsert(apiObjects)
+			if err2 != nil {
+				logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
+			} else { // If the reattempted transaction succeeds
+				logging.Log(1, "The retry attempt of the failed transaction succeeded.")
+			}
+		}
+	}
+	return err
+}
+
 // TODO: Mind that any errors happening within the transaction, if they need to bail from the transaction, they need to close it! otherwise you get database is locked.
 // TODO: Should this take a pointer instead? It's dealing with some big amounts of data.
 // BatchInsert insert a set of objects in a batch as a transaction.
-func BatchInsert(apiObjects []interface{}) error {
+func batchInsert(apiObjects []interface{}) error {
 	logging.Log(1, "Batch insert starting.")
 	defer logging.Log(1, "Batch insert is complete.")
 	numberOfObjectsCommitted := len(apiObjects)
@@ -296,10 +352,26 @@ func BatchInsert(apiObjects []interface{}) error {
 	}
 	err = tx.Commit()
 	if err != nil {
+		logging.Log(1, fmt.Sprintf("BatchInsert encountered an error when trying to commit to the database. Error is: %s", err))
+		/*
+			Surprisingly enough, the 10 second wait solves the 'database is locked' issue when the app is improperly closed and SQLite was in the middle of a transaction. This type of DB is locked happens because at the beginning of the app SQLite is actually repairing the database using the hot journal. For some reason, attempting to write to the database while that is in progress seems to disrupt the repair and restarts it, so if you have no timeout, what will happen is that your thing will breathlessly try 5 times and then fail, giving exactly zero time for SQLite to repair.
+
+			Ideally, this would not be an issue if SQLite could communicate some form of 'WAIT I'm doing something'. But that goes into the territory of queues and SQLite has expressly decided to not provide queues, so we have to approximate here.
+		*/
+		if strings.Contains(err.Error(), "database is locked") {
+			logging.Log(1, fmt.Sprintf("This database seems to be locked. We'll sleep 10 seconds to give it the time it needs to recover. This mostly happens when the app has crashed and there is a hot journal - and SQLite is in the process of repairing the database. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY."))
+			return errors.New("Database was locked. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY.")
+		}
 		return err
 	}
 	elapsed := time.Since(start)
 	logging.Log(1, fmt.Sprintf("It took %v to insert %v objects.", elapsed.Round(time.Millisecond), numberOfObjectsCommitted))
+	if len(apiObjects) > 0 {
+		metrics.CollateMetrics("ArrivedEntitiesSinceLastMetricsDbg", apiObjects)
+		client, conn := metrics.StartConnection()
+		defer conn.Close()
+		metrics.SendMetrics(client)
+	}
 	return nil
 }
 

@@ -76,15 +76,15 @@ func startSchedules() {
 	logging.Log(1, "Setting up cyclical tasks is starting.")
 	defer logging.Log(1, "Setting up cyclical tasks is complete.")
 	// The dispatcher that seeks live nodes runs every minute.
-	globals.StopLiveDispatcherCycle = scheduling.Schedule(func() { dispatch.Dispatcher(2) }, 1*time.Second)
+	globals.StopLiveDispatcherCycle = scheduling.ScheduleRepeat(func() { dispatch.Dispatcher(2) }, 10*time.Second)
 	// The dispatcher that seeks static nodes runs every hour.
-	globals.StopStaticDispatcherCycle = scheduling.Schedule(func() { dispatch.Dispatcher(255) }, 1*time.Minute)
+	globals.StopStaticDispatcherCycle = scheduling.ScheduleRepeat(func() { dispatch.Dispatcher(255) }, 10*time.Minute)
 	// Address scanner goes through all prior unconnected addresses and attempts to connect to them to establish a relationship.
-	globals.StopAddressScannerCycle = scheduling.Schedule(func() { dispatch.AddressScanner() }, 6*time.Hour)
+	globals.StopAddressScannerCycle = scheduling.ScheduleRepeat(func() { dispatch.AddressScanner() }, 6*time.Hour)
 	// UPNP tries to port map every 10 minutes.
-	globals.StopUPNPCycle = scheduling.Schedule(func() { upnp.MapPort() }, 10*time.Minute)
+	globals.StopUPNPCycle = scheduling.ScheduleRepeat(func() { upnp.MapPort() }, 10*time.Minute)
 	// Attempt cache generation every hour, but it will be pre-empted if the last cache generation is less than 23 hours old, so that this will run effectively every day, only.
-	globals.StopCacheGenerationCycle = scheduling.Schedule(func() { responsegenerator.GenerateCaches() }, 1*time.Hour)
+	globals.StopCacheGenerationCycle = scheduling.ScheduleRepeat(func() { responsegenerator.GenerateCaches() }, 1*time.Hour)
 
 	// time.AfterFunc(5*time.Second, func() {
 	// })
@@ -102,11 +102,11 @@ func startSchedules() {
 	//  if mature {
 	//    // If the node is mature, stop the immature cycle and start the mature.
 	//    logging.Log(1, "The local node is as of now mature. Stopping the maturity check scheduling and starting the cache generation schedule")
-	//    globals.StopMatureCacheGenerationCycle = scheduling.Schedule(func() { responsegenerator.GenerateCaches() }, 6*time.Hour)
+	//    globals.StopMatureCacheGenerationCycle = scheduling.ScheduleRepeat(func() { responsegenerator.GenerateCaches() }, 6*time.Hour)
 	//    globals.StopImmatureCacheGenerationCycle <- true
 	//  }
 	// }
-	// globals.StopImmatureCacheGenerationCycle = scheduling.Schedule(maturityChecker, 5*time.Minute)
+	// globals.StopImmatureCacheGenerationCycle = scheduling.ScheduleRepeat(maturityChecker, 5*time.Minute)
 
 }
 
@@ -117,6 +117,7 @@ func shutdown() {
 	globals.StopStaticDispatcherCycle <- true
 	globals.StopAddressScannerCycle <- true
 	globals.StopUPNPCycle <- true
+	globals.StopCacheGenerationCycle <- true
 	// mature, err := persistence.LocalNodeIsMature()
 	// if err != nil {
 	//  logging.LogCrash(err)

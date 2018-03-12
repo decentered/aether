@@ -445,7 +445,6 @@ var boardOwnerDelete = `DELETE FROM BoardOwners WHERE BoardFingerprint = :BoardF
 Main difference between MySQL and SQLite: it seems that MySQL prefers 'INSERT IGNORE' and SQLite prefers 'INSERT OR IGNORE'. It's a minor difference, but apparently it causes them to break, so we have to have different copies for mysql and sqlite.
 
 All immutables below have MySQL and SQLite versions.
-
 */
 
 // Immutable
