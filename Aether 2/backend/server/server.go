@@ -9,7 +9,6 @@ import (
 	"aether-core/io/persistence"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
-	"aether-core/services/ports"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,7 +38,7 @@ func Serve() {
 
 			case "/v0/status", "/v0/status/":
 				// Status GET endpoint returns HTTP 200 only if the node is up, and 429 Too Many Requests if the node is being overloaded.
-				if globals.TooManyConnections {
+				if globals.BackendTransientConfig.TooManyConnections {
 					w.WriteHeader(http.StatusTooManyRequests)
 				} else {
 					w.WriteHeader(http.StatusOK)
@@ -176,11 +175,13 @@ func Serve() {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
-	// Make sure the port we are about to get is actually free, and if not so, change it back to one that is free and update the user config appropriately.
-	ports.VerifyExternalPort()
 	port := globals.BackendConfig.GetExternalPort()
 	logging.Log(1, fmt.Sprintf("Serving setup complete. Starting to serve publicly on port %d", port))
-	http.ListenAndServe(fmt.Sprint(":", port), nil)
+
+	err := http.ListenAndServe(fmt.Sprint(":", port), nil)
+	if err != nil {
+		logging.LogCrash(fmt.Sprintf("Server encountered a fatal error.", err))
+	}
 }
 
 // MaybeSaveRemote checks if the database has data about the remote that is reaching out. If not, save a new address.

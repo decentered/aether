@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/fatih/color"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -86,6 +85,9 @@ func InsertApiResponseToResponse(response Response, apiresp ApiResponse) Respons
 	response.VoteIndexes = apiresp.ResponseBody.VoteIndexes
 	response.Votes = apiresp.ResponseBody.Votes
 	response.CacheLinks = apiresp.Results
+	if response.MostRecentSourceTimestamp < apiresp.Timestamp {
+		response.MostRecentSourceTimestamp = apiresp.Timestamp
+	}
 	return response
 }
 
@@ -118,6 +120,9 @@ func concatResponses(response Response, response2 Response) Response {
 		response.VoteIndexes, response2.VoteIndexes...)
 	response.Votes = append(
 		response.Votes, response2.Votes...)
+	if response.MostRecentSourceTimestamp < response2.MostRecentSourceTimestamp {
+		response.MostRecentSourceTimestamp = response2.MostRecentSourceTimestamp
+	}
 	return response
 }
 
@@ -154,6 +159,7 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 		fullLink = fmt.Sprint(
 			"http://", host, ":", strconv.Itoa(int(port)), "/v0/", location) // TODO: Move to HTTPS after that portion goes live.
 	}
+	logging.Log(2, fmt.Sprintf("Fetch is being called for the URL: %s", fullLink))
 	// TODO: When we have the local profile, the v0 should be coming from the appropriate version number. Constant for the time being.
 	var err error
 	var resp *http.Response
@@ -190,6 +196,20 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 			return []byte{}, errors.New(
 				fmt.Sprint(
 					"I/O timeout. Host:", host,
+					", Subhost: ", subhost,
+					", Port: ", port,
+					", Location: ", location))
+		} else if strings.Contains(err.Error(), "connection reset by peer") {
+			return []byte{}, errors.New(
+				fmt.Sprint(
+					"Connection reset by peer. Host:", host,
+					", Subhost: ", subhost,
+					", Port: ", port,
+					", Location: ", location))
+		} else if strings.Contains(err.Error(), "EOF") {
+			return []byte{}, errors.New(
+				fmt.Sprint(
+					"The remote crashed or shutting down. Host:", host,
 					", Subhost: ", subhost,
 					", Port: ", port,
 					", Location: ", location))
@@ -242,8 +262,7 @@ func GetPageRaw(host string, subhost string, port uint16, location string, metho
 	}
 	// Map over everything you have.
 	if method == "POST" {
-		color.Red("We're made a POST request and this was its body:")
-		color.Cyan(fmt.Sprintf("%#v", string(postBody)))
+		logging.Log(1, fmt.Sprintf("We've made a POST request to the endpoint %s and this was its body: %#v", location, string(postBody)))
 	}
 	return apiresp, nil
 }
@@ -343,6 +362,8 @@ func GetEndpoint(host string, subhost string, port uint16, endpoint string, last
 	var response Response
 	// Get raw page, because we need to access index links.
 	result, err := getIndexOfEndpoint(host, subhost, port, epAddress)
+	// Map the timestamp of the index onto the response we're generating, in case we might not have any caches (this can happen if our internal timestamp for this cache is newer than the last cache's timestamp.)
+	response.MostRecentSourceTimestamp = result.MostRecentSourceTimestamp
 	indexes := result.CacheLinks
 	if err != nil {
 		return response, errors.New(

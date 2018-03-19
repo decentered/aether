@@ -748,6 +748,20 @@ func bakeFinalApiResponse(resultPages *[]api.ApiResponse) (*api.ApiResponse, err
 	return resp, nil
 }
 
+// sanitiseOutboundAddresses removes untrusted address data from the addresses destined to go out of this node. The remote node will also remove it, but there is no reason to leak information unnecessarily.
+func sanitiseOutboundAddresses(addrsPtr *[]api.Address) *[]api.Address {
+	addrs := *addrsPtr
+	for key, _ := range addrs {
+		addrs[key].LocationType = 0
+		addrs[key].Type = 0
+		addrs[key].LastOnline = 0
+		addrs[key].Protocol = api.Protocol{}
+		addrs[key].Protocol.Subprotocols = []api.Subprotocol{}
+		addrs[key].Client = api.Client{}
+	}
+	return &addrs
+}
+
 // GeneratePOSTResponse creates a response that is directly returned to a custom request by the remote.
 func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) {
 	var resp api.ApiResponse
@@ -774,9 +788,12 @@ func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) 
 		resp = *finalResponse
 		// resp.Endpoint = "entity"
 	case "addresses": // Addresses can't do address search by loc/subloc/port. Only time search is available, since addresses don't have fingerprints defined.
-		fmt.Println("we've gotten an address request with the filters:")
-		fmt.Println(filters)
-		addresses, dbError := persistence.ReadAddresses("", "", 0, filters.TimeStart, filters.TimeEnd, 0, 0, 0)
+		/*
+			An addresses POST response returns results within the time boundary that has been seen online first-person by the remote. It does not communicate addresses that the remote has not connected to.
+		*/
+		logging.Log(2, fmt.Sprintf("We've gotten an address request with the filters: %#v", filters))
+		addresses, dbError := persistence.ReadAddresses("", "", 0, filters.TimeStart, filters.TimeEnd, 0, 0, 0, "connected")
+		addresses = *sanitiseOutboundAddresses(&addresses)
 		var localData api.Response
 		localData.Addresses = addresses
 		if dbError != nil {
@@ -1022,10 +1039,11 @@ func GenerateCacheResponse(respType string, start api.Timestamp, end api.Timesta
 		resp.entityPages = entityPages
 
 	case "addresses":
-		addresses, dbError := persistence.ReadAddresses("", "", 0, start, end, 0, 0, 0)
+		addresses, dbError := persistence.ReadAddresses("", "", 0, start, end, 0, 0, 0, "connected") // Cache generation only generates caches for addresses that this computer has personally connected to.
 		if dbError != nil {
 			return resp, errors.New(fmt.Sprintf("This cache generation request caused an error in the local database while trying to respond to this request. Error: %#v\n", dbError))
 		}
+		addresses = *sanitiseOutboundAddresses(&addresses)
 		if len(addresses) == 0 {
 			/*
 				There's no data in this result. But the cache generation should continue. Why?
@@ -1351,7 +1369,7 @@ func GenerateCacheSet(etype string) {
 			CreateCache(etype, val.StartsFrom, val.EndsAt)
 		}
 	} else {
-		logging.Log(1, fmt.Sprintf("Last cache that was created was newer than 23 hours ago. Please wait until at least 23 hours have passed to file a new day cache creation request. Entity type: %s", etype))
+		logging.Log(1, fmt.Sprintf("Last cache that was created for %s was newer than 23 hours ago. Please wait until after.", etype))
 	}
 }
 

@@ -61,6 +61,7 @@ func CheckPortAvailability(port uint16) bool {
 	defer l.Close()
 	if err != nil {
 		if strings.Contains(err.Error(), "address already in use") || strings.Contains(err.Error(), "permission denied") {
+			logging.Log(1, fmt.Sprintf("Port number %d is already in use. Error: %s", port, err))
 			return false
 		} else {
 			logging.LogCrash(fmt.Sprintf("We attempted to check the availability of the port %d on the current computer and it failed with this error:", err, port))
@@ -71,11 +72,18 @@ func CheckPortAvailability(port uint16) bool {
 
 // VerifyLocalPort verifies the local port available in the config, and if it is not available, replaces it with one that is. Then it flips the bit to mark the local port as verified.
 func VerifyExternalPort() {
-	if CheckPortAvailability(globals.BackendConfig.GetExternalPort()) {
+  logging.Log(2,"VerifyExternalPort check is running.")
+	// This check only runs once per start.
+	if !globals.BackendTransientConfig.ExternalPortVerified {
+		// Prevent race condition in which any number of calls can enter this before CheckPortAvailability returns.
 		globals.BackendTransientConfig.ExternalPortVerified = true
-	} else {
-		freeport := GetFreePort()
-		globals.BackendConfig.SetExternalPort(freeport)
-		globals.BackendTransientConfig.ExternalPortVerified = true
+		if CheckPortAvailability(globals.BackendConfig.GetExternalPort()) {
+			logging.Log(1, fmt.Sprintf("The external port %d is verified to be open and available for use.", globals.BackendConfig.GetExternalPort()))
+		} else {
+			freeport := GetFreePort()
+			logging.Log(1, fmt.Sprintf("The port number for this node has changed. New external port for this node is: %d", freeport))
+			globals.BackendConfig.SetExternalPort(freeport)
+		}
 	}
+  logging.Log(2,"VerifyExternalPort check is done.")
 }

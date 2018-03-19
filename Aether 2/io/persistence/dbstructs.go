@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jmoiron/sqlx/types"
 	"strings"
 	"time"
 )
@@ -64,34 +65,37 @@ type DbAddressSubprotocol struct {
 // Entities
 
 type DbBoard struct {
-	Fingerprint  api.Fingerprint `db:"Fingerprint"`
-	Name         string          `db:"Name"`
-	Owner        api.Fingerprint `db:"Owner"`
-	Description  string          `db:"Description"`
-	LocalArrival api.Timestamp   `db:"LocalArrival"`
+	Fingerprint  api.Fingerprint   `db:"Fingerprint"`
+	Name         string            `db:"Name"`
+	Owner        api.Fingerprint   `db:"Owner"`
+	Description  types.GzippedText `db:"Description"`
+	LocalArrival api.Timestamp     `db:"LocalArrival"`
+	Meta         string            `db:"Meta"`
 	DbProvable
 	DbUpdateable
 }
 
 type DbThread struct {
-	Fingerprint  api.Fingerprint `db:"Fingerprint"`
-	Board        api.Fingerprint `db:"Board"`
-	Name         string          `db:"Name"`
-	Body         string          `db:"Body"`
-	Link         string          `db:"Link"`
-	Owner        api.Fingerprint `db:"Owner"`
-	LocalArrival api.Timestamp   `db:"LocalArrival"`
+	Fingerprint  api.Fingerprint   `db:"Fingerprint"`
+	Board        api.Fingerprint   `db:"Board"`
+	Name         string            `db:"Name"`
+	Body         types.GzippedText `db:"Body"`
+	Link         string            `db:"Link"`
+	Owner        api.Fingerprint   `db:"Owner"`
+	LocalArrival api.Timestamp     `db:"LocalArrival"`
+	Meta         string            `db:"Meta"`
 	DbProvable
 }
 
 type DbPost struct {
-	Fingerprint  api.Fingerprint `db:"Fingerprint"`
-	Board        api.Fingerprint `db:"Board"`
-	Thread       api.Fingerprint `db:"Thread"`
-	Parent       api.Fingerprint `db:"Parent"`
-	Body         string          `db:"Body"`
-	Owner        api.Fingerprint `db:"Owner"`
-	LocalArrival api.Timestamp   `db:"LocalArrival"`
+	Fingerprint  api.Fingerprint   `db:"Fingerprint"`
+	Board        api.Fingerprint   `db:"Board"`
+	Thread       api.Fingerprint   `db:"Thread"`
+	Parent       api.Fingerprint   `db:"Parent"`
+	Body         types.GzippedText `db:"Body"`
+	Owner        api.Fingerprint   `db:"Owner"`
+	LocalArrival api.Timestamp     `db:"LocalArrival"`
+	Meta         string            `db:"Meta"`
 	DbProvable
 }
 
@@ -103,6 +107,7 @@ type DbVote struct {
 	Owner        api.Fingerprint `db:"Owner"`
 	Type         uint8           `db:"Type"`
 	LocalArrival api.Timestamp   `db:"LocalArrival"`
+	Meta         string          `db:"Meta"`
 	DbProvable
 	DbUpdateable
 }
@@ -124,12 +129,13 @@ type DbAddress struct {
 }
 
 type DbKey struct {
-	Fingerprint  api.Fingerprint `db:"Fingerprint"`
-	Type         string          `db:"Type"`
-	PublicKey    string          `db:"PublicKey"`
-	Name         string          `db:"Name"`
-	Info         string          `db:"Info"`
-	LocalArrival api.Timestamp   `db:"LocalArrival"`
+	Fingerprint  api.Fingerprint   `db:"Fingerprint"`
+	Type         string            `db:"Type"`
+	PublicKey    string            `db:"PublicKey"`
+	Name         string            `db:"Name"`
+	Info         types.GzippedText `db:"Info"`
+	LocalArrival api.Timestamp     `db:"LocalArrival"`
+	Meta         string            `db:"Meta"`
 	DbProvable
 	DbUpdateable
 }
@@ -142,6 +148,7 @@ type DbTruststate struct {
 	Domains      string          `db:"Domains"` // comma separated fingerprint list
 	Expiry       api.Timestamp   `db:"Expiry"`
 	LocalArrival api.Timestamp   `db:"LocalArrival"`
+	Meta         string          `db:"Meta"`
 	DbProvable
 	DbUpdateable
 }
@@ -185,9 +192,10 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Fingerprint = obj.Fingerprint
 		dbObj.Name = obj.Name
 		dbObj.Owner = obj.Owner
-		dbObj.Description = obj.Description
+		dbObj.Description = types.GzippedText(obj.Description)
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.Meta = obj.Meta
 		// Provable set
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
@@ -215,11 +223,12 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Fingerprint = obj.Fingerprint
 		dbObj.Board = obj.Board
 		dbObj.Name = obj.Name
-		dbObj.Body = obj.Body
+		dbObj.Body = types.GzippedText(obj.Body)
 		dbObj.Link = obj.Link
 		dbObj.Owner = obj.Owner
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.Meta = obj.Meta
 		// Provable set
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
@@ -232,10 +241,11 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Board = obj.Board
 		dbObj.Thread = obj.Thread
 		dbObj.Parent = obj.Parent
-		dbObj.Body = obj.Body
+		dbObj.Body = types.GzippedText(obj.Body)
 		dbObj.Owner = obj.Owner
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.Meta = obj.Meta
 		// Provable set
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
@@ -252,6 +262,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Type = obj.Type
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.Meta = obj.Meta
 		// Provable set
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
@@ -309,7 +320,6 @@ func APItoDB(object interface{}) (interface{}, error) {
 			// 	}
 			// }
 		}
-
 		ap.Subprotocols = subprotocols
 		return ap, nil
 
@@ -320,9 +330,10 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Type = obj.Type
 		dbObj.PublicKey = obj.Key
 		dbObj.Name = obj.Name
-		dbObj.Info = obj.Info
+		dbObj.Info = types.GzippedText(obj.Info)
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.Meta = obj.Meta
 		// Provable set
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
@@ -355,6 +366,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Expiry = obj.Expiry
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.Meta = obj.Meta
 		// Provable set
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
@@ -388,7 +400,8 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Fingerprint = obj.Fingerprint
 		apiObj.Name = obj.Name
 		apiObj.Owner = obj.Owner
-		apiObj.Description = obj.Description
+		apiObj.Description = string(obj.Description)
+		apiObj.Meta = obj.Meta
 		// Provable set
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
@@ -400,6 +413,7 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		// Pull the board owners for this board from database.
 		dbBoardOwners, err := ReadDBBoardOwners(obj.Fingerprint, "")
 		if err != nil {
+			// This should always crash, it means the local remote lost / corrupted data as network always provides sub-entities and main entity together.
 			logging.LogCrash(err)
 		}
 		for _, dbBoardOwner := range dbBoardOwners {
@@ -416,9 +430,10 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Fingerprint = obj.Fingerprint
 		apiObj.Board = obj.Board
 		apiObj.Name = obj.Name
-		apiObj.Body = obj.Body
+		apiObj.Body = string(obj.Body)
 		apiObj.Link = obj.Link
 		apiObj.Owner = obj.Owner
+		apiObj.Meta = obj.Meta
 		// Provable set
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
@@ -431,8 +446,9 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Board = obj.Board
 		apiObj.Thread = obj.Thread
 		apiObj.Parent = obj.Parent
-		apiObj.Body = obj.Body
+		apiObj.Body = string(obj.Body)
 		apiObj.Owner = obj.Owner
+		apiObj.Meta = obj.Meta
 		// Provable set
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
@@ -447,6 +463,7 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Target = obj.Target
 		apiObj.Owner = obj.Owner
 		apiObj.Type = obj.Type
+		apiObj.Meta = obj.Meta
 		// Provable set
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
@@ -474,6 +491,7 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Client.ClientName = obj.ClientName
 		dbSubprotocols, err := ReadDBSubprotocols(obj.Location, obj.Sublocation, obj.Port)
 		if err != nil {
+			// This should always crash, it means the local remote lost / corrupted data as network always provides sub-entities and main entity together.
 			logging.LogCrash(err)
 		}
 		// Convert dbSubprotocols to api.Subprotocols
@@ -500,7 +518,8 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Type = obj.Type
 		apiObj.Key = obj.PublicKey
 		apiObj.Name = obj.Name
-		apiObj.Info = obj.Info
+		apiObj.Info = string(obj.Info)
+		apiObj.Meta = obj.Meta
 		// Provable set
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
@@ -512,6 +531,7 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		// Pull the currency addresses for this key from database.
 		dbCurrAddrs, err := ReadDBCurrencyAddresses(obj.Fingerprint, "")
 		if err != nil {
+			// This should always crash, it means the local remote lost / corrupted data as network always provides sub-entities and main entity together.
 			logging.LogCrash(err)
 		}
 		for _, dbCurrAddr := range dbCurrAddrs {
@@ -530,6 +550,7 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Owner = obj.Owner
 		apiObj.Type = obj.Type
 		apiObj.Expiry = obj.Expiry
+		apiObj.Meta = obj.Meta
 		// Provable set
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork

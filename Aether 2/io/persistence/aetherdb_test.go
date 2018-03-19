@@ -518,7 +518,7 @@ func TestReadAddress_Success(t *testing.T) {
 	subloc := api.Location("example")
 	port := uint16(8090)
 	resp, err := persistence.ReadAddresses(
-		loc, subloc, port, 0, 0, 0, 0, 0)
+		loc, subloc, port, 0, 0, 0, 0, 0, "")
 	// fmt.Printf("%#v\n", resp)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
@@ -559,7 +559,7 @@ func TestFirstPartyInsertReadAddress_Success(t *testing.T) {
 	port := uint16(1111)
 
 	resp, err := persistence.ReadAddresses(
-		loc, subloc, port, 0, 0, 0, 0, 0)
+		loc, subloc, port, 0, 0, 0, 0, 0, "")
 	fmt.Printf("%#v\n", resp)
 	if resp[0].Protocol.Subprotocols[0].Name != "c0" {
 		t.Errorf(fmt.Sprintf("Test failed, the subprotocol information has not been committed. Response: %#v", resp))
@@ -576,7 +576,7 @@ func TestFirstPartyInsertReadAddress_Success(t *testing.T) {
 
 func TestReadAddress_Empty(t *testing.T) {
 	resp, err := persistence.ReadAddresses(
-		"fake loc", "fake subloc", 9090, 0, 0, 0, 0, 0)
+		"fake loc", "fake subloc", 9090, 0, 0, 0, 0, 0, "")
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp) > 0 {
@@ -962,7 +962,7 @@ func TestInsert_MultipleTypes_Success(t *testing.T) {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
 	// Check for first
-	resp, err2 := persistence.ReadAddresses(addressLoc, addressSubloc, addressPort, 0, 0, 0, 0, 0)
+	resp, err2 := persistence.ReadAddresses(addressLoc, addressSubloc, addressPort, 0, 0, 0, 0, 0, "")
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
 	} else if len(resp) == 0 {

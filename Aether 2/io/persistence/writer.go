@@ -11,23 +11,36 @@ import (
 	"aether-core/services/globals"
 	"aether-core/services/logging"
 	"errors"
-	"runtime"
+	"github.com/fatih/color"
+	// "github.com/jmoiron/sqlx/types"
 	"strconv"
 	"strings"
 	"time"
 )
 
-func trace() string {
-	pc := make([]uintptr, 15)
-	n := runtime.Callers(2, pc)
-	frames := runtime.CallersFrames(pc[:n])
-	frame, _ := frames.Next()
-	result := fmt.Sprintf("%s,:%d %s", frame.File, frame.Line, frame.Function)
-	return result
-}
-
 // Node is a non-communicating entity that holds the LastCheckin timestamps of each of the entities provided in the remote node. There is no way to send this data over to somebody, this is entirely local. There is also no batch processing because there is no situation in which you would need to insert multiple nodes at the same time (since you won't be connecting to multiple nodes simultaneously)
+
 func InsertNode(n DbNode) error {
+	err := insertNode(n)
+	if err != nil {
+		if strings.Contains(err.Error(), "Database was locked") {
+			logging.Log(1, err)
+			if strings.Contains(err.Error(), "Database was locked") {
+				logging.Log(1, "This transaction was not committed because database was locked. We'll wait 10 seconds and retry the transaction.")
+				time.Sleep(10 * time.Second)
+				logging.Log(1, "Retrying the previously failed InsertNode transaction.")
+				err2 := insertNode(n)
+				if err2 != nil {
+					logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
+				} else { // If the reattempted transaction succeeds
+					logging.Log(1, "The retry attempt of the failed transaction succeeded.")
+				}
+			}
+		}
+	}
+	return nil
+}
+func insertNode(n DbNode) error {
 	// fmt.Println("Node to be inserted:")
 	// fmt.Printf("%#v\n", n)
 	// TODO: Consider whether this needs a enforceNoEmptyIdentityFields or enforceNoEmptyRequiredFields
@@ -44,8 +57,15 @@ func InsertNode(n DbNode) error {
 	}
 	err3 := tx.Commit()
 	if err3 != nil {
+		tx.Rollback()
+		logging.Log(1, fmt.Sprintf("InsertNode encountered an error when trying to commit to the database. Error is: %s", err3))
+		if strings.Contains(err3.Error(), "database is locked") {
+			logging.Log(1, fmt.Sprintf("This database seems to be locked. We'll sleep 10 seconds to give it the time it needs to recover. This mostly happens when the app has crashed and there is a hot journal - and SQLite is in the process of repairing the database. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY."))
+			return errors.New("Database was locked. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY.")
+		}
 		return err3
 	}
+
 	nodeAsMap := make(map[string]string)
 	nodeAsMap["Fingerprint"] = string(n.Fingerprint)
 	nodeAsMap["BoardsLastCheckin"] = strconv.Itoa(int(n.BoardsLastCheckin))
@@ -65,6 +85,7 @@ func InsertNode(n DbNode) error {
 // InsertOrUpdateAddresses is the multi-entry of the core function InsertOrUpdateAddress. This is the only public API, and it should be used exclusively, because this is where we have the connection retry logic that we need.
 func InsertOrUpdateAddresses(a *[]api.Address) {
 	addresses := *a
+	logging.Log(2, fmt.Sprintf("We got an insert or update address request for these addresses: %#v", addresses))
 	for i, _ := range addresses {
 		err := insertOrUpdateAddress(addresses[i])
 		if err != nil {
@@ -75,6 +96,7 @@ func InsertOrUpdateAddresses(a *[]api.Address) {
 				logging.Log(1, "Retrying the previously failed InsertOrUpdateAddresses transaction.")
 				err2 := insertOrUpdateAddress(addresses[i])
 				if err2 != nil {
+					fmt.Println(err2)
 					logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
 				} else { // If the reattempted transaction succeeds
 					logging.Log(1, "The retry attempt of the failed transaction succeeded.")
@@ -87,80 +109,85 @@ func InsertOrUpdateAddresses(a *[]api.Address) {
 // insertOrUpdateAddress is the ONLY way to update an address in the database. Be very careful with this, careless use of this function can result in entry of untrusted data from the remotes into the local database. The only legitimate use of this is to put in the details of nodes that this local machine has personally connected to.
 func insertOrUpdateAddress(a api.Address) error {
 	addressPackAsInterface, err := APItoDB(a)
-	addressPack := addressPackAsInterface.(AddressPack)
 	if err != nil {
 		return errors.New(fmt.Sprint(
 			"Error raised from APItoDB function used in Batch insert. Error: ", err))
 	}
+	addressPack := addressPackAsInterface.(AddressPack)
 	err2 := enforceNoEmptyIdentityFields(addressPack)
 	if err2 != nil {
 		// If this unit does have empty identity fields, we pass on adding it to the database.
 		return err2
 	}
-	// err3 := enforceNoEmptyRequiredFields(dbA)
-	// if err3 != nil {
-	// 	// If this unit does have empty identity fields, we pass on adding it to the database.
-	// 	logging.Log(err3)
-	// }
-	tx, err4 := globals.DbInstance.Beginx()
+	err7 := enforceNoEmptyRequiredFields(addressPack)
+	if err7 != nil {
+		// If this unit does have empty identity fields, we pass on adding it to the database.
+		return err7
+	}
+	dbAddress := DbAddress{}
+	dbSubprotocols := []DbSubprotocol{}
+	dbJunctionItems := []DbAddressSubprotocol{} // Junction table.
+	dbAddress = addressPack.Address             // We only have one address.
+	for _, dbSubprot := range addressPack.Subprotocols {
+		dbSubprotocols = append(dbSubprotocols, dbSubprot)
+		jItem := generateAdrSprotJunctionItem(addressPack.Address, dbSubprot)
+		dbJunctionItems = append(dbJunctionItems, jItem)
+	}
+	tx, err3 := globals.DbInstance.Beginx()
+	if err3 != nil {
+		logging.LogCrash(err3)
+	}
+	_, err4 := tx.NamedExec(getSQLCommand("dbAddressUpdate"), dbAddress)
 	if err4 != nil {
 		logging.LogCrash(err4)
 	}
-	_, err5 := tx.NamedExec(addressUpdateInsert, addressPack.Address)
-	if err5 != nil {
-		logging.LogCrash(err5)
-	}
-	for _, dbSubprot := range addressPack.Subprotocols {
-		_, err6 := tx.NamedExec(subprotocolInsert, dbSubprot)
-		if err6 != nil {
-			logging.LogCrash(err6)
-		}
-		// Construct the entry for AddressesSubprotocols table.
-		var addressSubprot DbAddressSubprotocol
-		addressSubprot.AddressLocation = addressPack.Address.Location
-		addressSubprot.AddressSublocation = addressPack.Address.Sublocation
-		addressSubprot.AddressPort = addressPack.Address.Port
-		addressSubprot.SubprotocolFingerprint = dbSubprot.Fingerprint
-		// Insert the constructed entity into the junction table.
-		var inserter string
-		if globals.BackendConfig.GetDbEngine() == "mysql" {
-			inserter = addressSubprotocolInsertMySQL
-		} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
-			inserter = addressSubprotocolInsertSQLite
-		} else {
-			logging.LogCrash(fmt.Sprintf("Db Engine type not recognised. Trace: %#v", trace()))
-		}
-		_, err7 := tx.NamedExec(inserter, addressSubprot)
-		if err7 != nil {
-			logging.LogCrash(err7)
+	if len(dbSubprotocols) > 0 {
+		for _, dbSubprotocol := range dbSubprotocols {
+			_, err5 := tx.NamedExec(getSQLCommand("dbSubprotocol"), dbSubprotocol)
+			if err5 != nil {
+				logging.LogCrash(err5)
+			}
 		}
 	}
-	err8 := tx.Commit()
-	if err8 != nil {
-		logging.Log(1, fmt.Sprintf("InsertOrUpdateAddress encountered an error when trying to commit to the database. Error is: %s", err8))
-		/*
-			Surprisingly enough, the 10 second wait solves the 'database is locked' issue when the app is improperly closed and SQLite was in the middle of a transaction. This type of DB is locked happens because at the beginning of the app SQLite is actually repairing the database using the hot journal. For some reason, attempting to write to the database while that is in progress seems to disrupt the repair and restarts it, so if you have no timeout, what will happen is that your thing will breathlessly try 5 times and then fail, giving exactly zero time for SQLite to repair.
-
-			Ideally, this would not be an issue if SQLite could communicate some form of 'WAIT I'm doing something'. But that goes into the territory of queues and SQLite has expressly decided to not provide queues, so we have to approximate here.
-		*/
-		if strings.Contains(err8.Error(), "database is locked") {
+	if len(dbJunctionItems) > 0 {
+		for _, dbJunctionItem := range dbJunctionItems {
+			_, err5 := tx.NamedExec(getSQLCommand("dbAddressSubprotocol"), dbJunctionItem)
+			if err5 != nil {
+				logging.LogCrash(err5)
+			}
+		}
+	}
+	err6 := tx.Commit()
+	if err6 != nil {
+		tx.Rollback()
+		logging.Log(1, fmt.Sprintf("InsertOrUpdateAddress encountered an error when trying to commit to the database. Error is: %s", err6))
+		if strings.Contains(err6.Error(), "database is locked") {
 			logging.Log(1, fmt.Sprintf("This database seems to be locked. We'll sleep 10 seconds to give it the time it needs to recover. This mostly happens when the app has crashed and there is a hot journal - and SQLite is in the process of repairing the database. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY."))
 			return errors.New("Database was locked. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY.")
 		}
-		return err8
+		return err6
 	}
 	return nil
 }
 
+func generateAdrSprotJunctionItem(addr DbAddress, sprot DbSubprotocol) DbAddressSubprotocol {
+	var adrSprot DbAddressSubprotocol
+	adrSprot.AddressLocation = addr.Location
+	adrSprot.AddressSublocation = addr.Sublocation
+	adrSprot.AddressPort = addr.Port
+	adrSprot.SubprotocolFingerprint = sprot.Fingerprint
+	return adrSprot
+}
+
 // This is where we capture DB errors like 'DB is locked' and take action, such as retrying.
 func BatchInsert(apiObjects []interface{}) error {
-	err := batchInsert(apiObjects)
+	err := batchInsert(&apiObjects)
 	if err != nil {
 		if strings.Contains(err.Error(), "Database was locked") {
 			logging.Log(1, "This transaction was not committed because database was locked. We'll wait 10 seconds and retry the transaction.")
 			time.Sleep(10 * time.Second)
 			logging.Log(1, "Retrying the previously failed BatchInsert transaction.")
-			err2 := batchInsert(apiObjects)
+			err2 := batchInsert(&apiObjects)
 			if err2 != nil {
 				logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
 			} else { // If the reattempted transaction succeeds
@@ -171,115 +198,85 @@ func BatchInsert(apiObjects []interface{}) error {
 	return err
 }
 
+type batchBucket struct {
+	DbBoards      []DbBoard
+	DbThreads     []DbThread
+	DbPosts       []DbPost
+	DbVotes       []DbVote
+	DbKeys        []DbKey
+	DbTruststates []DbTruststate
+	DbAddresses   []DbAddress
+	// Sub objects
+	// // Parent: Board
+	DbBoardOwners         []DbBoardOwner
+	DbBoardOwnerDeletions []DbBoardOwner
+	// // Parent: Address
+	// dbSubprotocols := []DbSubprotocol{}
+	// WHY? Because this is untrusted address entry, and subprotocol info coming from the environment is not committed, alongside many other parts of the address data.
+	// // Parent: Key
+	DbCurrencyAddresses        []DbCurrencyAddress
+	DbCurrencyAddressDeletions []DbCurrencyAddress
+}
+
 // TODO: Mind that any errors happening within the transaction, if they need to bail from the transaction, they need to close it! otherwise you get database is locked.
 // TODO: Should this take a pointer instead? It's dealing with some big amounts of data.
 // BatchInsert insert a set of objects in a batch as a transaction.
-func batchInsert(apiObjects []interface{}) error {
+func batchInsert(apiObjectsPtr *[]interface{}) error {
+	apiObjects := *apiObjectsPtr
 	logging.Log(1, "Batch insert starting.")
 	defer logging.Log(1, "Batch insert is complete.")
 	numberOfObjectsCommitted := len(apiObjects)
 	logging.Log(2, fmt.Sprintf("%v objects are being committed.", numberOfObjectsCommitted))
-
 	start := time.Now()
-	// fmt.Printf("%#v\n", apiObjects)
-	// Begin transaction.
-	tx, err := globals.DbInstance.Beginx()
-	if err != nil {
-		logging.LogCrash(err)
-	}
+	bb := batchBucket{}
 	// For each API object, convert to DB object and add to transaction.
 	for _, apiObject := range apiObjects {
 		// apiObject: API type, dbObj: DB type.
-		dbo, err := APItoDB(apiObject)
+		dbo, err := APItoDB(apiObject) // does not hit DB
 		if err != nil {
 			return errors.New(fmt.Sprint(
 				"Error raised from APItoDB function used in Batch insert. Error: ", err))
 		}
-		err2 := enforceNoEmptyIdentityFields(dbo)
+		err2 := enforceNoEmptyIdentityFields(dbo) // does not hit DB
 		if err2 != nil {
 			// If this unit does have empty identity fields, we pass on adding it to the database.
 			logging.Log(2, err2)
 			continue
 		}
-		err3 := enforceNoEmptyRequiredFields(dbo)
+		err3 := enforceNoEmptyRequiredFields(dbo) // does not hit DB
 		if err3 != nil {
 			// If this unit does have empty identity fields, we pass on adding it to the database.
 			logging.Log(2, err3)
 			continue
 		}
 		switch dbObject := dbo.(type) {
-		// case BoardPack:
-		// 	if packShouldBeCommitted(dbObject) {
-		// 		_, err := tx.NamedExec(boardInsert, dbObject.Board)
-		// 		if err != nil {
-		// 			logging.LogCrash(err)
-		// 		}
-		// 	}
-
 		case BoardPack:
-			if packShouldBeCommitted(dbObject) {
-				_, err := tx.NamedExec(boardInsert, dbObject.Board)
-				if err != nil {
-					logging.LogCrash(err)
-				}
+			if packShouldBeCommitted(dbObject) { // HITS DB
+				bb.DbBoards = append(bb.DbBoards, dbObject.Board)
 				// Get the list of board owners before the transaction.
-				boardBoardOwnersBeforeTx, err := getBoardOwnersBeforeTx(dbObject.Board.Fingerprint)
+				boardBoardOwnersBeforeTx, err := getBoardOwnersBeforeTx(dbObject.Board.Fingerprint) // HITS DB
 				if err != nil {
 					logging.LogCrash(err)
 				}
 				// Get the changelist.
-				changelist := generateBoardOwnerChangelist(
+				changelist := generateBoardOwnerChangelist( // Does not hit DB
 					boardBoardOwnersBeforeTx, dbObject.BoardOwners)
 				for boardOwner, keepBoardOwner := range changelist {
 					if keepBoardOwner == true {
 						// We keep the owner's existence. This can either be a creation or an update, SQL deals with that.
-						_, err := tx.NamedExec(boardOwnerInsert, boardOwner)
-						if err != nil {
-							// fmt.Printf("%#v\n", err)
-							logging.LogCrash(err)
-						}
+						bb.DbBoardOwners = append(bb.DbBoardOwners, boardOwner)
 					} else {
 						// The owner is deleted. So we remove it from the database.
-						_, err := tx.NamedExec(boardOwnerDelete, boardOwner)
-						if err != nil {
-							// fmt.Printf("%#v\n", err)
-							logging.LogCrash(err)
-						}
+						bb.DbBoardOwnerDeletions = append(bb.DbBoardOwnerDeletions, boardOwner)
 					}
 				}
 			}
 		case DbThread:
-			var inserter string
-			if globals.BackendConfig.GetDbEngine() == "mysql" {
-				inserter = threadInsertMySQL
-			} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
-				inserter = threadInsertSQLite
-			} else {
-				logging.LogCrash(fmt.Sprintf("Db Engine type not recognised. Trace: %#v", trace()))
-			}
-			_, err := tx.NamedExec(inserter, dbObject)
-			if err != nil {
-				logging.LogCrash(err)
-			}
+			bb.DbThreads = append(bb.DbThreads, dbObject)
 		case DbPost:
-			var inserter string
-			if globals.BackendConfig.GetDbEngine() == "mysql" {
-				inserter = postInsertMySQL
-			} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
-				inserter = postInsertSQLite
-			} else {
-				logging.LogCrash(fmt.Sprintf("Db Engine type not recognised. Trace: %#v", trace()))
-			}
-			_, err := tx.NamedExec(inserter, dbObject)
-			if err != nil {
-				logging.LogCrash(err)
-			}
+			bb.DbPosts = append(bb.DbPosts, dbObject)
 		case DbVote:
-			_, err := tx.NamedExec(voteInsert, dbObject)
-			if err != nil {
-				logging.LogCrash(err)
-			}
-
+			bb.DbVotes = append(bb.DbVotes, dbObject)
 		case AddressPack:
 			// In case of address, we strip out everything except the primary keys. This is because we cannot trust the data that is coming from the network. We just add the primary key set, and the local node will take care of directly connecting to these nodes and getting the details.
 
@@ -296,76 +293,48 @@ func batchInsert(apiObjects []interface{}) error {
 			dbObject.Address.ClientVersionMinor = 0
 			dbObject.Address.ClientVersionPatch = 0
 			dbObject.Address.ClientName = ""
-			var inserter string
-			if globals.BackendConfig.GetDbEngine() == "mysql" {
-				inserter = addressInsertMySQL
-			} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
-				inserter = addressInsertSQLite
-			} else {
-				logging.LogCrash(fmt.Sprintf("Db Engine type not recognised. Trace: %#v", trace()))
-			}
-			_, err := tx.NamedExec(inserter, dbObject.Address)
-			if err != nil {
-				logging.LogCrash(err)
-			}
-
+			bb.DbAddresses = append(bb.DbAddresses, dbObject.Address)
 		case KeyPack:
 			if packShouldBeCommitted(dbObject) {
-				_, err := tx.NamedExec(keyInsert, dbObject.Key)
+				bb.DbKeys = append(bb.DbKeys, dbObject.Key)
+				currencyAddressesBeforeTx, err := getCurrencyAddressesBeforeTx(dbObject.Key.Fingerprint)
 				if err != nil {
 					logging.LogCrash(err)
 				}
-				// Get the list of currency addresses before the transaction.
-				currencyAddressesBeforeTx, err := getCurrencyAddressesBeforeTx(dbObject.Key.Fingerprint)
 				// Get the changelist.
 				changelist := generateCurrencyAddressChangelist(
 					currencyAddressesBeforeTx, dbObject.CurrencyAddresses)
 				for currencyAddress, keepcurrencyAddress := range changelist {
 					if keepcurrencyAddress == true {
 						// We keep the owner's existence. This can either be a creation or an update, SQL deals with that.
-						_, err := tx.NamedExec(currencyAddressInsert, currencyAddress)
-						if err != nil {
-							// fmt.Printf("%#v\n", err)
-							logging.LogCrash(err)
-						}
+						bb.DbCurrencyAddresses = append(bb.DbCurrencyAddresses, currencyAddress)
 					} else {
 						// The owner is deleted. So we remove it from the database.
-						_, err := tx.NamedExec(currencyAddressDelete, currencyAddress)
-						if err != nil {
-							// fmt.Printf("%#v\n", err)
-							logging.LogCrash(err)
-						}
+						bb.DbCurrencyAddressDeletions = append(bb.DbCurrencyAddressDeletions, currencyAddress)
 					}
 				}
 			}
 		case DbTruststate:
-			_, err := tx.NamedExec(truststateInsert, dbObject)
-			if err != nil {
-				logging.LogCrash(err)
-			}
+			bb.DbTruststates = append(bb.DbTruststates, dbObject)
 		default:
 			return errors.New(
 				fmt.Sprintf(
 					"This object type is something batch insert does not understand. Your object: %#v\n", dbObject))
 		}
-		// TODO: Create a prepared statement for each of those that allows for insertion.
 	}
-	err = tx.Commit()
+	err := insert(&bb)
 	if err != nil {
-		logging.Log(1, fmt.Sprintf("BatchInsert encountered an error when trying to commit to the database. Error is: %s", err))
-		/*
-			Surprisingly enough, the 10 second wait solves the 'database is locked' issue when the app is improperly closed and SQLite was in the middle of a transaction. This type of DB is locked happens because at the beginning of the app SQLite is actually repairing the database using the hot journal. For some reason, attempting to write to the database while that is in progress seems to disrupt the repair and restarts it, so if you have no timeout, what will happen is that your thing will breathlessly try 5 times and then fail, giving exactly zero time for SQLite to repair.
-
-			Ideally, this would not be an issue if SQLite could communicate some form of 'WAIT I'm doing something'. But that goes into the territory of queues and SQLite has expressly decided to not provide queues, so we have to approximate here.
-		*/
-		if strings.Contains(err.Error(), "database is locked") {
-			logging.Log(1, fmt.Sprintf("This database seems to be locked. We'll sleep 10 seconds to give it the time it needs to recover. This mostly happens when the app has crashed and there is a hot journal - and SQLite is in the process of repairing the database. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY."))
-			return errors.New("Database was locked. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY.")
-		}
 		return err
 	}
 	elapsed := time.Since(start)
-	logging.Log(1, fmt.Sprintf("It took %v to insert %v objects.", elapsed.Round(time.Millisecond), numberOfObjectsCommitted))
+	clr := color.New(color.FgCyan)
+	logging.Log(1, clr.Sprintf("It took %v to insert %v objects. %s", elapsed.Round(time.Millisecond), numberOfObjectsCommitted, generateInsertLog(&bb)))
+	committedToDb := len(bb.DbBoards) + len(bb.DbThreads) + len(bb.DbPosts) + len(bb.DbVotes) + len(bb.DbKeys) + +len(bb.DbTruststates) + len(bb.DbAddresses)
+	if (committedToDb != numberOfObjectsCommitted) && numberOfObjectsCommitted == 1 {
+		clr2 := color.New(color.FgRed)
+		logging.Log(1, clr2.Sprintf("There is a discrepancy between the number of entities in the inbound package, and those that end up being committed. Inbound entities count: %d, Committed to DB: %d", numberOfObjectsCommitted, committedToDb))
+		logging.Log(1, clr.Sprintf("Inbound entities: %#v", apiObjects))
+	}
 	if len(apiObjects) > 0 {
 		metrics.CollateMetrics("ArrivedEntitiesSinceLastMetricsDbg", apiObjects)
 		client, conn := metrics.StartConnection()
@@ -375,6 +344,227 @@ func batchInsert(apiObjects []interface{}) error {
 	return nil
 }
 
+func generateInsertLog(bb *batchBucket) string {
+	str := "Type:"
+	if len(bb.DbBoards) > 0 {
+		str = str + fmt.Sprintf(" %d Boards", len(bb.DbBoards))
+	}
+	if len(bb.DbThreads) > 0 {
+		str = str + fmt.Sprintf(" %d Threads", len(bb.DbThreads))
+	}
+	if len(bb.DbPosts) > 0 {
+		str = str + fmt.Sprintf(" %d Posts", len(bb.DbPosts))
+	}
+	if len(bb.DbVotes) > 0 {
+		str = str + fmt.Sprintf(" %d Votes", len(bb.DbVotes))
+	}
+	if len(bb.DbKeys) > 0 {
+		str = str + fmt.Sprintf(" %d Keys", len(bb.DbKeys))
+	}
+	if len(bb.DbTruststates) > 0 {
+		str = str + fmt.Sprintf(" %d Truststates", len(bb.DbTruststates))
+	}
+	if len(bb.DbAddresses) > 0 {
+		str = str + fmt.Sprintf(" %d Untrusted Addresses", len(bb.DbAddresses))
+	}
+	// Disabled because they don't count as individual entities.
+	// if len(bb.DbBoardOwners) > 0 {
+	// 	str = str + fmt.Sprintf(" %d Board Owners", len(bb.DbBoardOwners))
+	// }
+	// if len(bb.DbCurrencyAddresses) > 0 {
+	// 	str = str + fmt.Sprintf(" %d Currency Addresses", len(bb.DbCurrencyAddresses))
+	// }
+	if len(bb.DbBoards) == 0 &&
+		len(bb.DbThreads) == 0 &&
+		len(bb.DbPosts) == 0 &&
+		len(bb.DbVotes) == 0 &&
+		len(bb.DbKeys) == 0 &&
+		len(bb.DbTruststates) == 0 &&
+		len(bb.DbAddresses) == 0 {
+		str = str + " Nothing."
+	} else {
+		str = str + ". Nothing else."
+	}
+	return str
+}
+
+func insert(batchBucket *batchBucket) error {
+	// We have our final list of entries. Add these objects to DB and let DB deal with what is a new addition and what is an update.
+	// (Hot code path.) Start transaction.
+	bb := *batchBucket
+	tx, err := globals.DbInstance.Beginx()
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	if len(bb.DbBoards) > 0 {
+		for _, dbBoard := range bb.DbBoards {
+			_, err := tx.NamedExec(getSQLCommand("dbBoard"), dbBoard)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+		}
+	}
+	if len(bb.DbThreads) > 0 {
+		for _, dbThread := range bb.DbThreads {
+			_, err := tx.NamedExec(getSQLCommand("dbThread"), dbThread)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+		}
+	}
+	if len(bb.DbPosts) > 0 {
+		for _, dbPost := range bb.DbPosts {
+			_, err := tx.NamedExec(getSQLCommand("dbPost"), dbPost)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+		}
+	}
+	if len(bb.DbVotes) > 0 {
+		for _, dbVote := range bb.DbVotes {
+			_, err := tx.NamedExec(getSQLCommand("dbVote"), dbVote)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+		}
+	}
+	if len(bb.DbKeys) > 0 {
+		for _, dbKey := range bb.DbKeys {
+			_, err := tx.NamedExec(getSQLCommand("dbKey"), dbKey)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+		}
+	}
+	if len(bb.DbTruststates) > 0 {
+		for _, dbTruststate := range bb.DbTruststates {
+			_, err := tx.NamedExec(getSQLCommand("dbTruststate"), dbTruststate)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+		}
+	}
+	if len(bb.DbAddresses) > 0 {
+		for _, dbAddress := range bb.DbAddresses {
+			_, err := tx.NamedExec(getSQLCommand("dbAddress"), dbAddress)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+		}
+	}
+	if len(bb.DbBoardOwners) > 0 {
+		for _, dbBoardOwner := range bb.DbBoardOwners {
+			_, err := tx.NamedExec(getSQLCommand("dbBoardOwner"), dbBoardOwner)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+		}
+	}
+	if len(bb.DbBoardOwnerDeletions) > 0 {
+		for _, dbBoardOwner := range bb.DbBoardOwnerDeletions {
+			_, err := tx.NamedExec(getSQLCommand("dbBoardOwnerDeletion"), dbBoardOwner)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+		}
+	}
+	if len(bb.DbBoardOwnerDeletions) > 0 {
+		for _, dbBoardOwner := range bb.DbBoardOwnerDeletions {
+			_, err := tx.NamedExec(getSQLCommand("dbBoardOwnerDeletion"), dbBoardOwner)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+		}
+	}
+	if len(bb.DbCurrencyAddresses) > 0 {
+		for _, dbCurrencyAddress := range bb.DbCurrencyAddresses {
+			_, err := tx.NamedExec(getSQLCommand("dbCurrencyAddress"), dbCurrencyAddress)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+		}
+	}
+	if len(bb.DbCurrencyAddressDeletions) > 0 {
+		for _, dbCurrencyAddress := range bb.DbCurrencyAddressDeletions {
+			_, err := tx.NamedExec(getSQLCommand("dbCurrencyAddressDeletions"), dbCurrencyAddress)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+		}
+	}
+	err2 := tx.Commit()
+	if err2 != nil {
+		tx.Rollback()
+		logging.Log(1, fmt.Sprintf("BatchInsert encountered an error when trying to commit to the database. Error is: %s", err2))
+		if strings.Contains(err.Error(), "database is locked") {
+			logging.Log(1, fmt.Sprintf("This database seems to be locked. We'll sleep 10 seconds to give it the time it needs to recover. This mostly happens when the app has crashed and there is a hot journal - and SQLite is in the process of repairing the database. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY."))
+			return errors.New("Database was locked. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY.")
+		}
+		return err2
+	}
+	fmt.Println("batchInsert successfully completed.")
+	return nil
+}
+
+func getSQLCommand(dbType string) string {
+	var sqlstr string
+	if dbType == "dbBoard" {
+		sqlstr = boardInsert
+	} else if dbType == "dbThread" {
+		if globals.BackendConfig.GetDbEngine() == "mysql" {
+			sqlstr = threadInsertMySQL
+		} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
+			sqlstr = threadInsertSQLite
+		} else {
+			logging.LogCrash(fmt.Sprintf("Db Engine type not recognised."))
+		}
+	} else if dbType == "dbPost" {
+		if globals.BackendConfig.GetDbEngine() == "mysql" {
+			sqlstr = postInsertMySQL
+		} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
+			sqlstr = postInsertSQLite
+		} else {
+			logging.LogCrash(fmt.Sprintf("Db Engine type not recognised."))
+		}
+	} else if dbType == "dbVote" {
+		sqlstr = voteInsert
+	} else if dbType == "dbKey" {
+		sqlstr = keyInsert
+	} else if dbType == "dbTruststate" {
+		sqlstr = truststateInsert
+	} else if dbType == "dbAddress" { // untrusted address
+		if globals.BackendConfig.GetDbEngine() == "mysql" {
+			sqlstr = addressInsertMySQL
+		} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
+			sqlstr = addressInsertSQLite
+		} else {
+			logging.LogCrash(fmt.Sprintf("Db Engine type not recognised."))
+		}
+	} else if dbType == "dbAddressUpdate" { // trusted address
+		sqlstr = addressUpdateInsert
+	} else if dbType == "dbBoardOwner" {
+		sqlstr = boardOwnerInsert
+	} else if dbType == "dbBoardOwnerDeletion" {
+		sqlstr = boardOwnerDelete
+	} else if dbType == "dbSubprotocol" {
+		sqlstr = subprotocolInsert
+	} else if dbType == "dbCurrencyAddress" {
+		sqlstr = currencyAddressInsert
+	} else if dbType == "dbCurrencyAddressDeletion" {
+		sqlstr = currencyAddressDelete
+	} else if dbType == "dbAddressSubprotocol" {
+		if globals.BackendConfig.GetDbEngine() == "mysql" {
+			sqlstr = addressSubprotocolInsertMySQL
+		} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
+			sqlstr = addressSubprotocolInsertSQLite
+		} else {
+			logging.LogCrash(fmt.Sprintf("Db Engine type not recognised."))
+		}
+	}
+	return sqlstr
+}
+
+// packShouldBeCommitted hits DB
 func packShouldBeCommitted(pack interface{}) bool {
 	switch pack := pack.(type) {
 	case BoardPack:
@@ -424,6 +614,8 @@ func packShouldBeCommitted(pack interface{}) bool {
 	}
 	return false
 }
+
+// getBoardOwnersBeforeTx hits DB.
 
 // getBoardOwnersBeforeTx is an internal function of the Writer. This gets the pre-transaction state of the board owners of the board that is being inserted.
 func getBoardOwnersBeforeTx(boardFingerprint api.Fingerprint) ([]DbBoardOwner, error) {
@@ -535,8 +727,8 @@ func enforceNoEmptyIdentityFields(object interface{}) error {
 					"This vote has an empty primary key. Vote: %#v\n", obj))
 		}
 
-	case DbAddress:
-		if obj.Location == "" || obj.Port == 0 {
+	case AddressPack:
+		if obj.Address.Location == "" || obj.Address.Port == 0 {
 			return errors.New(
 				fmt.Sprintf(
 					"This address has one or more empty primary key(s). Address: %#v\n", obj))
@@ -589,7 +781,7 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 					"This thread has some required fields empty (One or more of: Board, Name, Creation, PoW). Thread: %#v\n", obj))
 		}
 	case DbPost:
-		if obj.Board == "" || obj.Thread == "" || obj.Parent == "" || obj.Body == "" || obj.Creation == 0 || obj.ProofOfWork == "" {
+		if obj.Board == "" || obj.Thread == "" || obj.Parent == "" || string(obj.Body) == "" || obj.Creation == 0 || obj.ProofOfWork == "" {
 			return errors.New(
 				fmt.Sprintf(
 					"This post has some required fields empty (One or more of: Board, Thread, Parent, Body, Creation, PoW). Post: %#v\n", obj))
@@ -600,18 +792,29 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 				fmt.Sprintf(
 					"This vote has some required fields empty (One or more of: Board, Thread, Target, Owner, Type, Creation, Signature, PoW). Vote: %#v\n", obj))
 		}
-	case AddressPack:
-		if obj.Address.LocationType == 0 || obj.Address.LastOnline == 0 || obj.Address.ProtocolVersionMajor == 0 || obj.Address.ClientVersionMajor == 0 || obj.Address.ClientName == "" || len(obj.Subprotocols) < 1 {
+	case AddressPack: // fix
+		// if obj.Address.LocationType == 0 || obj.Address.LastOnline == 0 || obj.Address.ProtocolVersionMajor == 0 || obj.Address.ClientVersionMajor == 0 || obj.Address.ClientName == "" || len(obj.Subprotocols) < 1 {
+		// 	return errors.New(
+		// 		fmt.Sprintf(
+		// 			"This address has some required fields empty (One or more of: LocationType, LastOnline, ProtocolVersionMajor, Subprotocols, ClientVersionMajor, ClientName). Address: %#v\n", obj))
+		// }
+		// for _, subprot := range obj.Subprotocols {
+		// 	if subprot.Fingerprint == "" || subprot.Name == "" || subprot.VersionMajor == 0 || subprot.SupportedEntities == "" {
+		// 		return errors.New(
+		// 			fmt.Sprintf(
+		// 				"This address' subprotocol has some required fields empty (One or more of: Fingerprint, Name, VersionMajor, SupportedEntities). Address: %#v\n Subprotocol: %#v\n", obj, subprot))
+		// 	}
+		// }
+
+		/*
+			Why only these? Address is special. When address traverses over the network, it is mostly emptied out, because the information it contains is untrustable - a remote might be maliciously replacing those fields to get the network to do its bidding.
+			The only address entry that is trustable is gained first-person, that is, this node connects to the node on the address, and that direct connection can update this address entity with real, first-party data.
+		*/
+
+		if obj.Address.Location == "" || obj.Address.Port == 0 {
 			return errors.New(
 				fmt.Sprintf(
-					"This address has some required fields empty (One or more of: LocationType, LastOnline, ProtocolVersionMajor, Subprotocols, ClientVersionMajor, ClientName). Address: %#v\n", obj))
-		}
-		for _, subprot := range obj.Subprotocols {
-			if subprot.Fingerprint == "" || subprot.Name == "" || subprot.VersionMajor == 0 || subprot.SupportedEntities == "" {
-				return errors.New(
-					fmt.Sprintf(
-						"This address' subprotocol has some required fields empty (One or more of: Fingerprint, Name, VersionMajor, SupportedEntities). Address: %#v\n Subprotocol: %#v\n", obj, subprot))
-			}
+					"This address has some required fields empty (One or more of: Location, Port. Address: %#v", obj))
 		}
 
 	case KeyPack:

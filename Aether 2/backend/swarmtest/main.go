@@ -60,8 +60,8 @@ var settings settingsStruct
 
 func setDefaults() {
 	createPath("Runtime-Generated-Files")
-	settings.swarmsize = 2
-	settings.testdurationsec = 10
+	settings.swarmsize = 5
+	settings.testdurationsec = 300
 	settings.staticnodeloc = "Runtime-Generated-Files/temp_generated_data"
 	spl, err := filepath.Abs("Runtime-Generated-Files/swarm-plan.json")
 	if err != nil {
@@ -93,7 +93,7 @@ func generateNodeData(n *node) {
 	createPath(nodeTempFolder)
 	abspath, err := filepath.Abs(nodeTempPath)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	n.generatedDataPath = abspath
 	// Check if there is anything that exists in the folder. If so, skip this.
@@ -109,17 +109,6 @@ func generateNodeData(n *node) {
 
 // startServingStaticNodeAsDataDonor starts the generated data as a static node of its own, so that our swarm node that we want to get up to speed will be able to sync with it and get its data.
 func startServingStaticNodeAsDataDonor(n node) *http.Server {
-	// fs := http.FileServer(http.Dir(n.generatedDataPath))
-	// svmux := http.NewServeMux()
-	// svmux.Handle("/", fs)
-
-	// go func() {
-	// 	http.ListenAndServe(fmt.Sprint(":", n.staticServerPort), svmux)
-	// }
-	return startHttpServer(n)
-}
-
-func startHttpServer(n node) *http.Server {
 	srv := &http.Server{Addr: fmt.Sprint(":", n.staticServerPort)}
 	fs := http.FileServer(http.Dir(n.generatedDataPath))
 	// http.HandleFunc("/", fs)
@@ -323,8 +312,8 @@ func collectAndSaveResults(startTs int64) {
 	}
 }
 
-func startSwarmNode(appname string, externalPort int, killTimeout int, wg *sync.WaitGroup) {
-	log.Printf("We're starting the swarm node with the app name %s", appname)
+func startSwarmNode(appname string, externalPort int, killTimeout int, wg *sync.WaitGroup, swarmNodeId int) {
+	log.Printf("We're starting the swarm node with the app name %s at the port %d", appname, externalPort)
 	defer wg.Done()
 	cmd := exec.Command(
 		"go", "run", "main.go", "orchestrate",
@@ -334,10 +323,15 @@ func startSwarmNode(appname string, externalPort int, killTimeout int, wg *sync.
 		fmt.Sprintf("--port=%d", externalPort),
 		"--metricsdebugmode",
 		fmt.Sprintf("--killtimeout=%d", killTimeout),
-		fmt.Sprintf("--swarmplan=%s", settings.swarmplanloc))
+		fmt.Sprintf("--swarmplan=%s", settings.swarmplanloc),
+		fmt.Sprintf("--swarmnodeid=%d", swarmNodeId))
 	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	cmd.Dir = "../../../aether-core/backend/"
-	cmd.Run()
+	err2 := cmd.Run()
+	if err2 != nil {
+		log.Fatal(fmt.Sprintf("The swarm node %s has crashed with an error. Error: %v", appname, err2))
+	}
 }
 
 /*
@@ -363,12 +357,11 @@ func main() {
 
 func startSwarmNodes(nodes []node, killTimeout int) {
 	// sms.presentnodes does not depend on saveresults - it's immediately available as the metrics come in. That's where we can get the port from.
-
 	// The wait group blocks until all goroutines are complete and exited.
 	var wg sync.WaitGroup
-	for _, n := range nodes {
+	for key, n := range nodes {
 		wg.Add(1)
-		go startSwarmNode(n.appname, n.externalPort, killTimeout, &wg)
+		go startSwarmNode(n.appname, n.externalPort, killTimeout, &wg, key)
 	}
 	wg.Wait()
 	fmt.Println("All swarm nodes have exited per their kill timeouts.")
@@ -377,7 +370,8 @@ func startSwarmNodes(nodes []node, killTimeout int) {
 var startTime int64
 
 func main() {
-	startTime = time.Now().Unix()
+	start := time.Now()
+	startTime = start.Unix()
 	setDefaults()
 	go sms.StartListening()
 	// For each node that we have requested
@@ -393,10 +387,10 @@ func main() {
 	// Here, generate the list of connection requests we want to inject to the swarm nodes. This is where we create the connection mapping we want to test live.
 	generateSwarmSchedules(nodes, "simple")
 	// Start the nodes, this time without a kill-switch at the end of the load.
-	startSwarmNodes(nodes, 300)
+	startSwarmNodes(nodes, settings.testdurationsec)
 	spew.Dump(nodes)
 	collectAndSaveResults(startTime)
-
+	fmt.Printf("It took %d to run this swarm test. It was set to run for %d seconds.", int(time.Since(start).Seconds()), settings.testdurationsec)
 	fmt.Printf("%#v\n", nodes)
 	// select {}
 }

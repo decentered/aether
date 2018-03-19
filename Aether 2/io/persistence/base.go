@@ -11,23 +11,13 @@ import (
 	// "github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 	// _ "github.com/lib/pq"
+	"errors"
+	"github.com/fatih/color"
+	"strings"
+	"time"
 	// "os"
+	"math/rand"
 )
-
-// Global Objects
-
-// Creates the database connection to be used from this point on.
-// var DbInstance = sqlx.MustConnect("sqlite3", "./test.db")
-
-// var DbInstance = *globals.DbInstance
-
-// var DbInstance = sqlx.MustConnect("mysql", "root:@/aether_test")
-
-// var DbInstance = sqlx.MustConnect("postgres", "user=burak password=12345 dbname=aether_test sslmode=disable")
-
-// func SetMaxOpenConn() {
-// 	DbInstance.SetMaxOpenConns(10000000)
-// }
 
 // DeleteDatabase removes the existing database in the default location.
 func DeleteDatabase() {
@@ -36,7 +26,30 @@ func DeleteDatabase() {
 }
 
 // CreateDatabase creates a new database in the default location and places into it the database schema.
+
 func CreateDatabase() {
+	err := createDatabase()
+	if err != nil {
+		if strings.Contains(err.Error(), "Database was locked") {
+			logging.Log(1, err)
+			if strings.Contains(err.Error(), "Database was locked") {
+				logging.Log(1, "This transaction was not committed because database was locked. We'll wait 10 seconds and retry the transaction.")
+				time.Sleep(10 * time.Second)
+				logging.Log(1, "Retrying the previously failed CreateDatabase transaction.")
+				err2 := createDatabase()
+				if err2 != nil {
+					logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
+				} else { // If the reattempted transaction succeeds
+					logging.Log(1, "The retry attempt of the failed transaction succeeded.")
+				}
+			}
+		}
+	}
+}
+func createDatabase() error {
+	var schemaPrep1 string
+	var schemaPrep2 string
+	var schemaPrep3 string
 	var schema1 string
 	var schema2 string
 	var schema3 string
@@ -52,8 +65,16 @@ func CreateDatabase() {
 	var schema13 string
 	var schema14 string
 	var schema15 string
+	var schema16 string
 
 	if globals.BackendConfig.DbEngine == "mysql" {
+		schemaPrep1 = `
+      CREATE DATABASE IF NOT EXISTS AetherDB
+      DEFAULT CHARACTER SET utf8
+      DEFAULT COLLATE utf8_general_ci;
+    `
+		schemaPrep2 = `USE AetherDB;`
+		schemaPrep3 = `SET sql_mode = 'STRICT_TRANS_TABLES';`
 		schema1 = `
         CREATE TABLE IF NOT EXISTS BoardOwners (
           BoardFingerprint VARCHAR(64) NOT NULL,
@@ -76,27 +97,29 @@ func CreateDatabase() {
           Name VARCHAR(255) NOT NULL,
           Owner VARCHAR(64) NOT NULL,
           -- BoardOwners field will have to be constructed on the fly.
-          Description TEXT NOT NULL,  -- Converted from varchar(65535) to text, because it doesn't fit into a MYSQL table. Enforce max 65535 chars on the application layer.
+          Description LONGBLOB NOT NULL,  -- Converted from varchar(65535) to text, because it doesn't fit into a MYSQL table. Enforce max 65535 chars on the application layer.
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
           Signature VARCHAR(512) NOT NULL,
           LastUpdate BIGINT NOT NULL,
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
-          LocalArrival BIGINT NOT NULL
+          LocalArrival BIGINT NOT NULL,
+          Meta JSON NOT NULL
         );`
 		schema4 = `
         CREATE TABLE IF NOT EXISTS Threads (
           Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
           Board VARCHAR(64) NOT NULL,
           Name VARCHAR(255) NOT NULL,
-          Body TEXT NOT NULL,
+          Body LONGBLOB NOT NULL,
           Link VARCHAR(5000) NOT NULL,
           Owner VARCHAR(64) NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
           Signature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
+          Meta JSON NOT NULL,
           INDEX (Board)
         );`
 		schema5 = `
@@ -105,12 +128,13 @@ func CreateDatabase() {
           Board VARCHAR(64) NOT NULL,
           Thread VARCHAR(64) NOT NULL,
           Parent VARCHAR(64) NOT NULL,
-          Body TEXT NOT NULL,
+          Body LONGBLOB NOT NULL,
           Owner VARCHAR(64) NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
           Signature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
+          Meta JSON NOT NULL,
           INDEX (Thread)
         );`
 		schema6 = `
@@ -128,6 +152,7 @@ func CreateDatabase() {
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
+          Meta JSON NOT NULL,
           INDEX (Target)
         );`
 		schema7 = `
@@ -154,14 +179,15 @@ func CreateDatabase() {
           PublicKey TEXT NOT NULL,
           Name VARCHAR(64) NOT NULL,
           -- CurrencyAddresses will have to be constructed on the fly.
-          Info VARCHAR(1024) NOT NULL,
+          Info LONGBLOB NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
           Signature VARCHAR(512) NOT NULL,
           LastUpdate BIGINT NOT NULL,
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
-          LocalArrival BIGINT NOT NULL
+          LocalArrival BIGINT NOT NULL,
+          Meta JSON NOT NULL
         );`
 		schema9 = `
         CREATE TABLE IF NOT EXISTS Truststates (
@@ -177,7 +203,8 @@ func CreateDatabase() {
           LastUpdate BIGINT NOT NULL,
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
-          LocalArrival BIGINT NOT NULL
+          LocalArrival BIGINT NOT NULL,
+          Meta JSON NOT NULL
         );
       `
 		schema10 = `
@@ -209,7 +236,14 @@ func CreateDatabase() {
             SubprotocolFingerprint VARCHAR(64) NOT NULL,
             PRIMARY KEY(AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint)
           );`
+		schema16 = `
+          CREATE TABLE IF NOT EXISTS Diagnostics (
+            DbRoundtripTestField BIGINT PRIMARY KEY NOT NULL
+          );`
 	} else if globals.BackendConfig.DbEngine == "sqlite" {
+		schemaPrep1 = ``
+		schemaPrep2 = ``
+		schemaPrep3 = ``
 		schema1 = `
         CREATE TABLE IF NOT EXISTS "BoardOwners" (
           "BoardFingerprint" varchar(64) NOT NULL
@@ -230,7 +264,7 @@ func CreateDatabase() {
           "Fingerprint" varchar(64) NOT NULL
         ,  "Name" varchar(255) NOT NULL
         ,  "Owner" varchar(64) NOT NULL
-        ,  "Description" text NOT NULL
+        ,  "Description" blob NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
         ,  "Signature" varchar(512) NOT NULL
@@ -238,6 +272,7 @@ func CreateDatabase() {
         ,  "UpdateProofOfWork" varchar(1024) NOT NULL
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "Meta" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema4 = `
@@ -245,13 +280,14 @@ func CreateDatabase() {
           "Fingerprint" varchar(64) NOT NULL
         ,  "Board" varchar(64) NOT NULL
         ,  "Name" varchar(255) NOT NULL
-        ,  "Body" text NOT NULL
+        ,  "Body" blob NOT NULL
         ,  "Link" varchar(5000) NOT NULL
         ,  "Owner" varchar(64) NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
         ,  "Signature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "Meta" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema5 = `
@@ -260,12 +296,13 @@ func CreateDatabase() {
         ,  "Board" varchar(64) NOT NULL
         ,  "Thread" varchar(64) NOT NULL
         ,  "Parent" varchar(64) NOT NULL
-        ,  "Body" text NOT NULL
+        ,  "Body" blob NOT NULL
         ,  "Owner" varchar(64) NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
         ,  "Signature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "Meta" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema6 = `
@@ -283,6 +320,7 @@ func CreateDatabase() {
         ,  "UpdateProofOfWork" varchar(1024) NOT NULL
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "Meta" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema7 = `
@@ -308,7 +346,7 @@ func CreateDatabase() {
         ,  "Type" varchar(64) NOT NULL
         ,  "PublicKey" text NOT NULL
         ,  "Name" varchar(64) NOT NULL
-        ,  "Info" varchar(1024) NOT NULL
+        ,  "Info" blob NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
         ,  "Signature" varchar(512) NOT NULL
@@ -316,6 +354,7 @@ func CreateDatabase() {
         ,  "UpdateProofOfWork" varchar(1024) NOT NULL
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "Meta" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema9 = `
@@ -333,6 +372,7 @@ func CreateDatabase() {
         ,  "UpdateProofOfWork" varchar(1024) NOT NULL
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "Meta" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema10 = `
@@ -373,11 +413,22 @@ func CreateDatabase() {
 		schema15 = `
           CREATE INDEX IF NOT EXISTS "idx_Votes_Target" ON "Votes" ("Target");
           `
+		schema16 = `
+            CREATE TABLE IF NOT EXISTS "Diagnostics" (
+              "DbRoundtripTestField" integer NOT NULL
+            ,  PRIMARY KEY ("DbRoundtripTestField")
+            );`
 	} else {
 		logging.LogCrash(fmt.Sprintf("Storage engine you've inputted is not supported. Please change it from the backend user config into something that is supported. You've provided: %s", globals.BackendConfig.GetDbEngine()))
 	}
 
 	var creationSchemas []string
+	if len(schemaPrep1) > 0 {
+		// MySQL specific DB creation schema.
+		creationSchemas = append(creationSchemas, schemaPrep1)
+		creationSchemas = append(creationSchemas, schemaPrep2)
+		creationSchemas = append(creationSchemas, schemaPrep3)
+	}
 	creationSchemas = append(creationSchemas, schema1)
 	creationSchemas = append(creationSchemas, schema2)
 	creationSchemas = append(creationSchemas, schema3)
@@ -396,11 +447,67 @@ func CreateDatabase() {
 		creationSchemas = append(creationSchemas, schema14)
 		creationSchemas = append(creationSchemas, schema15)
 	}
+	creationSchemas = append(creationSchemas, schema16)
 
+	tx, err := globals.DbInstance.Beginx()
+	if err != nil {
+		logging.LogCrash(err)
+	}
 	for _, schema := range creationSchemas {
 		// fmt.Println(schema)
-		globals.DbInstance.MustExec(schema)
+		_, err2 := tx.Exec(schema)
+		if err2 != nil {
+			logging.LogCrash(err2)
+		}
 	}
+	err3 := tx.Commit()
+	if err3 != nil {
+		tx.Rollback()
+		logging.Log(1, fmt.Sprintf("CreateDatabase encountered an error when trying to commit to the database. Error is: %s", err3))
+		if strings.Contains(err3.Error(), "database is locked") {
+			logging.Log(1, fmt.Sprintf("This database seems to be locked. We'll sleep 10 seconds to give it the time it needs to recover. This mostly happens when the app has crashed and there is a hot journal - and SQLite is in the process of repairing the database. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY."))
+			return errors.New("Database was locked. THE DATA IN THIS TRANSACTION WAS NOT COMMITTED. PLEASE RETRY.")
+		}
+		return err3
+	}
+	return nil
+}
+
+func CheckDatabaseReady() {
+	DiagInsert := `REPLACE INTO Diagnostics
+  (
+    DbRoundtripTestField
+  ) VALUES (
+    :DbRoundtripTestField
+  )`
+	DiagDelete := `DELETE FROM Diagnostics`
+	rand.Seed(time.Now().UTC().UnixNano())
+	// We're using time.now because we don't want DB to optimise out the write and not test the connection that way. Get a random number between 0- 65535 for entry test.
+	ss := map[string]interface{}{"DbRoundtripTestField": rand.Intn(65535)}
+	// First, remove everything.
+	tx, err := globals.DbInstance.Beginx()
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	_, err2 := tx.Exec(DiagDelete)
+	if err2 != nil {
+		logging.LogCrash(err2)
+	}
+	tx.Commit()
+	// Second, insert a new item.
+	tx2, err3 := globals.DbInstance.Beginx()
+	if err3 != nil {
+		logging.LogCrash(err3)
+	}
+	_, err4 := tx2.NamedExec(DiagInsert, ss)
+	if err4 != nil {
+		logging.LogCrash(err4)
+	}
+	err5 := tx2.Commit()
+	if err5 != nil {
+		logging.LogCrash(err4)
+	}
+	color.Cyan("Database is ready. Just verified by removing and inserting data successfully.")
 }
 
 // Insertion SQL code used by the writer.
@@ -420,11 +527,11 @@ var nodeInsert = `REPLACE INTO Nodes
 // Board insert does insert or replace without checking because we're handling the logic that decides whether we should update or not in the database layer.
 var boardInsert = `REPLACE INTO Boards
   (
-    Fingerprint, Name, Owner, Description, LocalArrival,
+    Fingerprint, Name, Owner, Description, LocalArrival, Meta,
     Creation, ProofOfWork, Signature,
     LastUpdate, UpdateProofOfWork, UpdateSignature
   ) VALUES (
-    :Fingerprint, :Name, :Owner, :Description, :LocalArrival,
+    :Fingerprint, :Name, :Owner, :Description, :LocalArrival, :Meta,
     :Creation, :ProofOfWork, :Signature,
     :LastUpdate, :UpdateProofOfWork, :UpdateSignature
   )`
@@ -450,38 +557,38 @@ All immutables below have MySQL and SQLite versions.
 // Immutable
 var threadInsertMySQL = `INSERT IGNORE INTO Threads
 (
-  Fingerprint, Board, Name, Body, Link, Owner, LocalArrival,
+  Fingerprint, Board, Name, Body, Link, Owner, LocalArrival, Meta,
   Creation, ProofOfWork, Signature
 ) VALUES (
-  :Fingerprint, :Board, :Name, :Body, :Link, :Owner, :LocalArrival,
+  :Fingerprint, :Board, :Name, :Body, :Link, :Owner, :LocalArrival, :Meta,
   :Creation, :ProofOfWork, :Signature
 )`
 
 var threadInsertSQLite = `INSERT OR IGNORE INTO Threads
 (
-  Fingerprint, Board, Name, Body, Link, Owner, LocalArrival,
+  Fingerprint, Board, Name, Body, Link, Owner, LocalArrival, Meta,
   Creation, ProofOfWork, Signature
 ) VALUES (
-  :Fingerprint, :Board, :Name, :Body, :Link, :Owner, :LocalArrival,
+  :Fingerprint, :Board, :Name, :Body, :Link, :Owner, :LocalArrival, :Meta,
   :Creation, :ProofOfWork, :Signature
 )`
 
 // Immutable
 var postInsertMySQL = `INSERT IGNORE INTO Posts
 (
-  Fingerprint, Board, Thread, Parent, Body, Owner, LocalArrival,
+  Fingerprint, Board, Thread, Parent, Body, Owner, LocalArrival, Meta,
   Creation, ProofOfWork, Signature
 ) VALUES (
-  :Fingerprint, :Board, :Thread, :Parent, :Body, :Owner, :LocalArrival,
+  :Fingerprint, :Board, :Thread, :Parent, :Body, :Owner, :LocalArrival, :Meta,
   :Creation, :ProofOfWork, :Signature
 )`
 
 var postInsertSQLite = `INSERT OR IGNORE INTO Posts
 (
-  Fingerprint, Board, Thread, Parent, Body, Owner, LocalArrival,
+  Fingerprint, Board, Thread, Parent, Body, Owner, LocalArrival, Meta,
   Creation, ProofOfWork, Signature
 ) VALUES (
-  :Fingerprint, :Board, :Thread, :Parent, :Body, :Owner, :LocalArrival,
+  :Fingerprint, :Board, :Thread, :Parent, :Body, :Owner, :LocalArrival, :Meta,
   :Creation, :ProofOfWork, :Signature
 )`
 
@@ -499,7 +606,8 @@ var voteInsert = `REPLACE INTO Votes
           :LastUpdate AS LastUpdate,
           :UpdateProofOfWork AS UpdateProofOfWork,
           :UpdateSignature AS UpdateSignature,
-          :LocalArrival AS LocalArrival
+          :LocalArrival AS LocalArrival,
+          :Meta AS Meta
           ) AS Candidate
   LEFT JOIN Votes ON Candidate.Fingerprint = Votes.Fingerprint
   WHERE (Candidate.LastUpdate > Votes.LastUpdate AND Candidate.LastUpdate > Votes.Creation)
@@ -573,11 +681,11 @@ var addressSubprotocolInsertSQLite = `INSERT OR IGNORE INTO AddressesSubprotocol
 // Key insert does insert or replace without checking because we're handling the logic that decides whether we should update or not in the database layer.
 var keyInsert = `REPLACE INTO PublicKeys
   (
-    Fingerprint, Type, PublicKey, Name, Info, LocalArrival,
+    Fingerprint, Type, PublicKey, Name, Info, LocalArrival, Meta,
     Creation, ProofOfWork, Signature,
     LastUpdate, UpdateProofOfWork, UpdateSignature
   ) VALUES (
-    :Fingerprint, :Type, :PublicKey, :Name, :Info, :LocalArrival,
+    :Fingerprint, :Type, :PublicKey, :Name, :Info, :LocalArrival, :Meta,
     :Creation, :ProofOfWork, :Signature,
     :LastUpdate, :UpdateProofOfWork, :UpdateSignature
   )`
@@ -607,7 +715,8 @@ var truststateInsert = `REPLACE INTO Truststates
           :LastUpdate AS LastUpdate,
           :UpdateProofOfWork AS UpdateProofOfWork,
           :UpdateSignature AS UpdateSignature,
-          :LocalArrival AS LocalArrival
+          :LocalArrival AS LocalArrival,
+          :Meta AS Meta
           ) AS Candidate
   LEFT JOIN Truststates ON Candidate.Fingerprint = Truststates.Fingerprint
   WHERE (Candidate.LastUpdate > Truststates.LastUpdate AND Candidate.LastUpdate > Truststates.Creation)

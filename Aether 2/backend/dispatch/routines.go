@@ -7,10 +7,12 @@ import (
 	"aether-core/backend/responsegenerator"
 	"aether-core/io/api"
 	"aether-core/io/persistence"
+	// "aether-core/services/globals"
 	"aether-core/services/logging"
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -56,7 +58,7 @@ func Sync(a api.Address) error {
 	// addr.Port = a.Port
 	// addr.LastOnline = api.Timestamp(time.Now().Unix())
 	logging.Log(1, fmt.Sprintf("SYNC STARTED with node: %s:%d", a.Location, a.Port))
-	defer logging.Log(1, fmt.Sprintf("SYNC COMPLETE with node: %s:%d", a.Location, a.Port))
+	start := time.Now()
 	addr, NODE_STATIC, apiResp, err := Check(a)
 	if err != nil {
 		return err
@@ -108,7 +110,11 @@ func Sync(a api.Address) error {
 		// Save the response to the database.
 		persistence.BatchInsert(*iface)
 		// Set the last checkin timestamp for each entity type to the beginning of this process. (We will update this later before committing the node checkin set based on the POST response receipts, if any)
-		endpoints[key] = apiResp.Timestamp
+		// Check if the apiResp.Timestamp is newer or older than the timestamp we have. It might actually be older,because we might have received a POST response from this node, and that might have been a later Timestamp than that of the last cache's.
+
+		if endpoints[key] < resp.MostRecentSourceTimestamp {
+			endpoints[key] = resp.MostRecentSourceTimestamp
+		}
 		// GET portion of this sync is done. Now on to POST requests.
 
 		// // POST
@@ -133,6 +139,11 @@ func Sync(a api.Address) error {
 			}
 
 			apiReq := responsegenerator.GeneratePrefilledApiResponse()
+			// Here, we need to insert the last sync timestamp into the post request, so that it will be gated appropriately.
+			f := api.Filter{}
+			f.Type = "timestamp"
+			f.Values = []string{strconv.Itoa(int(endpoints[key])), strconv.Itoa(0)}
+			apiReq.Filters = []api.Filter{f}
 			reqAsJson, jsonErr := responsegenerator.ConvertApiResponseToJson(apiReq)
 			if jsonErr != nil {
 				return jsonErr
@@ -145,8 +156,6 @@ func Sync(a api.Address) error {
 			postResp = api.InsertApiResponseToResponse(postResp, postApiResp)
 			// Now, check if this is an one-page response, or links to another location for a cache hit.
 			if len(postResp.CacheLinks) > 0 { // This response needed more than one page, so the remote split it into multiple pages, and saved it to a cache.
-				fmt.Println("THese are the cache links we received.")
-				fmt.Println(postResp.CacheLinks)
 				// We're adding /responses/ because that's where the singular responses will be.
 				postResultResp, err8 := api.GetCache(string(a.Location), string(a.Sublocation), a.Port, fmt.Sprintf("responses/%s", postResp.CacheLinks[0].ResponseUrl)) // There is only one if it's a prepared request.
 				if err8 != nil {
@@ -160,6 +169,7 @@ func Sync(a api.Address) error {
 				persistence.BatchInsert(*postIface)
 			}
 			endpoints[key] = postApiResp.Timestamp
+
 		}
 	}
 	logging.Log(1, fmt.Sprintf("SYNC:PULL COMPLETE with data from node: %s:%d", a.Location, a.Port))
@@ -175,6 +185,7 @@ func Sync(a api.Address) error {
 	if err9 != nil {
 		return err9
 	}
+	logging.Log(1, fmt.Sprintf("SYNC COMPLETE with node: %s:%d. It took %d seconds", a.Location, a.Port, int(time.Since(start).Seconds())))
 	return nil // TODO: This could return something more informative, about the status of the sync that was just completed.
 }
 
@@ -244,23 +255,31 @@ func Check(a api.Address) (api.Address, bool, api.ApiResponse, error) {
 		var err3 error
 		postApiResp, err3 = api.GetPageRaw(string(a.Location), string(a.Sublocation), a.Port, "node", "POST", reqAsJson) // Raw call instead of regular one because we need access to the inbound remote timestamp.
 		if err3 != nil {
-			return api.Address{}, NODE_STATIC, apiResp, errors.New(fmt.Sprintf("Getting POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", "node", err3))
+			return api.Address{}, NODE_STATIC, apiResp, errors.New(fmt.Sprintf("Getting POST Endpoint in Check() routine for this entity type failed. Endpoint type: %s, Error: %s", "node", err3))
 		}
 	}
 	/*
 		- Collect the newly built address data.
 	*/
 	var addr api.Address
+	var lastOnline api.Timestamp
 	if NODE_STATIC {
 		addr = apiResp.Address
+		lastOnline = apiResp.Timestamp
 	} else {
 		addr = postApiResp.Address // addr is what comes from remote, a is local.
+		lastOnline = api.Timestamp(time.Now().Unix())
 	}
-	// logging.LogCrash(fmt.Sprintf("%#v", postApiResp.Address))
-	addr.Location = a.Location // We know this to be true, because we just connected to it through a.Location (i.e. this is an outbound connection, if it made it to here, a.Location is correct by definition.)
-	addr.Sublocation = a.Sublocation
+	addr = *insertFirstPartyAddressData(&addr, &a, lastOnline)
+	return addr, NODE_STATIC, apiResp, nil
+}
+
+func insertFirstPartyAddressData(inboundAddrPtr *api.Address, localAddrPtr *api.Address, lastOnline api.Timestamp) *api.Address {
+	addr := *inboundAddrPtr
+	addr.Location = localAddrPtr.Location // We know this to be true, because we just connected to it through a.Location. If the remote says it's a different IP, it's lying.
+	addr.Sublocation = localAddrPtr.Sublocation
 	// Determine IP type from the local address we just used to connect to this remote.
-	ipAddrAsIP := net.ParseIP(string(a.Location))
+	ipAddrAsIP := net.ParseIP(string(localAddrPtr.Location))
 	ipV4Test := ipAddrAsIP.To4()
 	if ipV4Test == nil {
 		// This is an IpV6 address
@@ -268,10 +287,7 @@ func Check(a api.Address) (api.Address, bool, api.ApiResponse, error) {
 	} else {
 		addr.LocationType = 4
 	}
-	addr.Port = a.Port
-	// todo: lastonline should have its own logic for static
-	addr.LastOnline = api.Timestamp(time.Now().Unix())
-	// fmt.Printf("Resulting address at the end of the check process %#v", addr)
-	// Addr is the container for the newly obtained address data.
-	return addr, NODE_STATIC, apiResp, nil
+	addr.Port = localAddrPtr.Port // Because we just connected to this port and it worked. If the remote says it's a different port, it's lying.
+	addr.LastOnline = lastOnline
+	return &addr
 }

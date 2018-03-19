@@ -19,14 +19,14 @@ var Buf map[int64][]pb.Metrics // There can be multiple metrics pages arriving i
 type server struct{}
 
 func (s *server) RequestMetricsToken(ctx context.Context, remoteMachine *pb.Machine) (*pb.Machine_MetricsToken, error) {
-	fmt.Println("A message was received from one of the swarm nodes. It's asking for a metrics token.")
+	fmt.Printf("A message was received from the node w/ port: %d. It's requesting a metrics token.\n", remoteMachine.GetPort())
 	// saveNode(remoteMachine.Client.GetName(), int(remoteMachine.GetPort()))
 	metricsToken := pb.Machine_MetricsToken{Token: "testtoken"}
 	return &metricsToken, nil
 }
 
 func (s *server) UploadMetrics(ctx context.Context, metrics *pb.Metrics) (*pb.MetricsDeliveryResponse, error) {
-	fmt.Println("A message was received from one of the swarm nodes. It's sending us  some metrics.")
+	fmt.Printf("A message was received from the node w/ port: %d. It's sending metrics.\n", metrics.GetMachine().GetPort())
 	// This saves inbound metrics into a file, so that we will have a record of what swarm nodes are doing in the network.
 	now := time.Now().Unix()
 	Buf[now] = append(Buf[now], *metrics)

@@ -8,9 +8,10 @@ import (
 	"aether-core/io/persistence"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
+	"aether-core/services/ports"
 	"aether-core/services/scheduling"
-	"aether-core/services/upnp"
-	"fmt"
+	// "aether-core/services/upnp"
+	// "fmt"
 	"github.com/spf13/cobra"
 	"os"
 	"time"
@@ -18,7 +19,7 @@ import (
 
 func init() {
 	var loggingLevel int
-	cmdRun.Flags().IntVarP(&loggingLevel, "logginglevel", "l", 0, "Global logging level of the app.")
+	cmdRun.Flags().IntVarP(&loggingLevel, "logginglevel", "", 0, "Global logging level of the app.")
 	cmdRoot.AddCommand(cmdRun)
 }
 
@@ -37,97 +38,50 @@ This will do three main things:
 		establishConfigs(cmd)
 		showIntro() // This isn't first because it needs configs to show app version.
 		persistence.CreateDatabase()
+		persistence.CheckDatabaseReady()
 		startSchedules()
 		// Allocate the dispatcher exclusions list.
-		globals.DispatcherExclusions = make(map[*interface{}]time.Time)
+		globals.BackendTransientConfig.DispatcherExclusions = make(map[*interface{}]time.Time)
 		server.Serve()
 		shutdown()
 	},
 }
 
-// func startup() {
-// 	// Configs are established at the base app level, not in /run command here.
-// 	// Intro is shown on the base config level as well.
-// 	// Flags are set in the init of this file, and read in the main Run: function.
-// 	persistence.CreateDatabase()
-// 	// TEST Insert the localhost data.
-
-// 	// // TODO MOVE THESE TO CONFIGSTORE
-// 	// var addrLocal api.Address
-// 	// addrLocal.Location = "127.0.0.1"
-// 	// addrLocal.Sublocation = ""
-// 	// addrLocal.LocationType = 4
-// 	// addrLocal.Port = 8001
-// 	// addrLocal.LastOnline = 1111111
-// 	// addrLocal.Protocol.VersionMajor = 1
-// 	// addrLocal.Protocol.VersionMinor = 1
-// 	// addrLocal.Protocol.Subprotocols = []api.Subprotocol{api.Subprotocol{"c0", 1, 0, []string{"board", "thread", "post", "vote", "key", "truststate"}}}
-// 	// addrLocal.Client.VersionMajor = 1
-// 	// addrLocal.Client.VersionMinor = 1
-// 	// addrLocal.Client.VersionPatch = 1
-// 	// addrLocal.Client.ClientName = "Aether"
-// 	// persistence.BatchInsert([]interface{}{addrLocal})
-// 	// dispatch.Sync(addrLocal)
-// 	startSchedules()
-// 	logging.Log(1, "Startup complete.")
-// }
-
 func startSchedules() {
 	logging.Log(1, "Setting up cyclical tasks is starting.")
 	defer logging.Log(1, "Setting up cyclical tasks is complete.")
-	// The dispatcher that seeks live nodes runs every minute.
-	globals.StopLiveDispatcherCycle = scheduling.ScheduleRepeat(func() { dispatch.Dispatcher(2) }, 10*time.Second)
-	// The dispatcher that seeks static nodes runs every hour.
-	globals.StopStaticDispatcherCycle = scheduling.ScheduleRepeat(func() { dispatch.Dispatcher(255) }, 10*time.Minute)
-	// Address scanner goes through all prior unconnected addresses and attempts to connect to them to establish a relationship.
-	globals.StopAddressScannerCycle = scheduling.ScheduleRepeat(func() { dispatch.AddressScanner() }, 6*time.Hour)
-	// UPNP tries to port map every 10 minutes.
-	globals.StopUPNPCycle = scheduling.ScheduleRepeat(func() { upnp.MapPort() }, 10*time.Minute)
-	// Attempt cache generation every hour, but it will be pre-empted if the last cache generation is less than 23 hours old, so that this will run effectively every day, only.
-	globals.StopCacheGenerationCycle = scheduling.ScheduleRepeat(func() { responsegenerator.GenerateCaches() }, 1*time.Hour)
-
-	// time.AfterFunc(5*time.Second, func() {
-	// })
-
 	/*
-	   For cache generation, the logic is like this:
-	   - Start a schedule that checks every 5 minutes if the node is mature
-	   - If node is mature, start the mature cycle and stop the immature cycle.
+		Ordered by initial delay:
+		Verify external port: T+0 	(immediately)
+		Live dispatcher 			T+0: 	(immediately)
+		UPNP Port mapper: 		T+0 	(immediately)
+		Address Scanner: 			T+10m
+		Static dispatcher: 		T+20m
+		Cache generator: 			T+30m
 	*/
-	// maturityChecker := func() {
-	//  mature, err := persistence.LocalNodeIsMature()
-	//  if err != nil {
-	//    logging.LogCrash(err)
-	//  }
-	//  if mature {
-	//    // If the node is mature, stop the immature cycle and start the mature.
-	//    logging.Log(1, "The local node is as of now mature. Stopping the maturity check scheduling and starting the cache generation schedule")
-	//    globals.StopMatureCacheGenerationCycle = scheduling.ScheduleRepeat(func() { responsegenerator.GenerateCaches() }, 6*time.Hour)
-	//    globals.StopImmatureCacheGenerationCycle <- true
-	//  }
-	// }
-	// globals.StopImmatureCacheGenerationCycle = scheduling.ScheduleRepeat(maturityChecker, 5*time.Minute)
-
+	// Before doing anything, you need to validate the external port. This function takes a second or so, and it needs to block the runtime execution because if two routines call it separately, it causes a race condition. After the first initialisation, however, this function becomes safe for concurrent use.
+	ports.VerifyExternalPort()
+	// The dispatcher that seeks live nodes runs every minute.
+	globals.BackendTransientConfig.StopLiveDispatcherCycle = scheduling.ScheduleRepeat(func() { dispatch.Dispatcher(2) }, 20*time.Second, time.Duration(0))
+	// UPNP tries to port map every 10 minutes. TODO reenable
+	// globals.BackendTransientConfig.StopUPNPCycle = scheduling.ScheduleRepeat(func() { upnp.MapPort() }, 10*time.Minute, time.Duration(0))
+	// Address scanner goes through all prior unconnected addresses and attempts to connect to them to establish a relationship. It starts 30 minutes after a node is started, so that the node will actually have a chance to collect some addresses to check.
+	globals.BackendTransientConfig.StopAddressScannerCycle = scheduling.ScheduleRepeat(func() { dispatch.AddressScanner() }, 2*time.Hour, time.Duration(10)*time.Minute)
+	// The dispatcher that seeks static nodes runs every hour.
+	globals.BackendTransientConfig.StopStaticDispatcherCycle = scheduling.ScheduleRepeat(func() { dispatch.Dispatcher(255) }, 10*time.Minute, time.Duration(20)*time.Minute)
+	// Attempt cache generation every hour, but it will be pre-empted if the last cache generation is less than 23 hours old, and if the node is not tracking the head. So that this will run effectively every day, only.
+	globals.BackendTransientConfig.StopCacheGenerationCycle = scheduling.ScheduleRepeat(func() { responsegenerator.GenerateCaches() }, 1*time.Hour, time.Duration(30)*time.Minute)
 }
 
 func shutdown() {
-	logging.Log(1, "Shutdown initiated.")
-	fmt.Println("Shutdown initiated.")
-	globals.StopLiveDispatcherCycle <- true // Send true through the channel to stop the dispatch.
-	globals.StopStaticDispatcherCycle <- true
-	globals.StopAddressScannerCycle <- true
-	globals.StopUPNPCycle <- true
-	globals.StopCacheGenerationCycle <- true
-	// mature, err := persistence.LocalNodeIsMature()
-	// if err != nil {
-	//  logging.LogCrash(err)
-	// }
-	// if mature {
-	//  globals.StopMatureCacheGenerationCycle <- true
-	// } else {
-	//  globals.StopImmatureCacheGenerationCycle <- true
-	// }
-	logging.Log(1, "Shutdown is complete.")
-	fmt.Println("Shutdown is complete. Bye.")
+	logging.Log(1, "Shutdown initiated. Stopping all scheduled tasks and routines...")
+	globals.BackendTransientConfig.ShutdownInitiated = true
+	globals.BackendTransientConfig.StopLiveDispatcherCycle <- true // Send true through the channel to stop the dispatch.
+	globals.BackendTransientConfig.StopStaticDispatcherCycle <- true
+	globals.BackendTransientConfig.StopAddressScannerCycle <- true
+	// globals.BackendTransientConfig.StopUPNPCycle <- true // upnp is disabled, reenable both when it's back
+	globals.BackendTransientConfig.StopCacheGenerationCycle <- true
+	globals.DbInstance.Close()
+	logging.Log(1, "Shutdown is complete. Bye.")
 	os.Exit(0)
 }

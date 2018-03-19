@@ -136,6 +136,7 @@ type Board struct {
 	BoardOwners []BoardOwner `json:"board_owners"` // max 100 owners
 	Description string       `json:"description"`  // Max 65535 char unicode
 	Owner       Fingerprint  `json:"owner"`
+	Meta        string       `json:"meta"` // This is the dynamic JSON field
 	UpdateableFieldSet
 }
 
@@ -146,6 +147,7 @@ type Thread struct {
 	Body  string      `json:"body"`
 	Link  string      `json:"link"`
 	Owner Fingerprint `json:"owner"`
+	Meta  string      `json:"meta"`
 }
 
 type Post struct {
@@ -155,6 +157,7 @@ type Post struct {
 	Parent Fingerprint `json:"parent"`
 	Body   string      `json:"body"`
 	Owner  Fingerprint `json:"owner"`
+	Meta   string      `json:"meta"`
 }
 
 type Vote struct {
@@ -164,6 +167,7 @@ type Vote struct {
 	Target Fingerprint `json:"target"`
 	Owner  Fingerprint `json:"owner"`
 	Type   uint8       `json:"type"`
+	Meta   string      `json:"meta"`
 	UpdateableFieldSet
 }
 
@@ -185,6 +189,7 @@ type Key struct {
 	Name              string            `json:"name"`
 	CurrencyAddresses []CurrencyAddress `json:"currency_addresses"` // max 10 addresses
 	Info              string            `json:"info"`
+	Meta              string            `json:"meta"`
 	UpdateableFieldSet
 }
 
@@ -195,6 +200,7 @@ type Truststate struct {
 	Type    uint8         `json:"type"`
 	Domains []Fingerprint `json:"domain"` // max 100 domains fingerprint
 	Expiry  Timestamp     `json:"expiry"`
+	Meta    string        `json:"meta"`
 	UpdateableFieldSet
 }
 
@@ -269,7 +275,7 @@ type Caching struct {
 	CurrentCacheUrl string `json:"current_cache_url"`
 }
 
-type Filter struct { // Timestamp filter or embeds
+type Filter struct { // Timestamp filter or embeds, or fingerprint
 	Type   string   `json:"type"`
 	Values []string `json:"values"`
 }
@@ -295,22 +301,23 @@ type Answer struct { // Bodies of API Endpoint responses from remote. This will 
 
 // Response is the interface junction that batch processing functions take and emit. This is the 'internal' communication structure within the backend. It is the big carrier type for the end result of a pull from a remote.
 type Response struct {
-	AvailableTypes    []string
-	Boards            []Board
-	BoardIndexes      []BoardIndex
-	Threads           []Thread
-	ThreadIndexes     []ThreadIndex
-	Posts             []Post
-	PostIndexes       []PostIndex
-	Votes             []Vote
-	VoteIndexes       []VoteIndex
-	Keys              []Key
-	KeyIndexes        []KeyIndex
-	Addresses         []Address
-	AddressIndexes    []AddressIndex
-	Truststates       []Truststate
-	TruststateIndexes []TruststateIndex
-	CacheLinks        []ResultCache
+	AvailableTypes            []string
+	Boards                    []Board
+	BoardIndexes              []BoardIndex
+	Threads                   []Thread
+	ThreadIndexes             []ThreadIndex
+	Posts                     []Post
+	PostIndexes               []PostIndex
+	Votes                     []Vote
+	VoteIndexes               []VoteIndex
+	Keys                      []Key
+	KeyIndexes                []KeyIndex
+	Addresses                 []Address
+	AddressIndexes            []AddressIndex
+	Truststates               []Truststate
+	TruststateIndexes         []TruststateIndex
+	CacheLinks                []ResultCache
+	MostRecentSourceTimestamp Timestamp
 }
 
 // ApiResponse is the blueprint of all requests and responses. This is the 'external' communication structure backend uses to talk to other backends.

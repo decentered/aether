@@ -22,6 +22,7 @@ func ReadNode(fingerprint api.Fingerprint) (DbNode, error) {
 			return n, err
 		}
 		rows, err := globals.DbInstance.Queryx(query, args...)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return n, err
 		}
@@ -31,6 +32,7 @@ func ReadNode(fingerprint api.Fingerprint) (DbNode, error) {
 				return n, err
 			}
 		}
+		rows.Close()
 	}
 	if len(n.Fingerprint) == 0 {
 		return n, errors.New(fmt.Sprintf("The node you have asked for could not be found. You asked for: %s", fingerprint))
@@ -54,21 +56,11 @@ func enforceReadValidity(
 
 			D: Anything else: BAD.
 	*/
-
 	if (beginTimestamp == 0 && endTimestamp == 0 && len(fingerprints) > 0) ||
 		((beginTimestamp != 0 || endTimestamp != 0) && len(fingerprints) == 0) ||
 		(beginTimestamp == 0 && endTimestamp == 0 && len(fingerprints) == 0) {
 		valid = true
 	}
-
-	// if beginTimestamp == 0 && endTimestamp == 0 && len(fingerprints) > 0 {
-	// 	// This is a fingerprints search.
-	// 	valid = true
-	// } else if (beginTimestamp != 0 || endTimestamp != 0) &&
-	// 	len(fingerprints) == 0 {
-	// 	// If begin and end timestamps are not both zero, this is a time range search.
-	// 	valid = true
-	// }
 	if !valid {
 		return errors.New(fmt.Sprintf("You can either search for a time range, or for fingerprint(s). You can't do both or neither at the same time - you have to do one. Asked fingerprints: %#v, BeginTimestamp: %s, EndTimestamp: %s", fingerprints, beginTimestamp, endTimestamp))
 	}
@@ -297,6 +289,7 @@ func handleEmbeds(entities []api.Provable, result *api.Response, embeds []string
 // Only available for: Boards
 func ReadThreadEmbed(entities []api.Provable) ([]api.Thread, error) {
 	var arr []api.Thread
+	var dbArr []DbThread
 	var entityFingerprints []api.Fingerprint
 	if len(entities) == 0 {
 		logging.Log(1, fmt.Sprintf("The entities list given to the thread embed is empty."))
@@ -315,6 +308,7 @@ func ReadThreadEmbed(entities []api.Provable) ([]api.Thread, error) {
 			return arr, err
 		}
 		rows, err := globals.DbInstance.Queryx(query, args...)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -322,8 +316,12 @@ func ReadThreadEmbed(entities []api.Provable) ([]api.Thread, error) {
 			var entity DbThread
 			err = rows.StructScan(&entity)
 			if err != nil {
-				return arr, err
+				return []api.Thread{}, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close() // Close it ASAP, do not call any new DB queries while still in this.
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -340,6 +338,7 @@ func ReadThreadEmbed(entities []api.Provable) ([]api.Thread, error) {
 // Only available for: Threads
 func ReadPostEmbed(entities []api.Provable) ([]api.Post, error) {
 	var arr []api.Post
+	var dbArr []DbPost
 	var entityFingerprints []api.Fingerprint
 	if len(entities) == 0 {
 		logging.Log(1, fmt.Sprintf("The entities list given to the post embed is empty."))
@@ -358,6 +357,7 @@ func ReadPostEmbed(entities []api.Provable) ([]api.Post, error) {
 			return arr, err
 		}
 		rows, err := globals.DbInstance.Queryx(query, args...)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -365,8 +365,12 @@ func ReadPostEmbed(entities []api.Provable) ([]api.Post, error) {
 			var entity DbPost
 			err = rows.StructScan(&entity)
 			if err != nil {
-				return arr, err
+				return []api.Post{}, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close() // Close it ASAP, do not call any new DB queries while still in this.
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -383,6 +387,7 @@ func ReadPostEmbed(entities []api.Provable) ([]api.Post, error) {
 // Only available for: Posts
 func ReadVoteEmbed(entities []api.Provable) ([]api.Vote, error) {
 	var arr []api.Vote
+	var dbArr []DbVote
 	var entityFingerprints []api.Fingerprint
 	if len(entities) == 0 {
 		logging.Log(1, fmt.Sprintf("The entities list given to the vote embed is empty."))
@@ -401,6 +406,7 @@ func ReadVoteEmbed(entities []api.Provable) ([]api.Vote, error) {
 			return arr, err
 		}
 		rows, err := globals.DbInstance.Queryx(query, args...)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -408,8 +414,12 @@ func ReadVoteEmbed(entities []api.Provable) ([]api.Vote, error) {
 			var entity DbVote
 			err = rows.StructScan(&entity)
 			if err != nil {
-				return arr, err
+				return []api.Vote{}, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close() // Close it ASAP, do not call any new DB queries while still in this.
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -426,6 +436,7 @@ func ReadVoteEmbed(entities []api.Provable) ([]api.Vote, error) {
 // Only available for: Boards, Threads, Posts, Truststates
 func ReadKeyEmbed(entities []api.Provable, firstEmbedCache []api.Provable) ([]api.Key, error) {
 	var arr []api.Key
+	var dbArr []DbKey
 	var entityOwners []api.Fingerprint
 	if len(entities) == 0 {
 		logging.Log(1, fmt.Sprintf("The entities list given to the key embed is empty."))
@@ -444,29 +455,13 @@ func ReadKeyEmbed(entities []api.Provable, firstEmbedCache []api.Provable) ([]ap
 			entityOwners = append(entityOwners, entity.GetOwner())
 		}
 	}
-
-	// switch entity := entities[0].(type) {
-	// // entity: typed API object.
-	// case *api.Board:
-	// 	entity = entity // So that the compiler does not complain about entity not being used.
-	// 	for i, _ := range entities {
-	// 		entityOwners = append(entityOwners, entities[i].GetOwner())
-	// 		b := entities[i].(*api.Board)
-	// 		for j, _ := range b.BoardOwners {
-	// 			entityOwners = append(entityOwners, b.BoardOwners[j].KeyFingerprint)
-	// 		}
-	// 	}
-	// case *api.Thread, *api.Post, *api.Truststate:
-	// 	for i, _ := range entities {
-	// 		entityOwners = append(entityOwners, entities[i].GetOwner())
-	// 	}
-	// }
 	// The thing below is the same as read keys.
 	query, args, err := sqlx.In("SELECT DISTINCT * FROM PublicKeys WHERE Fingerprint IN (?);", entityOwners)
 	if err != nil {
 		return arr, err
 	}
 	rows, err := globals.DbInstance.Queryx(query, args...)
+	defer rows.Close() // In case of premature exit.
 	if err != nil {
 		return arr, err
 	}
@@ -474,8 +469,12 @@ func ReadKeyEmbed(entities []api.Provable, firstEmbedCache []api.Provable) ([]ap
 		var entity DbKey
 		err = rows.StructScan(&entity)
 		if err != nil {
-			return arr, err
+			return []api.Key{}, err
 		}
+		dbArr = append(dbArr, entity)
+	}
+	rows.Close() // Close it ASAP, do not call any new DB queries while still in this.
+	for _, entity := range dbArr {
 		apiEntity, err := DBtoAPI(entity)
 		if err != nil {
 			// Log the problem and go to the next iteration without saving this one.
@@ -495,12 +494,14 @@ func ReadBoards(
 	beginTimestamp api.Timestamp,
 	endTimestamp api.Timestamp) ([]api.Board, error) {
 	var arr []api.Board
+	var dbArr []DbBoard
 	if len(fingerprints) > 0 { // Fingerprints array search.
 		query, args, err := sqlx.In("SELECT * FROM Boards WHERE Fingerprint IN (?);", fingerprints)
 		if err != nil {
 			return arr, err
 		}
 		rows, err := globals.DbInstance.Queryx(query, args...)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -508,8 +509,12 @@ func ReadBoards(
 			var entity DbBoard
 			err = rows.StructScan(&entity)
 			if err != nil {
-				return arr, err
+				return []api.Board{}, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close() // Close it ASAP, do not call any new DB queries while still in this.
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -522,6 +527,7 @@ func ReadBoards(
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
 		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Boards WHERE (LocalArrival > ? AND LocalArrival < ? ) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -531,6 +537,10 @@ func ReadBoards(
 			if err != nil {
 				return arr, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -548,6 +558,7 @@ func ReadThreads(
 	fingerprints []api.Fingerprint,
 	beginTimestamp api.Timestamp,
 	endTimestamp api.Timestamp) ([]api.Thread, error) {
+	var dbArr []DbThread
 	var arr []api.Thread
 	if len(fingerprints) > 0 { // Fingerprints array search.
 		query, args, err := sqlx.In("SELECT * FROM Threads WHERE Fingerprint IN (?);", fingerprints)
@@ -555,6 +566,7 @@ func ReadThreads(
 			return arr, err
 		}
 		rows, err := globals.DbInstance.Queryx(query, args...)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -564,6 +576,10 @@ func ReadThreads(
 			if err != nil {
 				return arr, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -576,6 +592,7 @@ func ReadThreads(
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
 		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Threads WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -585,6 +602,10 @@ func ReadThreads(
 			if err != nil {
 				return arr, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -597,42 +618,20 @@ func ReadThreads(
 	return arr, nil
 }
 
-// func ReadThreads(Fingerprint api.Fingerprint) (
-// 	[]api.Thread, error) {
-// 	var arr []api.Thread
-// 	rows, err := globals.DbInstance.Queryx("SELECT * from Threads WHERE Fingerprint = ?", Fingerprint)
-// 	if err != nil {
-// 		logging.LogCrash(err)
-// 	}
-// 	for rows.Next() {
-// 		var thread DbThread
-// 		err = rows.StructScan(&thread)
-// 		if err != nil {
-// 			logging.LogCrash(err)
-// 		}
-// 		apiThread, err := DBtoAPI(thread)
-// 		if err != nil {
-// 			// Log the problem and go to the next iteration without saving this one.
-// 			logging.Log(1, err)
-// 			continue
-// 		}
-// 		arr = append(arr, apiThread.(api.Thread))
-// 	}
-// 	return arr, nil
-// }
-
 // ReadPosts reads posts from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
 func ReadPosts(
 	fingerprints []api.Fingerprint,
 	beginTimestamp api.Timestamp,
 	endTimestamp api.Timestamp) ([]api.Post, error) {
 	var arr []api.Post
+	var dbArr []DbPost
 	if len(fingerprints) > 0 { // Fingerprints array search.
 		query, args, err := sqlx.In("SELECT * FROM Posts WHERE Fingerprint IN (?);", fingerprints)
 		if err != nil {
 			return arr, err
 		}
 		rows, err := globals.DbInstance.Queryx(query, args...)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -642,6 +641,10 @@ func ReadPosts(
 			if err != nil {
 				return arr, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -654,6 +657,7 @@ func ReadPosts(
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
 		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Posts WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -663,6 +667,10 @@ func ReadPosts(
 			if err != nil {
 				return arr, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -681,12 +689,14 @@ func ReadVotes(
 	beginTimestamp api.Timestamp,
 	endTimestamp api.Timestamp) ([]api.Vote, error) {
 	var arr []api.Vote
+	var dbArr []DbVote
 	if len(fingerprints) > 0 { // Fingerprints array search.
 		query, args, err := sqlx.In("SELECT * FROM Votes WHERE Fingerprint IN (?);", fingerprints)
 		if err != nil {
 			return arr, err
 		}
 		rows, err := globals.DbInstance.Queryx(query, args...)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -696,6 +706,10 @@ func ReadVotes(
 			if err != nil {
 				return arr, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -708,6 +722,7 @@ func ReadVotes(
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
 		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Votes WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -717,6 +732,10 @@ func ReadVotes(
 			if err != nil {
 				return arr, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -729,28 +748,126 @@ func ReadVotes(
 	return arr, nil
 }
 
-// func ReadVotes(Fingerprint api.Fingerprint) ([]api.Vote, error) {
-// 	var arr []api.Vote
-// 	rows, err := globals.DbInstance.Queryx("SELECT * from Votes WHERE Fingerprint = ?", Fingerprint)
-// 	if err != nil {
-// 		logging.LogCrash(err)
-// 	}
-// 	for rows.Next() {
-// 		var vote DbVote
-// 		err = rows.StructScan(&vote)
-// 		if err != nil {
-// 			logging.LogCrash(err)
-// 		}
-// 		apiVote, err := DBtoAPI(vote)
-// 		if err != nil {
-// 			// Log the problem and go to the next iteration without saving this one.
-// 			logging.Log(1, err)
-// 			continue
-// 		}
-// 		arr = append(arr, apiVote.(api.Vote))
-// 	}
-// 	return arr, nil
-// }
+func readAddressesBasicSearch(Location api.Location, Sublocation api.Location, Port uint16) (*[]api.Address, error) {
+	var arr []api.Address
+	var dbArr []DbAddress
+	if len(Location) > 0 && Port > 0 { // Regular address search.
+		rows, err := globals.DbInstance.Queryx("SELECT * from Addresses WHERE Location = ? AND Sublocation = ? AND Port = ?", Location, Sublocation, Port)
+		defer rows.Close() // In case of premature exit.
+		if err != nil {
+			return &arr, err
+		}
+		for rows.Next() {
+			var entity DbAddress
+			err = rows.StructScan(&entity)
+			if err != nil {
+				return &arr, err
+			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
+			apiEntity, err := DBtoAPI(entity)
+			if err != nil {
+				// Log the problem and go to the next iteration without saving this one.
+				logging.Log(1, err)
+				continue
+			}
+			arr = append(arr, apiEntity.(api.Address))
+		}
+	}
+	return &arr, nil
+}
+
+func readAddressesFirstXResultsSearch(maxResults int, offset int, addrType uint8) (*[]api.Address, error) {
+	var arr []api.Address
+	var dbArr []DbAddress
+	if maxResults > 0 {
+		// First X results search.
+		var query string
+		var err error
+		// You have to provide a addrtype, if you search for 0, that will find the nodes you haven't connected yet.
+		query = "SELECT * from Addresses WHERE AddressType = ? ORDER BY LocalArrival DESC LIMIT ? OFFSET ?"
+		rows, err := globals.DbInstance.Queryx(query, addrType, maxResults, offset)
+		defer rows.Close() // In case of premature exit.
+		if err != nil {
+			return &arr, err
+		}
+		for rows.Next() {
+			var entity DbAddress
+			err = rows.StructScan(&entity)
+			if err != nil {
+				return &arr, err
+			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
+			apiEntity, err := DBtoAPI(entity)
+			if err != nil {
+				// Log the problem and go to the next iteration without saving this one.
+				logging.Log(1, err)
+				continue
+			}
+			arr = append(arr, apiEntity.(api.Address))
+		}
+	}
+	return &arr, nil
+}
+
+func readAddressesTimeRangeSearch(
+	beginTimestamp api.Timestamp,
+	endTimestamp api.Timestamp,
+	offset int,
+	timeRangeSearchType string) (*[]api.Address, error) {
+	var arr []api.Address
+	var dbArr []DbAddress
+	// Time range search
+	// This should result in:
+	// - Entities that has landed to local after the beginning and before the end
+	// If the end timestamp is 0, it's assumed that endTs is right now.
+	var endTs api.Timestamp
+	if endTimestamp == 0 {
+		endTs = api.Timestamp(time.Now().Unix())
+	} else {
+		endTs = endTimestamp
+	}
+	var rangeSearchColumn string
+	// Options: all, connected.
+	if timeRangeSearchType == "" || timeRangeSearchType == "all" {
+		// Default case. Default is LocalArrival.
+		rangeSearchColumn = "LocalArrival"
+	} else if timeRangeSearchType == "connected" {
+		rangeSearchColumn = "LastOnline"
+	} else {
+		return &arr, errors.New(fmt.Sprintf("You have provided an invalid time range search type. You provided: %s", timeRangeSearchType))
+	}
+	query := fmt.Sprintf("SELECT DISTINCT * from Addresses WHERE (%s > ? AND %s < ?) ORDER BY %s DESC", rangeSearchColumn, rangeSearchColumn, rangeSearchColumn)
+	rows, err := globals.DbInstance.Queryx(query, beginTimestamp, endTs)
+	defer rows.Close() // In case of premature exit.
+	if err != nil {
+		return &arr, err
+	}
+	for rows.Next() {
+		var entity DbAddress
+		err = rows.StructScan(&entity)
+		if err != nil {
+			return &arr, err
+		}
+		dbArr = append(dbArr, entity)
+	}
+	rows.Close()
+	for _, entity := range dbArr {
+		apiEntity, err := DBtoAPI(entity)
+		if err != nil {
+			// Log the problem and go to the next iteration without saving this one.
+			logging.Log(1, err)
+			continue
+		}
+		arr = append(arr, apiEntity.(api.Address))
+	}
+	return &arr, nil
+}
 
 // ReadAddresses reads addresses from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
 func ReadAddresses(
@@ -759,118 +876,57 @@ func ReadAddresses(
 	Port uint16,
 	beginTimestamp api.Timestamp,
 	endTimestamp api.Timestamp,
-	maxResults int, offset int, addrType uint8) ([]api.Address, error) {
+	maxResults int, offset int, addrType uint8,
+	timeRangeSearchType string) ([]api.Address, error) {
 	/*
 		There are three ways you can use this.
 		1) Provide Location, sublocation, port, and nothing else = regular search
 		2) Provide MaxResults, Maybe provide offset, addrType, and nothing else = first X results search
 		3) Provide Begin, End timestamp, nothing else = time range search.
 		None of these can be combined. Provide only one set - not a combination.
+
+		timeRangeSearchType:
+		Options: all, connected. It only affects time range search (#3.)
+		Allows the caller to specify whether you want this search to be done based on localArrival (all addresses in the database is processed) or lastOnline (only the addresses the computer has personally connected to returns).
+		If nothing is given (i.e. ""), it defaults to "all".
 	*/
-	// TODO: Split this into 3 functions, probably.
 	var arr []api.Address
 	if len(Location) > 0 && Port > 0 && maxResults == 0 { // Regular address search.
-		rows, err := globals.DbInstance.Queryx("SELECT * from Addresses WHERE Location = ? AND Sublocation = ? AND Port = ?", Location, Sublocation, Port)
+		logging.Log(1, "This is an address search. Type: Basic.")
+		arrPointer, err := readAddressesBasicSearch(Location, Sublocation, Port)
+		arr = *arrPointer
 		if err != nil {
 			return arr, err
-		}
-		for rows.Next() {
-			var entity DbAddress
-			err = rows.StructScan(&entity)
-			if err != nil {
-				return arr, err
-			}
-			apiEntity, err := DBtoAPI(entity)
-			if err != nil {
-				// Log the problem and go to the next iteration without saving this one.
-				logging.Log(1, err)
-				continue
-			}
-			arr = append(arr, apiEntity.(api.Address))
 		}
 	} else if maxResults > 0 && len(Location) == 0 && Port == 0 {
 		// First X results search.
-		var query string
-		var rows *sqlx.Rows
-		var err error
-		// You have to provide a addrtype, if you search for 0, that will find the nodes you haven't connected yet.
-		query = "SELECT * from Addresses WHERE AddressType = ? ORDER BY LocalArrival DESC LIMIT ? OFFSET ?"
-		rows, err = globals.DbInstance.Queryx(query, addrType, maxResults, offset)
+		logging.Log(2, "This is an address search. Type: First X results.")
+		arrPointer, err := readAddressesFirstXResultsSearch(maxResults, offset, addrType)
+		arr = *arrPointer
 		if err != nil {
 			return arr, err
-		}
-		for rows.Next() {
-			var entity DbAddress
-			err = rows.StructScan(&entity)
-			if err != nil {
-				return arr, err
-			}
-			apiEntity, err := DBtoAPI(entity)
-			if err != nil {
-				// Log the problem and go to the next iteration without saving this one.
-				logging.Log(1, err)
-				continue
-			}
-			arr = append(arr, apiEntity.(api.Address))
 		}
 	} else if maxResults == 0 && len(Location) == 0 && Port == 0 { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
 		// If the end timestamp is 0, it's assumed that endTs is right now.
-		var endTs api.Timestamp
-		if endTimestamp == 0 {
-			endTs = api.Timestamp(time.Now().Unix())
-		} else {
-			endTs = endTimestamp
-		}
-		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Addresses WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTs)
+		logging.Log(1, "This is an address search. Type: Time Range.")
+		arrPointer, err := readAddressesTimeRangeSearch(beginTimestamp, endTimestamp, offset, timeRangeSearchType)
+		arr = *arrPointer
 		if err != nil {
 			return arr, err
-		}
-		for rows.Next() {
-			var entity DbAddress
-			err = rows.StructScan(&entity)
-			if err != nil {
-				return arr, err
-			}
-			apiEntity, err := DBtoAPI(entity)
-			if err != nil {
-				// Log the problem and go to the next iteration without saving this one.
-				logging.Log(1, err)
-				continue
-			}
-			arr = append(arr, apiEntity.(api.Address))
 		}
 	} else {
 		// Invalid configuration coming from the address. Return error.
 		return arr, errors.New("You have requested data from ReadAddresses in an invalid configuration. It can provide a) search by IP and Port, b) Return last X updated addresses, c) Return the addresses that were updated in a given time range. These cannot be combined. In other words,if you want to use any of the options, you need to zero out the inputs required for the other two. You have provided inputs for more than one option. ")
 	}
+	// if arrPointer != nil {
+	// 	arr = *arrPointer
+	// } else {
+	// 	arr = []api.Address{}
+	// }
 	return arr, nil
 }
-
-// func ReadAddresses(Location api.Location,
-// 	Sublocation api.Location, Port uint16) ([]api.Address, error) {
-// 	var arr []api.Address
-// 	rows, err := globals.DbInstance.Queryx("SELECT * from Addresses WHERE Location = ? AND Sublocation = ? AND Port = ?", Location, Sublocation, Port)
-// 	if err != nil {
-// 		logging.LogCrash(err)
-// 	}
-// 	for rows.Next() {
-// 		var address DbAddress
-// 		err = rows.StructScan(&address)
-// 		if err != nil {
-// 			logging.LogCrash(err)
-// 		}
-// 		apiAddress, err := DBtoAPI(address)
-// 		if err != nil {
-// 			// Log the problem and go to the next iteration without saving this one.
-// 			logging.Log(1, err)
-// 			continue
-// 		}
-// 		arr = append(arr, apiAddress.(api.Address))
-// 	}
-// 	return arr, nil
-// }
 
 // ReadKeys reads keys from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
 func ReadKeys(
@@ -878,12 +934,14 @@ func ReadKeys(
 	beginTimestamp api.Timestamp,
 	endTimestamp api.Timestamp) ([]api.Key, error) {
 	var arr []api.Key
+	var dbArr []DbKey
 	if len(fingerprints) > 0 { // Fingerprints array search.
 		query, args, err := sqlx.In("SELECT * FROM PublicKeys WHERE Fingerprint IN (?);", fingerprints)
 		if err != nil {
 			return arr, err
 		}
 		rows, err := globals.DbInstance.Queryx(query, args...)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -893,6 +951,10 @@ func ReadKeys(
 			if err != nil {
 				return arr, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -905,6 +967,7 @@ func ReadKeys(
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
 		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from PublicKeys WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -914,6 +977,10 @@ func ReadKeys(
 			if err != nil {
 				return arr, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -926,41 +993,20 @@ func ReadKeys(
 	return arr, nil
 }
 
-// func ReadKeys(Fingerprint api.Fingerprint) ([]api.Key, error) {
-// 	var arr []api.Key
-// 	rows, err := globals.DbInstance.Queryx("SELECT * from PublicKeys WHERE Fingerprint = ?", Fingerprint)
-// 	if err != nil {
-// 		logging.LogCrash(err)
-// 	}
-// 	for rows.Next() {
-// 		var key DbKey
-// 		err = rows.StructScan(&key)
-// 		if err != nil {
-// 			logging.LogCrash(err)
-// 		}
-// 		apiKey, err := DBtoAPI(key)
-// 		if err != nil {
-// 			// Log the problem and go to the next iteration without saving this one.
-// 			logging.Log(1, err)
-// 			continue
-// 		}
-// 		arr = append(arr, apiKey.(api.Key))
-// 	}
-// 	return arr, nil
-// }
-
 // ReadTrustStates reads trust states from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
 func ReadTruststates(
 	fingerprints []api.Fingerprint,
 	beginTimestamp api.Timestamp,
 	endTimestamp api.Timestamp) ([]api.Truststate, error) {
 	var arr []api.Truststate
+	var dbArr []DbTruststate
 	if len(fingerprints) > 0 { // Fingerprints array search.
 		query, args, err := sqlx.In("SELECT * FROM Truststates WHERE Fingerprint IN (?);", fingerprints)
 		if err != nil {
 			return arr, err
 		}
 		rows, err := globals.DbInstance.Queryx(query, args...)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -970,6 +1016,10 @@ func ReadTruststates(
 			if err != nil {
 				return arr, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -982,6 +1032,7 @@ func ReadTruststates(
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
 		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Truststates WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return arr, err
 		}
@@ -991,6 +1042,10 @@ func ReadTruststates(
 			if err != nil {
 				return arr, err
 			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+		for _, entity := range dbArr {
 			apiEntity, err := DBtoAPI(entity)
 			if err != nil {
 				// Log the problem and go to the next iteration without saving this one.
@@ -1003,30 +1058,6 @@ func ReadTruststates(
 	return arr, nil
 }
 
-// func ReadTruststates(Fingerprint api.Fingerprint) (
-// 	[]api.Truststate, error) {
-// 	var arr []api.Truststate
-// 	rows, err := globals.DbInstance.Queryx("SELECT * from Truststates WHERE Fingerprint = ?", Fingerprint)
-// 	if err != nil {
-// 		logging.LogCrash(err)
-// 	}
-// 	for rows.Next() {
-// 		var truststate DbTruststate
-// 		err = rows.StructScan(&truststate)
-// 		if err != nil {
-// 			logging.LogCrash(err)
-// 		}
-// 		apiTruststate, err := DBtoAPI(truststate)
-// 		if err != nil {
-// 			// Log the problem and go to the next iteration without saving this one.
-// 			logging.Log(1, err)
-// 			continue
-// 		}
-// 		arr = append(arr, apiTruststate.(api.Truststate))
-// 	}
-// 	return arr, nil
-// }
-
 // The Reader functions that return DB instances, rather than API ones.
 
 // ReadDBCurrencyAddresses reads currency addresses from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
@@ -1038,6 +1069,7 @@ func ReadDBCurrencyAddresses(KeyFingerprint api.Fingerprint,
 	// If this query is without address (we want all addresses with that key fingerprint), change the query as such.
 	if Address == "" {
 		rows, err := globals.DbInstance.Queryx("SELECT * from CurrencyAddresses WHERE KeyFingerprint = ?", KeyFingerprint)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			logging.LogCrash(err)
 		}
@@ -1049,8 +1081,10 @@ func ReadDBCurrencyAddresses(KeyFingerprint api.Fingerprint,
 			}
 			arr = append(arr, currencyAddress)
 		}
+		rows.Close()
 	} else {
 		rows, err := globals.DbInstance.Queryx("SELECT * from CurrencyAddresses WHERE KeyFingerprint = ? AND Address = ?", KeyFingerprint, Address)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			logging.LogCrash(err)
 		}
@@ -1062,6 +1096,7 @@ func ReadDBCurrencyAddresses(KeyFingerprint api.Fingerprint,
 			}
 			arr = append(arr, currencyAddress)
 		}
+		rows.Close()
 	}
 	return arr, nil
 }
@@ -1075,6 +1110,7 @@ func ReadDBBoardOwners(BoardFingerprint api.Fingerprint,
 	// If this query is without a key fingerprint (we want all addresses with that board fingerprint), change the query as such.
 	if KeyFingerprint == "" {
 		rows, err := globals.DbInstance.Queryx("SELECT * from BoardOwners WHERE BoardFingerprint = ?", BoardFingerprint)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			logging.LogCrash(err)
 		}
@@ -1086,8 +1122,10 @@ func ReadDBBoardOwners(BoardFingerprint api.Fingerprint,
 			}
 			arr = append(arr, boardOwner)
 		}
+		rows.Close()
 	} else {
 		rows, err := globals.DbInstance.Queryx("SELECT * from BoardOwners WHERE BoardFingerprint = ? AND KeyFingerprint = ?", BoardFingerprint, KeyFingerprint)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			logging.LogCrash(err)
 		}
@@ -1099,6 +1137,7 @@ func ReadDBBoardOwners(BoardFingerprint api.Fingerprint,
 			}
 			arr = append(arr, boardOwner)
 		}
+		rows.Close()
 	}
 	return arr, nil
 }
@@ -1108,6 +1147,7 @@ func ReadDBBoardOwners(BoardFingerprint api.Fingerprint,
 func ReadDBSubprotocols(Location api.Location, Sublocation api.Location, Port uint16) ([]DbSubprotocol, error) {
 	var fpArr []api.Fingerprint
 	rows, err := globals.DbInstance.Queryx("SELECT * from AddressesSubprotocols WHERE AddressLocation = ? AND AddressSublocation = ? AND AddressPort = ?", Location, Sublocation, Port)
+	defer rows.Close() // In case of premature exit.
 	if err != nil {
 		logging.LogCrash(err)
 	}
@@ -1120,13 +1160,16 @@ func ReadDBSubprotocols(Location api.Location, Sublocation api.Location, Port ui
 		}
 		fpArr = append(fpArr, dbAddressSubprot.SubprotocolFingerprint)
 	}
+	rows.Close()
 	// For each fingerprint, get the matching subprotocol.
 	var subprotArr []DbSubprotocol
 	for _, val := range fpArr {
 		rows, err := globals.DbInstance.Queryx("SELECT * from Subprotocols WHERE Fingerprint = ?", val)
+		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			logging.LogCrash(err)
 		}
+
 		for rows.Next() {
 			var subprot DbSubprotocol
 			err = rows.StructScan(&subprot)
@@ -1135,6 +1178,7 @@ func ReadDBSubprotocols(Location api.Location, Sublocation api.Location, Port ui
 			}
 			subprotArr = append(subprotArr, subprot)
 		}
+		rows.Close()
 	}
 	return subprotArr, nil
 }

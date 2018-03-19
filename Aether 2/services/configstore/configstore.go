@@ -10,9 +10,12 @@ import (
 	// "crypto/elliptic"
 	"crypto/x509"
 	// "encoding/hex"
+	pb "aether-core/backend/metrics/proto"
 	"encoding/json"
 	"errors"
 	"fmt"
+	// "github.com/davecgh/go-spew/spew"
+	// "github.com/fatih/color"
 	cdir "github.com/shibukawa/configdir"
 	"log"
 	"runtime"
@@ -141,8 +144,8 @@ const (
 	defaultPastBlocksToCheck                       = 3
 	defaultCacheGenerationIntervalHours            = 24
 	defaultPOSTResponseExpiryMinutes               = 30
-	defaultConnectionTimeout                       = 2 * time.Second
-	defaultTCPConnectTimeout                       = 1 * time.Second
+	defaultConnectionTimeout                       = 10 * time.Second
+	defaultTCPConnectTimeout                       = 3 * time.Second
 	defaultTLSHandshakeTimeout                     = 1 * time.Second
 	defaultPingerPageSize                          = 100
 	defaultOnlineAddressFinderPageSize             = 99
@@ -152,7 +155,11 @@ const (
 	defaultExternalIp                              = "0.0.0.0" // Localhost, if this is still 0.0.0.0 at any point in the future we failed at finding this out.
 	defaultExternalIpType                          = 4         // IPv4
 	defaultExternalPort                            = 49999
-	defaultDbEngine                                = "sqlite" // 'sqlite' or 'mysql'
+	defaultDbEngine                                = "mysql" // 'sqlite' or 'mysql'
+	defaultDBIp                                    = "127.0.0.1"
+	defaultDbPort                                  = 3306
+	defaultDbUsername                              = "aether-app-db-access-user"
+	defaultDbPassword                              = "exventoveritas"
 )
 
 // Default entity page sizes
@@ -1593,19 +1600,19 @@ func (config *BackendConfig) BlankCheck() {
 		config.SetInitialised(true)
 	}
 	if len(config.DbEngine) == 0 {
-		config.SetDbEngine("sqlite")
+		config.SetDbEngine(defaultDbEngine)
 	}
 	if len(config.DbIp) == 0 {
-		config.SetDbIp("127.0.0.1")
+		config.SetDbIp(defaultDBIp)
 	}
 	if config.DbPort == 0 {
-		config.SetDbPort(3306)
+		config.SetDbPort(defaultDbPort)
 	}
 	if len(config.DbUsername) == 0 {
-		config.SetDbUsername("aether-app-db-access-user")
+		config.SetDbUsername(defaultDbUsername)
 	}
 	if len(config.DbPassword) == 0 {
-		config.SetDbPassword("exventoveritas")
+		config.SetDbPassword(defaultDbPassword)
 	}
 	// ::MetricsLevel: can be zero, no need to blank check.
 	// ::MetricsToken: can be zero, no need to blank check.
@@ -1667,9 +1674,8 @@ func (config *BackendConfig) Commit() error {
 	if Btc.PermConfigReadOnly {
 		return nil
 	}
-	var mu sync.Mutex
-	mu.Lock()
-	defer mu.Unlock()
+	Btc.ConfigMutex.Lock()
+	defer Btc.ConfigMutex.Unlock()
 	confAsByte, err3 := json.MarshalIndent(config, "", "    ")
 	if err3 != nil {
 		log.Fatal(fmt.Sprintf("JSON marshaler encountered an error while marshaling this config into JSON. Config: %#v, Error: %#v", config, err3))
@@ -1849,9 +1855,8 @@ func (config *FrontendConfig) Commit() error {
 	if Ftc.PermConfigReadOnly {
 		return nil
 	}
-	var mu sync.Mutex
-	mu.Lock()
-	defer mu.Unlock()
+	Ftc.ConfigMutex.Lock()
+	defer Ftc.ConfigMutex.Unlock()
 	confAsByte, err3 := json.MarshalIndent(config, "", "    ")
 	if err3 != nil {
 		log.Fatal(fmt.Sprintf("JSON marshaler encountered an error while marshaling this config into JSON. Config: %#v, Error: %#v", config, err3))
@@ -1951,16 +1956,36 @@ This being enabled temporarily makes this node send much more detailed metrics m
 
 ## ExternalPortVerified
 Whether the port that was in the config was actually checked to be free and clear. This is important because we'll check once before the server starts to run, and when it starts, that port will no longer be available, and will start to return 'not available'. That will make all subsequent checks fail and that will trigger the port to be moved to a port that is free - but not bound to any server, since the server is bound to the old port, and that in fact is the reason the checks return false.
+
+## SwarmNodeId
+This is the number that this specific node will route to the main swarm orchestrator when it's reporting logs. Make sure that the App identifier (Usually in the format of "Aether-N") matches this number N, or it can be confusing.
+
+## ShutdownInitiated
+This is set when the shutdown of the backend service is initiated. The processes that take a long time to return should be checking this value periodically, and if it is set, they should stop whatever they're doing and do a graceful shutdown.
+
 */
 
 type BackendTransientConfig struct {
-	PermConfigReadOnly   bool
-	AppIdentifier        string
-	OrgIdentifier        string
-	PrintToStdout        bool
-	MetricsDebugMode     bool
-	TooManyConnections   bool
-	ExternalPortVerified bool
+	PermConfigReadOnly        bool
+	AppIdentifier             string
+	OrgIdentifier             string
+	PrintToStdout             bool
+	MetricsDebugMode          bool
+	TooManyConnections        bool
+	ExternalPortVerified      bool
+	SwarmNodeId               int
+	ShutdownInitiated         bool
+	DispatcherExclusions      map[*interface{}]time.Time
+	StopLiveDispatcherCycle   chan bool
+	StopStaticDispatcherCycle chan bool
+	StopAddressScannerCycle   chan bool
+	StopUPNPCycle             chan bool
+	StopCacheGenerationCycle  chan bool
+	AddressesScannerActive    bool
+	LiveDispatchRunning       bool
+	StaticDispatchRunning     bool
+	CurrentMetricsPage        pb.Metrics
+	ConfigMutex               *sync.Mutex
 }
 
 // Set transient backend config defaults. Only need to set defaults that are not the type default.
@@ -1968,6 +1993,8 @@ type BackendTransientConfig struct {
 func (config *BackendTransientConfig) SetDefaults() {
 	config.AppIdentifier = "Aether"
 	config.OrgIdentifier = "Air Labs"
+	config.ConfigMutex = &sync.Mutex{}
+
 }
 
 // Frontend
@@ -1975,10 +2002,12 @@ func (config *BackendTransientConfig) SetDefaults() {
 type FrontendTransientConfig struct {
 	PermConfigReadOnly bool
 	MetricsDebugMode   bool
+	ConfigMutex        *sync.Mutex
 }
 
 // Set transient frontend config defaults
 
 func (config *FrontendTransientConfig) SetDefaults() {
 	config.PermConfigReadOnly = false
+	config.ConfigMutex = &sync.Mutex{}
 }

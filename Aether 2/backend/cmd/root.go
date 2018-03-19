@@ -74,7 +74,7 @@ func showIntro() {
 	colorSet = colorSet.Add(color.BgCyan)
 	colorSet.Printf(`
 
-  __    __     __     __    __
+   __    __     __     __    __
   /\ "-./  \   /\ \   /\ "-./  \
   \ \ \-./\ \  \ \ \  \ \ \-./\ \
    \ \_\ \ \_\  \ \_\  \ \_\ \ \_\
@@ -142,16 +142,40 @@ func establishConfigs(cmd *cobra.Command) flags {
 	}
 	globals.BackendTransientConfig.PrintToStdout = flgs.printToStdout.value.(bool)
 	globals.BackendTransientConfig.MetricsDebugMode = flgs.metricsDebugMode.value.(bool)
+	if flgs.swarmNodeId.changed {
+		globals.BackendTransientConfig.SwarmNodeId = flgs.swarmNodeId.value.(int)
+	} else {
+		globals.BackendTransientConfig.SwarmNodeId = -1 // If not given,disable
+	}
 	if flgs.appName.changed {
 		// Also change the client name so that the name change communicates out into the analytics server when under orchestrate test harness. This is different than AppIdentifier which determines the folders that the node saves to the local drive.
 		globals.BackendConfig.SetClientName(flgs.appName.value.(string))
 	}
 	// Set up the DB Instance so that we get access to the database.
 	if globals.BackendConfig.GetDbEngine() == "sqlite" {
-		globals.DbInstance = sqlx.MustConnect(
+		conn, err := sqlx.Connect(
 			"sqlite3",
 			fmt.Sprintf(
 				"%s/AetherDB.db", globals.BackendConfig.GetUserDirectory()))
+		if err != nil {
+			logging.LogCrash(err)
+		}
+		globals.DbInstance = conn
+		/*
+			SetMaxOpenConns set to 1 is critical.
+
+			Why?
+
+			To keep SQLite happy, and discipline. This makes the app crash if you end up attempting to do more than one read OR write at the same time. Unfortunately, SQLite behaves very unpredictably under any other condition. See here: https://gist.github.com/mrnugget/0eda3b2b53a70fa4a894
+
+			Everything can be in 3 amounts: none, 1, or n. If you go into n, you'll eventually leak DB connections and under high enough load, it'll all come crashing down.
+
+			Strictly speaking, this is only useful in the case of SQLite (which does not handle concurrency) and not in the case of MySQL or any other database backend you might use. But this needs to be there, so that it enforces, a) you have good connection hygiene, b) the code you write is at some point portable to SQLite, and thus by proxy to desktop, regular users.
+
+			This is the magic sauce that makes SQLite not break under load.
+		*/
+		globals.DbInstance.SetMaxOpenConns(1)
+
 	} else if globals.BackendConfig.GetDbEngine() == "mysql" {
 		// If you want to use the MySQL, create a 'AetherDB' in your MySQL instance and insert the username / password here.
 		/*
@@ -159,13 +183,17 @@ func establishConfigs(cmd *cobra.Command) flags {
 			root:PASSWORD@tcp(l:3306)/sqlx_test
 		*/
 		mysqlConnectionString := fmt.Sprintf(
-			"%s:%s@tcp(%s:%d)/aetherdb",
+			"%s:%s@tcp(%s:%d)/",
 			globals.BackendConfig.GetDbUsername(),
 			globals.BackendConfig.GetDbPassword(),
 			globals.BackendConfig.GetDbIp(),
 			globals.BackendConfig.GetDbPort())
 		fmt.Println(mysqlConnectionString)
 		globals.DbInstance = sqlx.MustConnect("mysql", mysqlConnectionString)
+		/*
+			Single-connection restriction does not apply to MySQL. Relaxing it helps in server situations.
+		*/
+		globals.DbInstance.SetMaxOpenConns(100)
 	} else {
 		logging.LogCrash(fmt.Sprintf("Storage engine you've inputted is not supported. Please change it from the backend user config into something that is supported. You've provided: %s", globals.BackendConfig.GetDbEngine()))
 	}
@@ -194,6 +222,7 @@ type flags struct {
 	metricsDebugMode flag // bool
 	swarmPlan        flag // string
 	killTimeout      flag // int
+	swarmNodeId      flag // int
 	// Flags will be all lowercase in terminal input, heads up.
 }
 
@@ -301,6 +330,14 @@ func renderFlags(cmd *cobra.Command) flags {
 	}
 	fl.killTimeout.value = kt
 	fl.killTimeout.changed = cmd.Flags().Changed("killtimeout")
+
+	sni, err14 := cmd.Flags().GetInt("swarmnodeid")
+	if err14 != nil && !strings.Contains(
+		err14.Error(), "flag accessed but not defined") {
+		logging.LogCrash(err14)
+	}
+	fl.swarmNodeId.value = sni
+	fl.swarmNodeId.changed = cmd.Flags().Changed("swarmnodeid")
 
 	return fl
 }

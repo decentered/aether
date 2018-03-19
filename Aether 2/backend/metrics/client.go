@@ -54,7 +54,7 @@ func getAnonymousMachineIdentifier(client pb.MetricsServiceClient, configType st
 	}
 	var proto pb.Machine
 	nodeid := globals.BackendConfig.GetNodeId()
-	fmt.Println(nodeid)
+	// fmt.Println(nodeid)
 	proto.GetNodeId()
 	proto.NodeId = nodeid
 	subprots := globals.BackendConfig.GetServingSubprotocols() // returns subprotocolshim
@@ -192,7 +192,7 @@ func insertNodeEntityAsMetricForm(input map[string]string, proto *pb.Metrics) {
 func CollateMetrics(metricName string, payload interface{}) {
 	if globals.BackendConfig.GetMetricsLevel() > 0 || globals.BackendTransientConfig.MetricsDebugMode {
 		// We are metrics-enabled. Create a metrics message.
-		m := globals.CurrentMetricsPage
+		m := globals.BackendTransientConfig.CurrentMetricsPage
 		// The metric name has to be the same as how this is represented in the protobuf as a matter of convention.
 		if metricName == "ArrivedEntitiesSinceLastMetricsDbg" {
 			// This is coming from inbound DB entries.
@@ -204,13 +204,13 @@ func CollateMetrics(metricName string, payload interface{}) {
 			input := payload.(map[string]string)
 			insertNodeEntityAsMetricForm(input, &m)
 		}
-		globals.CurrentMetricsPage = m
+		globals.BackendTransientConfig.CurrentMetricsPage = m
 	}
 }
 
 // This is the place where we send metrics. This place should also involve labelling the metrics with the right tag. (pb.Metrics / request metrics token)
 func SendMetrics(client pb.MetricsServiceClient) *pb.MetricsDeliveryResponse {
-	result := deliverBackendMetrics(client, &globals.CurrentMetricsPage)
-	globals.CurrentMetricsPage = pb.Metrics{} // After the send, blank out the metrics page.
+	result := deliverBackendMetrics(client, &globals.BackendTransientConfig.CurrentMetricsPage)
+	globals.BackendTransientConfig.CurrentMetricsPage = pb.Metrics{} // After the send, blank out the metrics page.
 	return result
 }
