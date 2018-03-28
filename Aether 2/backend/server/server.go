@@ -12,6 +12,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/NYTimes/gziphandler"
+	// "github.com/davecgh/go-spew/spew"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -20,7 +22,7 @@ import (
 
 // Server responds to GETs with the caches and to POSTS with the live data from the database.
 func Serve() {
-	http.HandleFunc("/v0/responses/", func(w http.ResponseWriter, r *http.Request) {
+	handlerFunc := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
 			dir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), r.URL.Path)
 			w.Header().Set("Content-Type", "application/json")
@@ -29,8 +31,9 @@ func Serve() {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
-
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	gzippedHandler := gziphandler.GzipHandler(handlerFunc)
+	http.Handle("/v0/responses/", gzippedHandler)
+	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Force the content type to application/json, so even in the case of malicious file serving, it won't be executed by default.
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == "GET" {
@@ -175,20 +178,28 @@ func Serve() {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
+	gzippedMainHandler := gziphandler.GzipHandler(mainHandler)
+	http.Handle("/", gzippedMainHandler)
 	port := globals.BackendConfig.GetExternalPort()
 	logging.Log(1, fmt.Sprintf("Serving setup complete. Starting to serve publicly on port %d", port))
 
 	err := http.ListenAndServe(fmt.Sprint(":", port), nil)
 	if err != nil {
-		logging.LogCrash(fmt.Sprintf("Server encountered a fatal error.", err))
+		logging.LogCrash(fmt.Sprintf("Server encountered a fatal error. Error: %s", err))
 	}
 }
 
-// MaybeSaveRemote checks if the database has data about the remote that is reaching out. If not, save a new address.
-func MaybeSaveRemote(req api.ApiResponse) {
-	// We don't insert the node, only the address. Because the remote data is untrustable.
+// SaveRemote checks if the database has data about the remote that is reaching out. If not, save a new address. We don't insert the node, only the address. Because the remote data is untrustable.
+func SaveRemote(req api.ApiResponse) error {
+	// spew.Dump(req.Address.Client)
 	addrs := []api.Address{req.Address}
-	persistence.InsertOrUpdateAddresses(&addrs)
+	errs := persistence.InsertOrUpdateAddresses(&addrs)
+	if len(errs) > 0 {
+		err := errors.New(fmt.Sprintf("Some errors were encountered when the SaveRemote attempted InsertOrUpdateAddresses. Process aborted. Errors: %s", errs))
+		logging.Log(1, err)
+		return err
+	}
+	return nil
 }
 
 // insertLocallySourcedRemoteAddressDetails Inserts the locally sourced data about the remote into the address entity that is coming with the POST request.
@@ -204,6 +215,7 @@ func insertLocallySourcedRemoteAddressDetails(r *http.Request, req *api.ApiRespo
 	if len(host) == 0 {
 		return errors.New(fmt.Sprintf("The address from which the remote is connecting seems to be empty. Remote Address: %#v. %#v", r.RemoteAddr, err))
 	}
+	// TODO: Decide whether making a DNS request (ParseIP makes a DNS request) below is a risk (probably not).
 	ipAddrAsIP := net.ParseIP(host)
 	ipV4Test := ipAddrAsIP.To4()
 	if ipV4Test == nil {
@@ -216,13 +228,6 @@ func insertLocallySourcedRemoteAddressDetails(r *http.Request, req *api.ApiRespo
 	req.Address.Location = api.Location(host)
 	req.Address.LastOnline = api.Timestamp(time.Now().Unix())
 	req.Address.Type = 2 // If it is making a request to you, it cannot be a static node, by definition.
-	req.Address.Protocol.Subprotocols = []api.Subprotocol{}
-	req.Address.Protocol.VersionMajor = 0
-	req.Address.Protocol.VersionMinor = 0
-	req.Address.Client.ClientName = ""
-	req.Address.Client.VersionMajor = 0
-	req.Address.Client.VersionMinor = 0
-	req.Address.Client.VersionPatch = 0
 	return nil
 }
 
@@ -267,9 +272,15 @@ func NodePOST(r *http.Request) ([]byte, error) {
 		logging.Log(1, fmt.Sprintf("POST request parsing failed. Error: %#v\n, Request Header: %#v\n, Request Body: %#v\n", err, r.Header, req))
 		return []byte{}, nil
 	}
-	MaybeSaveRemote(req)
-	respAsByte, err := responsegenerator.GeneratePOSTResponse("node", req)
-	return respAsByte, err
+	err2 := SaveRemote(req)
+	if err2 != nil {
+		return []byte{}, err2
+	}
+	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("node", req)
+	if err3 != nil {
+		return respAsByte, err3
+	}
+	return respAsByte, nil
 }
 
 func BoardsPOST(r *http.Request) ([]byte, error) {
@@ -278,10 +289,13 @@ func BoardsPOST(r *http.Request) ([]byte, error) {
 		logging.Log(1, fmt.Sprintf("POST request parsing failed. Error: %#v\n, Request Header: %#v\n, Request Body: %#v\n", err, r.Header, req))
 		return []byte{}, nil
 	}
-	MaybeSaveRemote(req)
-	respAsByte, err := responsegenerator.GeneratePOSTResponse("boards", req)
-	if err != nil {
-		return respAsByte, err
+	err2 := SaveRemote(req)
+	if err2 != nil {
+		return []byte{}, err2
+	}
+	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("boards", req)
+	if err3 != nil {
+		return respAsByte, err3
 	}
 	return respAsByte, nil
 }
@@ -292,10 +306,13 @@ func ThreadsPOST(r *http.Request) ([]byte, error) {
 		logging.Log(1, fmt.Sprintf("POST request parsing failed. Error: %#v\n, Request Header: %#v\n, Request Body: %#v\n", err, r.Header, req))
 		return []byte{}, nil
 	}
-	MaybeSaveRemote(req)
-	respAsByte, err := responsegenerator.GeneratePOSTResponse("threads", req)
-	if err != nil {
-		return respAsByte, err
+	err2 := SaveRemote(req)
+	if err2 != nil {
+		return []byte{}, err2
+	}
+	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("threads", req)
+	if err3 != nil {
+		return respAsByte, err3
 	}
 	return respAsByte, nil
 }
@@ -306,10 +323,13 @@ func PostsPOST(r *http.Request) ([]byte, error) {
 		logging.Log(1, fmt.Sprintf("POST request parsing failed. Error: %#v\n, Request Header: %#v\n, Request Body: %#v\n", err, r.Header, req))
 		return []byte{}, nil
 	}
-	MaybeSaveRemote(req)
-	respAsByte, err := responsegenerator.GeneratePOSTResponse("posts", req)
-	if err != nil {
-		return respAsByte, err
+	err2 := SaveRemote(req)
+	if err2 != nil {
+		return []byte{}, err2
+	}
+	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("posts", req)
+	if err3 != nil {
+		return respAsByte, err3
 	}
 	return respAsByte, nil
 }
@@ -320,10 +340,13 @@ func VotesPOST(r *http.Request) ([]byte, error) {
 		logging.Log(1, fmt.Sprintf("POST request parsing failed. Error: %#v\n, Request Header: %#v\n, Request Body: %#v\n", err, r.Header, req))
 		return []byte{}, nil
 	}
-	MaybeSaveRemote(req)
-	respAsByte, err := responsegenerator.GeneratePOSTResponse("votes", req)
-	if err != nil {
-		return respAsByte, err
+	err2 := SaveRemote(req)
+	if err2 != nil {
+		return []byte{}, err2
+	}
+	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("votes", req)
+	if err3 != nil {
+		return respAsByte, err3
 	}
 	return respAsByte, nil
 }
@@ -334,10 +357,13 @@ func AddressesPOST(r *http.Request) ([]byte, error) {
 		logging.Log(1, fmt.Sprintf("POST request parsing failed. Error: %#v\n, Request Header: %#v\n, Request Body: %#v\n", err, r.Header, req))
 		return []byte{}, nil
 	}
-	MaybeSaveRemote(req)
-	respAsByte, err := responsegenerator.GeneratePOSTResponse("addresses", req)
-	if err != nil {
-		return respAsByte, err
+	err2 := SaveRemote(req)
+	if err2 != nil {
+		return []byte{}, err2
+	}
+	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("addresses", req)
+	if err3 != nil {
+		return respAsByte, err3
 	}
 	return respAsByte, nil
 }
@@ -348,10 +374,13 @@ func KeysPOST(r *http.Request) ([]byte, error) {
 		logging.Log(1, fmt.Sprintf("POST request parsing failed. Error: %#v\n, Request Header: %#v\n, Request Body: %#v\n", err, r.Header, req))
 		return []byte{}, nil
 	}
-	MaybeSaveRemote(req)
-	respAsByte, err := responsegenerator.GeneratePOSTResponse("keys", req)
-	if err != nil {
-		return respAsByte, err
+	err2 := SaveRemote(req)
+	if err2 != nil {
+		return []byte{}, err2
+	}
+	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("keys", req)
+	if err3 != nil {
+		return respAsByte, err3
 	}
 	return respAsByte, nil
 }
@@ -362,10 +391,13 @@ func TruststatesPOST(r *http.Request) ([]byte, error) {
 		logging.Log(1, fmt.Sprintf("POST request parsing failed. Error: %#v\n, Request Header: %#v\n, Request Body: %#v\n", err, r.Header, req))
 		return []byte{}, nil
 	}
-	MaybeSaveRemote(req)
-	respAsByte, err := responsegenerator.GeneratePOSTResponse("truststates", req)
-	if err != nil {
-		return respAsByte, err
+	err2 := SaveRemote(req)
+	if err2 != nil {
+		return []byte{}, err2
+	}
+	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("truststates", req)
+	if err3 != nil {
+		return respAsByte, err3
 	}
 	return respAsByte, nil
 }

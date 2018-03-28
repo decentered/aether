@@ -39,12 +39,6 @@ type DbBoardOwner struct {
 	Level            uint8           `db:"Level"`
 }
 
-type DbCurrencyAddress struct {
-	KeyFingerprint api.Fingerprint `db:"KeyFingerprint"`
-	CurrencyCode   string          `db:"CurrencyCode"`
-	Address        string          `db:"Address"`
-}
-
 type DbSubprotocol struct {
 	Fingerprint       api.Fingerprint `db:"Fingerprint"`
 	Name              string          `db:"Name"`
@@ -71,6 +65,8 @@ type DbBoard struct {
 	Description  types.GzippedText `db:"Description"`
 	LocalArrival api.Timestamp     `db:"LocalArrival"`
 	Meta         string            `db:"Meta"`
+	RealmId      api.Fingerprint   `db:"RealmId"`
+	EncrContent  string            `db:"EncrContent"`
 	DbProvable
 	DbUpdateable
 }
@@ -84,7 +80,10 @@ type DbThread struct {
 	Owner        api.Fingerprint   `db:"Owner"`
 	LocalArrival api.Timestamp     `db:"LocalArrival"`
 	Meta         string            `db:"Meta"`
+	RealmId      api.Fingerprint   `db:"RealmId"`
+	EncrContent  string            `db:"EncrContent"`
 	DbProvable
+	DbUpdateable
 }
 
 type DbPost struct {
@@ -96,7 +95,10 @@ type DbPost struct {
 	Owner        api.Fingerprint   `db:"Owner"`
 	LocalArrival api.Timestamp     `db:"LocalArrival"`
 	Meta         string            `db:"Meta"`
+	RealmId      api.Fingerprint   `db:"RealmId"`
+	EncrContent  string            `db:"EncrContent"`
 	DbProvable
+	DbUpdateable
 }
 
 type DbVote struct {
@@ -108,24 +110,27 @@ type DbVote struct {
 	Type         uint8           `db:"Type"`
 	LocalArrival api.Timestamp   `db:"LocalArrival"`
 	Meta         string          `db:"Meta"`
+	RealmId      api.Fingerprint `db:"RealmId"`
+	EncrContent  string          `db:"EncrContent"`
 	DbProvable
 	DbUpdateable
 }
 
 type DbAddress struct {
-	Location             api.Location  `db:"Location"`
-	Sublocation          api.Location  `db:"Sublocation"`
-	Port                 uint16        `db:"Port"`
-	LocationType         uint8         `db:"IPType"`
-	Type                 uint8         `db:"AddressType"`
-	LastOnline           api.Timestamp `db:"LastOnline"`
-	ProtocolVersionMajor uint8         `db:"ProtocolVersionMajor"`
-	ProtocolVersionMinor uint16        `db:"ProtocolVersionMinor"`
-	ClientVersionMajor   uint8         `db:"ClientVersionMajor"`
-	ClientVersionMinor   uint16        `db:"ClientVersionMinor"`
-	ClientVersionPatch   uint16        `db:"ClientVersionPatch"`
-	ClientName           string        `db:"ClientName"`
-	LocalArrival         api.Timestamp `db:"LocalArrival"`
+	Location             api.Location    `db:"Location"`
+	Sublocation          api.Location    `db:"Sublocation"`
+	Port                 uint16          `db:"Port"`
+	LocationType         uint8           `db:"IPType"`
+	Type                 uint8           `db:"AddressType"`
+	LastOnline           api.Timestamp   `db:"LastOnline"`
+	ProtocolVersionMajor uint8           `db:"ProtocolVersionMajor"`
+	ProtocolVersionMinor uint16          `db:"ProtocolVersionMinor"`
+	ClientVersionMajor   uint8           `db:"ClientVersionMajor"`
+	ClientVersionMinor   uint16          `db:"ClientVersionMinor"`
+	ClientVersionPatch   uint16          `db:"ClientVersionPatch"`
+	ClientName           string          `db:"ClientName"`
+	LocalArrival         api.Timestamp   `db:"LocalArrival"`
+	RealmId              api.Fingerprint `db:"RealmId"`
 }
 
 type DbKey struct {
@@ -136,6 +141,8 @@ type DbKey struct {
 	Info         types.GzippedText `db:"Info"`
 	LocalArrival api.Timestamp     `db:"LocalArrival"`
 	Meta         string            `db:"Meta"`
+	RealmId      api.Fingerprint   `db:"RealmId"`
+	EncrContent  string            `db:"EncrContent"`
 	DbProvable
 	DbUpdateable
 }
@@ -149,6 +156,8 @@ type DbTruststate struct {
 	Expiry       api.Timestamp   `db:"Expiry"`
 	LocalArrival api.Timestamp   `db:"LocalArrival"`
 	Meta         string          `db:"Meta"`
+	RealmId      api.Fingerprint `db:"RealmId"`
+	EncrContent  string          `db:"EncrContent"`
 	DbProvable
 	DbUpdateable
 }
@@ -172,11 +181,6 @@ type BoardPack struct {
 	BoardOwners []DbBoardOwner
 }
 
-type KeyPack struct {
-	Key               DbKey
-	CurrencyAddresses []DbCurrencyAddress
-}
-
 type AddressPack struct {
 	Address      DbAddress
 	Subprotocols []DbSubprotocol
@@ -196,6 +200,8 @@ func APItoDB(object interface{}) (interface{}, error) {
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		dbObj.Meta = obj.Meta
+		dbObj.RealmId = obj.RealmId
+		dbObj.EncrContent = obj.EncrContent
 		// Provable set
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
@@ -229,6 +235,8 @@ func APItoDB(object interface{}) (interface{}, error) {
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		dbObj.Meta = obj.Meta
+		dbObj.RealmId = obj.RealmId
+		dbObj.EncrContent = obj.EncrContent
 		// Provable set
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
@@ -246,6 +254,8 @@ func APItoDB(object interface{}) (interface{}, error) {
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		dbObj.Meta = obj.Meta
+		dbObj.RealmId = obj.RealmId
+		dbObj.EncrContent = obj.EncrContent
 		// Provable set
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
@@ -263,6 +273,8 @@ func APItoDB(object interface{}) (interface{}, error) {
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		dbObj.Meta = obj.Meta
+		dbObj.RealmId = obj.RealmId
+		dbObj.EncrContent = obj.EncrContent
 		// Provable set
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
@@ -289,6 +301,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.ClientName = obj.Client.ClientName
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.RealmId = obj.RealmId
 		var ap AddressPack
 		ap.Address = dbObj
 		// Loop over subprotocols and insert to pack.
@@ -334,6 +347,8 @@ func APItoDB(object interface{}) (interface{}, error) {
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		dbObj.Meta = obj.Meta
+		dbObj.RealmId = obj.RealmId
+		dbObj.EncrContent = obj.EncrContent
 		// Provable set
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
@@ -342,19 +357,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.LastUpdate = obj.LastUpdate
 		dbObj.UpdateProofOfWork = obj.UpdateProofOfWork
 		dbObj.UpdateSignature = obj.UpdateSignature
-		// Loop over currency addresses and insert to pack.
-		var currAddrs []DbCurrencyAddress
-		for _, val := range obj.CurrencyAddresses {
-			var c DbCurrencyAddress
-			c.KeyFingerprint = obj.Fingerprint
-			c.CurrencyCode = val.CurrencyCode
-			c.Address = val.Address
-			currAddrs = append(currAddrs, c)
-		}
-		var kp KeyPack
-		kp.Key = dbObj
-		kp.CurrencyAddresses = currAddrs
-		return kp, nil
+		return dbObj, nil
 
 	case api.Truststate:
 		// Corner case: domain is a slice of fingerprints, convert to that.
@@ -367,6 +370,8 @@ func APItoDB(object interface{}) (interface{}, error) {
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		dbObj.Meta = obj.Meta
+		dbObj.RealmId = obj.RealmId
+		dbObj.EncrContent = obj.EncrContent
 		// Provable set
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
@@ -390,7 +395,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 	}
 }
 
-// DBtoAPI converts a DB type to an API type. This is useful when this object needs to communicated to the outside world, such as showing it to the user, or to send it over the wire. This merges certain objects (Boards will have their BoardOwners appended, and Keys, their CurrencyAddresses) and removes some information (local arrival time).
+// DBtoAPI converts a DB type to an API type. This is useful when this object needs to communicated to the outside world, such as showing it to the user, or to send it over the wire. This merges certain objects (Boards will have their BoardOwners appended) and removes some information (local arrival time).
 func DBtoAPI(object interface{}) (interface{}, error) {
 	switch obj := object.(type) {
 	// obj: typed DB object.
@@ -402,6 +407,8 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Owner = obj.Owner
 		apiObj.Description = string(obj.Description)
 		apiObj.Meta = obj.Meta
+		apiObj.RealmId = obj.RealmId
+		apiObj.EncrContent = obj.EncrContent
 		// Provable set
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
@@ -434,6 +441,8 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Link = obj.Link
 		apiObj.Owner = obj.Owner
 		apiObj.Meta = obj.Meta
+		apiObj.RealmId = obj.RealmId
+		apiObj.EncrContent = obj.EncrContent
 		// Provable set
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
@@ -449,6 +458,8 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Body = string(obj.Body)
 		apiObj.Owner = obj.Owner
 		apiObj.Meta = obj.Meta
+		apiObj.RealmId = obj.RealmId
+		apiObj.EncrContent = obj.EncrContent
 		// Provable set
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
@@ -464,6 +475,8 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Owner = obj.Owner
 		apiObj.Type = obj.Type
 		apiObj.Meta = obj.Meta
+		apiObj.RealmId = obj.RealmId
+		apiObj.EncrContent = obj.EncrContent
 		// Provable set
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
@@ -489,6 +502,7 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Client.VersionMinor = obj.ClientVersionMinor
 		apiObj.Client.VersionPatch = obj.ClientVersionPatch
 		apiObj.Client.ClientName = obj.ClientName
+		apiObj.RealmId = obj.RealmId
 		dbSubprotocols, err := ReadDBSubprotocols(obj.Location, obj.Sublocation, obj.Port)
 		if err != nil {
 			// This should always crash, it means the local remote lost / corrupted data as network always provides sub-entities and main entity together.
@@ -512,7 +526,6 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		return apiObj, nil
 
 	case DbKey:
-		// Corner case, has to query CurrencyAddresses, too.
 		var apiObj api.Key
 		apiObj.Fingerprint = obj.Fingerprint
 		apiObj.Type = obj.Type
@@ -520,6 +533,8 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Name = obj.Name
 		apiObj.Info = string(obj.Info)
 		apiObj.Meta = obj.Meta
+		apiObj.RealmId = obj.RealmId
+		apiObj.EncrContent = obj.EncrContent
 		// Provable set
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
@@ -528,18 +543,6 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.LastUpdate = obj.LastUpdate
 		apiObj.UpdateProofOfWork = obj.UpdateProofOfWork
 		apiObj.UpdateSignature = obj.UpdateSignature
-		// Pull the currency addresses for this key from database.
-		dbCurrAddrs, err := ReadDBCurrencyAddresses(obj.Fingerprint, "")
-		if err != nil {
-			// This should always crash, it means the local remote lost / corrupted data as network always provides sub-entities and main entity together.
-			logging.LogCrash(err)
-		}
-		for _, dbCurrAddr := range dbCurrAddrs {
-			var apiCrrAddr api.CurrencyAddress
-			apiCrrAddr.CurrencyCode = dbCurrAddr.CurrencyCode
-			apiCrrAddr.Address = dbCurrAddr.Address
-			apiObj.CurrencyAddresses = append(apiObj.CurrencyAddresses, apiCrrAddr)
-		}
 		return apiObj, nil
 
 	case DbTruststate:
@@ -551,6 +554,8 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Type = obj.Type
 		apiObj.Expiry = obj.Expiry
 		apiObj.Meta = obj.Meta
+		apiObj.RealmId = obj.RealmId
+		apiObj.EncrContent = obj.EncrContent
 		// Provable set
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
@@ -570,10 +575,6 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		return nil, errors.New(
 			fmt.Sprintf(
 				"This object cannot be queried on its own. Try querying the parent Board object. Your object: %#v\n", obj))
-	case DbCurrencyAddress:
-		return nil, errors.New(
-			fmt.Sprintf(
-				"This object cannot be queried on its own. Try querying the parent Key object. Your object: %#v\n", obj))
 	default:
 		return nil, errors.New(
 			fmt.Sprintf(

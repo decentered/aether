@@ -13,16 +13,19 @@ import (
 	// _ "github.com/lib/pq"
 	"errors"
 	"github.com/fatih/color"
+	"math/rand"
+	"os"
 	"strings"
 	"time"
-	// "os"
-	"math/rand"
 )
 
 // DeleteDatabase removes the existing database in the default location.
 func DeleteDatabase() {
-	// os.Remove("./test.db")
-	globals.DbInstance.MustExec("DROP TABLE `aether_test`.`Addresses`, `aether_test`.`BoardOwners`, `aether_test`.`Boards`, `aether_test`.`CurrencyAddresses`, `aether_test`.`Posts`, `aether_test`.`PublicKeys`, `aether_test`.`Threads`, `aether_test`.`Truststates`, `aether_test`.`Votes`;")
+	if globals.BackendConfig.GetDbEngine() == "sqlite" {
+		os.RemoveAll(globals.BackendConfig.GetUserDirectory())
+	} else if globals.BackendConfig.GetDbEngine() == "mysql" {
+		globals.DbInstance.MustExec("DROP DATABASE `AetherDB`;")
+	}
 }
 
 // CreateDatabase creates a new database in the default location and places into it the database schema.
@@ -84,13 +87,7 @@ func createDatabase() error {
           PRIMARY KEY(BoardFingerprint, KeyFingerprint)
         );
         `
-		schema2 = `
-        CREATE TABLE IF NOT EXISTS CurrencyAddresses (
-          KeyFingerprint VARCHAR(64) NOT NULL,
-          CurrencyCode VARCHAR(5) NOT NULL,
-          Address VARCHAR(512) NOT NULL, -- Changed from 1024
-          PRIMARY KEY(KeyFingerprint, Address)
-        );`
+		schema2 = ``
 		schema3 = `
         CREATE TABLE IF NOT EXISTS Boards (
           Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
@@ -105,7 +102,9 @@ func createDatabase() error {
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
-          Meta JSON NOT NULL
+          Meta JSON NOT NULL,
+          RealmId VARCHAR(64) NOT NULL,
+          EncrConcent LONGBLOB NOT NULL
         );`
 		schema4 = `
         CREATE TABLE IF NOT EXISTS Threads (
@@ -118,8 +117,13 @@ func createDatabase() error {
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
           Signature VARCHAR(512) NOT NULL,
+          LastUpdate BIGINT NOT NULL,
+          UpdateProofOfWork VARCHAR(1024) NOT NULL,
+          UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
           Meta JSON NOT NULL,
+          RealmId VARCHAR(64) NOT NULL,
+          EncrConcent LONGBLOB NOT NULL,
           INDEX (Board)
         );`
 		schema5 = `
@@ -133,8 +137,13 @@ func createDatabase() error {
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
           Signature VARCHAR(512) NOT NULL,
+          LastUpdate BIGINT NOT NULL,
+          UpdateProofOfWork VARCHAR(1024) NOT NULL,
+          UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
           Meta JSON NOT NULL,
+          RealmId VARCHAR(64) NOT NULL,
+          EncrConcent LONGBLOB NOT NULL,
           INDEX (Thread)
         );`
 		schema6 = `
@@ -153,6 +162,8 @@ func createDatabase() error {
           UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
           Meta JSON NOT NULL,
+          RealmId VARCHAR(64) NOT NULL,
+          EncrConcent LONGBLOB NOT NULL,
           INDEX (Target)
         );`
 		schema7 = `
@@ -170,6 +181,7 @@ func createDatabase() error {
           ClientVersionPatch INTEGER NOT NULL,
           ClientName VARCHAR(255) NOT NULL,
           LocalArrival BIGINT NOT NULL,
+          RealmId VARCHAR(64) NOT NULL,
           PRIMARY KEY(Location, Sublocation, Port)
         );`
 		schema8 = `
@@ -178,7 +190,6 @@ func createDatabase() error {
           Type VARCHAR(64) NOT NULL,
           PublicKey TEXT NOT NULL,
           Name VARCHAR(64) NOT NULL,
-          -- CurrencyAddresses will have to be constructed on the fly.
           Info LONGBLOB NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
@@ -187,7 +198,9 @@ func createDatabase() error {
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
-          Meta JSON NOT NULL
+          Meta JSON NOT NULL,
+          RealmId VARCHAR(64) NOT NULL,
+          EncrConcent LONGBLOB NOT NULL
         );`
 		schema9 = `
         CREATE TABLE IF NOT EXISTS Truststates (
@@ -204,7 +217,9 @@ func createDatabase() error {
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
-          Meta JSON NOT NULL
+          Meta JSON NOT NULL,
+          RealmId VARCHAR(64) NOT NULL,
+          EncrConcent LONGBLOB NOT NULL
         );
       `
 		schema10 = `
@@ -252,13 +267,7 @@ func createDatabase() error {
         ,  "Level" integer NOT NULL
         ,  PRIMARY KEY ("BoardFingerprint","KeyFingerprint")
         );`
-		schema2 = `
-        CREATE TABLE IF NOT EXISTS "CurrencyAddresses" (
-          "KeyFingerprint" varchar(64) NOT NULL
-        ,  "CurrencyCode" varchar(5) NOT NULL
-        ,  "Address" varchar(512) NOT NULL
-        ,  PRIMARY KEY ("KeyFingerprint","Address")
-        );`
+		schema2 = ``
 		schema3 = `
         CREATE TABLE IF NOT EXISTS "Boards" (
           "Fingerprint" varchar(64) NOT NULL
@@ -273,6 +282,8 @@ func createDatabase() error {
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
         ,  "Meta" text NOT NULL
+        ,  "RealmId" varchar(64) NOT NULL
+        ,  "EncrContent" blob NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema4 = `
@@ -286,8 +297,13 @@ func createDatabase() error {
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
         ,  "Signature" varchar(512) NOT NULL
+        ,  "LastUpdate" integer NOT NULL
+        ,  "UpdateProofOfWork" varchar(1024) NOT NULL
+        ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
         ,  "Meta" text NOT NULL
+        ,  "RealmId" varchar(64) NOT NULL
+        ,  "EncrContent" blob NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema5 = `
@@ -301,8 +317,13 @@ func createDatabase() error {
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
         ,  "Signature" varchar(512) NOT NULL
+        ,  "LastUpdate" integer NOT NULL
+        ,  "UpdateProofOfWork" varchar(1024) NOT NULL
+        ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
         ,  "Meta" text NOT NULL
+        ,  "RealmId" varchar(64) NOT NULL
+        ,  "EncrContent" blob NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema6 = `
@@ -321,6 +342,8 @@ func createDatabase() error {
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
         ,  "Meta" text NOT NULL
+        ,  "RealmId" varchar(64) NOT NULL
+        ,  "EncrContent" blob NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema7 = `
@@ -338,6 +361,7 @@ func createDatabase() error {
         ,  "ClientVersionPatch" integer NOT NULL
         ,  "ClientName" varchar(255) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "RealmId" varchar(64) NOT NULL
         ,  PRIMARY KEY ("Location","Sublocation","Port")
         );`
 		schema8 = `
@@ -355,6 +379,8 @@ func createDatabase() error {
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
         ,  "Meta" text NOT NULL
+        ,  "RealmId" varchar(64) NOT NULL
+        ,  "EncrContent" blob NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema9 = `
@@ -373,6 +399,8 @@ func createDatabase() error {
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
         ,  "Meta" text NOT NULL
+        ,  "RealmId" varchar(64) NOT NULL
+        ,  "EncrContent" blob NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema10 = `
@@ -527,11 +555,13 @@ var nodeInsert = `REPLACE INTO Nodes
 // Board insert does insert or replace without checking because we're handling the logic that decides whether we should update or not in the database layer.
 var boardInsert = `REPLACE INTO Boards
   (
-    Fingerprint, Name, Owner, Description, LocalArrival, Meta,
+    Fingerprint, Name, Owner, Description, LocalArrival,
+    Meta, RealmId, EncrContent,
     Creation, ProofOfWork, Signature,
     LastUpdate, UpdateProofOfWork, UpdateSignature
   ) VALUES (
-    :Fingerprint, :Name, :Owner, :Description, :LocalArrival, :Meta,
+    :Fingerprint, :Name, :Owner, :Description, :LocalArrival,
+    :Meta, :RealmId, :EncrContent,
     :Creation, :ProofOfWork, :Signature,
     :LastUpdate, :UpdateProofOfWork, :UpdateSignature
   )`
@@ -547,50 +577,51 @@ var boardOwnerInsert = `REPLACE INTO BoardOwners
 // Deletion for BoardOwner. This triggers when a person is no longer a moderator, etc. This is the only deletion here because nothing else really gets deleted.
 var boardOwnerDelete = `DELETE FROM BoardOwners WHERE BoardFingerprint = :BoardFingerprint AND KeyFingerprint = :KeyFingerprint`
 
-/*
+var threadInsert = `REPLACE INTO Threads
+  SELECT Candidate.* FROM
+  (SELECT :Fingerprint AS Fingerprint,
+          :Board AS Board,
+          :Name AS Name,
+          :Body AS Body,
+          :Link AS Link,
+          :Owner AS Owner,
+          :Creation AS Creation,
+          :ProofOfWork AS ProofOfWork,
+          :Signature AS Signature,
+          :LastUpdate AS LastUpdate,
+          :UpdateProofOfWork AS UpdateProofOfWork,
+          :UpdateSignature AS UpdateSignature,
+          :LocalArrival AS LocalArrival,
+          :Meta AS Meta,
+          :RealmId AS RealmId,
+          :EncrContent AS EncrContent
+          ) AS Candidate
+    LEFT JOIN Threads ON Candidate.Fingerprint = Threads.Fingerprint
+    WHERE (Candidate.LastUpdate > Threads.LastUpdate AND Candidate.LastUpdate > Threads.Creation)
+    OR Threads.Fingerprint IS NULL`
 
-Main difference between MySQL and SQLite: it seems that MySQL prefers 'INSERT IGNORE' and SQLite prefers 'INSERT OR IGNORE'. It's a minor difference, but apparently it causes them to break, so we have to have different copies for mysql and sqlite.
-
-All immutables below have MySQL and SQLite versions.
-*/
-
-// Immutable
-var threadInsertMySQL = `INSERT IGNORE INTO Threads
-(
-  Fingerprint, Board, Name, Body, Link, Owner, LocalArrival, Meta,
-  Creation, ProofOfWork, Signature
-) VALUES (
-  :Fingerprint, :Board, :Name, :Body, :Link, :Owner, :LocalArrival, :Meta,
-  :Creation, :ProofOfWork, :Signature
-)`
-
-var threadInsertSQLite = `INSERT OR IGNORE INTO Threads
-(
-  Fingerprint, Board, Name, Body, Link, Owner, LocalArrival, Meta,
-  Creation, ProofOfWork, Signature
-) VALUES (
-  :Fingerprint, :Board, :Name, :Body, :Link, :Owner, :LocalArrival, :Meta,
-  :Creation, :ProofOfWork, :Signature
-)`
-
-// Immutable
-var postInsertMySQL = `INSERT IGNORE INTO Posts
-(
-  Fingerprint, Board, Thread, Parent, Body, Owner, LocalArrival, Meta,
-  Creation, ProofOfWork, Signature
-) VALUES (
-  :Fingerprint, :Board, :Thread, :Parent, :Body, :Owner, :LocalArrival, :Meta,
-  :Creation, :ProofOfWork, :Signature
-)`
-
-var postInsertSQLite = `INSERT OR IGNORE INTO Posts
-(
-  Fingerprint, Board, Thread, Parent, Body, Owner, LocalArrival, Meta,
-  Creation, ProofOfWork, Signature
-) VALUES (
-  :Fingerprint, :Board, :Thread, :Parent, :Body, :Owner, :LocalArrival, :Meta,
-  :Creation, :ProofOfWork, :Signature
-)`
+var postInsert = `REPLACE INTO Posts
+  SELECT Candidate.* FROM
+  (SELECT :Fingerprint AS Fingerprint,
+          :Board AS Board,
+          :Thread AS Thread,
+          :Parent AS Parent,
+          :Body AS Body,
+          :Owner AS Owner,
+          :Creation AS Creation,
+          :ProofOfWork AS ProofOfWork,
+          :Signature AS Signature,
+          :LastUpdate AS LastUpdate,
+          :UpdateProofOfWork AS UpdateProofOfWork,
+          :UpdateSignature AS UpdateSignature,
+          :LocalArrival AS LocalArrival,
+          :Meta AS Meta,
+          :RealmId AS RealmId,
+          :EncrContent AS EncrContent
+          ) AS Candidate
+    LEFT JOIN Posts ON Candidate.Fingerprint = Posts.Fingerprint
+    WHERE (Candidate.LastUpdate > Posts.LastUpdate AND Candidate.LastUpdate > Posts.Creation)
+    OR Posts.Fingerprint IS NULL`
 
 var voteInsert = `REPLACE INTO Votes
   SELECT Candidate.* FROM
@@ -607,99 +638,35 @@ var voteInsert = `REPLACE INTO Votes
           :UpdateProofOfWork AS UpdateProofOfWork,
           :UpdateSignature AS UpdateSignature,
           :LocalArrival AS LocalArrival,
-          :Meta AS Meta
+          :Meta AS Meta,
+          :RealmId AS RealmId,
+          :EncrContent AS EncrContent
           ) AS Candidate
   LEFT JOIN Votes ON Candidate.Fingerprint = Votes.Fingerprint
   WHERE (Candidate.LastUpdate > Votes.LastUpdate AND Candidate.LastUpdate > Votes.Creation)
   OR Votes.Fingerprint IS NULL`
 
-// Address insert is immutable. This is used for when a node receives data from an address from a node that is not at the aforementioned address. In other words, an address object coming from a third party node not at that address cannot change an existing address saved in the database.
-var addressInsertMySQL = `INSERT IGNORE INTO Addresses
-(
-  Location, Sublocation, Port, IPType, AddressType, LastOnline,
-  ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
-  ClientVersionMinor, ClientVersionPatch, ClientName,
-  LocalArrival
-) VALUES (
-  :Location, :Sublocation, :Port,:IPType, :AddressType, :LastOnline,
-  :ProtocolVersionMajor, :ProtocolVersionMinor, :ClientVersionMajor,
-  :ClientVersionMinor, :ClientVersionPatch, :ClientName,
-  :LocalArrival
-)`
-
-var addressInsertSQLite = `INSERT OR IGNORE INTO Addresses
-(
-  Location, Sublocation, Port, IPType, AddressType, LastOnline,
-  ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
-  ClientVersionMinor, ClientVersionPatch, ClientName,
-  LocalArrival
-) VALUES (
-  :Location, :Sublocation, :Port,:IPType, :AddressType, :LastOnline,
-  :ProtocolVersionMajor, :ProtocolVersionMinor, :ClientVersionMajor,
-  :ClientVersionMinor, :ClientVersionPatch, :ClientName,
-  :LocalArrival
-)`
-
-// Address update insert is mutable. This is used when the node connects to the address itself. Example: When a node connects to 256.253.231.123:8080, it will update the entry for that address with the data coming from the remote node. This is the only way to mutate an address object.
-var addressUpdateInsert = `REPLACE INTO Addresses
-(
-  Location, Sublocation, Port, IPType, AddressType, LastOnline,
-  ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
-  ClientVersionMinor, ClientVersionPatch, ClientName,
-  LocalArrival
-) VALUES (
-  :Location, :Sublocation, :Port,:IPType, :AddressType, :LastOnline,
-  :ProtocolVersionMajor, :ProtocolVersionMinor, :ClientVersionMajor,
-  :ClientVersionMinor, :ClientVersionPatch, :ClientName,
-  :LocalArrival
-)`
-
-// Subprotocol insert is the part of address insertion series. This makes it so that we have a list of all subprotocols flying around.
-var subprotocolInsert = `REPLACE INTO Subprotocols
-(
-  Fingerprint, Name, VersionMajor, VersionMinor, SupportedEntities
-) VALUES (
-  :Fingerprint, :Name, :VersionMajor, :VersionMinor, :SupportedEntities
-)`
-
-// AddressSubprotocolInsert inserts into the many to many junction table so that we can keep track of the subprotocols an address uses.
-
-var addressSubprotocolInsertMySQL = `INSERT IGNORE INTO AddressesSubprotocols
- (
-   AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint
- ) VALUES (
-   :AddressLocation, :AddressSublocation, :AddressPort, :SubprotocolFingerprint
- )`
-
-var addressSubprotocolInsertSQLite = `INSERT OR IGNORE INTO AddressesSubprotocols
-  (
-    AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint
-  ) VALUES (
-    :AddressLocation, :AddressSublocation, :AddressPort, :SubprotocolFingerprint
-  )`
-
-// Key insert does insert or replace without checking because we're handling the logic that decides whether we should update or not in the database layer.
 var keyInsert = `REPLACE INTO PublicKeys
-  (
-    Fingerprint, Type, PublicKey, Name, Info, LocalArrival, Meta,
-    Creation, ProofOfWork, Signature,
-    LastUpdate, UpdateProofOfWork, UpdateSignature
-  ) VALUES (
-    :Fingerprint, :Type, :PublicKey, :Name, :Info, :LocalArrival, :Meta,
-    :Creation, :ProofOfWork, :Signature,
-    :LastUpdate, :UpdateProofOfWork, :UpdateSignature
-  )`
-
-// CurrencyAddresses are mutable, but the condition of mutation is handled in the application layer. The only place the REPLACE could trigger is change of CurrencyCode. The Address and KeyFingerprint are identity columns, so anything with different data on those will be committed as a new item.
-var currencyAddressInsert = `REPLACE INTO CurrencyAddresses
-(
-  KeyFingerprint, CurrencyCode, Address
-) VALUES (
-  :KeyFingerprint, :CurrencyCode, :Address
-)`
-
-// This is used when an user removes the currency address on his own key.
-var currencyAddressDelete = `DELETE FROM CurrencyAddresses WHERE KeyFingerprint = :KeyFingerprint AND Address = :Address`
+    SELECT Candidate.* FROM
+    (SELECT :Fingerprint AS Fingerprint,
+            :Type AS Type,
+            :PublicKey AS PublicKey,
+            :Name AS Name,
+            :Info AS Info,
+            :Creation AS Creation,
+            :ProofOfWork AS ProofOfWork,
+            :Signature AS Signature,
+            :LastUpdate AS LastUpdate,
+            :UpdateProofOfWork AS UpdateProofOfWork,
+            :UpdateSignature AS UpdateSignature,
+            :LocalArrival AS LocalArrival,
+            :Meta AS Meta,
+            :RealmId AS RealmId,
+            :EncrContent AS EncrContent
+            ) AS Candidate
+    LEFT JOIN PublicKeys ON Candidate.Fingerprint = PublicKeys.Fingerprint
+    WHERE (Candidate.LastUpdate > PublicKeys.LastUpdate AND Candidate.LastUpdate > PublicKeys.Creation)
+    OR PublicKeys.Fingerprint IS NULL`
 
 var truststateInsert = `REPLACE INTO Truststates
   SELECT Candidate.* FROM
@@ -716,8 +683,75 @@ var truststateInsert = `REPLACE INTO Truststates
           :UpdateProofOfWork AS UpdateProofOfWork,
           :UpdateSignature AS UpdateSignature,
           :LocalArrival AS LocalArrival,
-          :Meta AS Meta
+          :Meta AS Meta,
+          :RealmId AS RealmId,
+          :EncrContent AS EncrContent
           ) AS Candidate
   LEFT JOIN Truststates ON Candidate.Fingerprint = Truststates.Fingerprint
   WHERE (Candidate.LastUpdate > Truststates.LastUpdate AND Candidate.LastUpdate > Truststates.Creation)
   OR Truststates.Fingerprint IS NULL`
+
+// Address insert is immutable. This is used for when a node receives data from an address from a node that is not at the aforementioned address. In other words, an address object coming from a third party node not at that address cannot change an existing address saved in the database.
+var addressInsertMySQL = `INSERT IGNORE INTO Addresses
+  (
+    Location, Sublocation, Port, IPType, AddressType, LastOnline,
+    ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
+    ClientVersionMinor, ClientVersionPatch, ClientName, RealmId,
+    LocalArrival
+  ) VALUES (
+    :Location, :Sublocation, :Port,:IPType, :AddressType, :LastOnline,
+    :ProtocolVersionMajor, :ProtocolVersionMinor, :ClientVersionMajor,
+    :ClientVersionMinor, :ClientVersionPatch, :ClientName, :RealmId,
+    :LocalArrival
+  )`
+
+var addressInsertSQLite = `INSERT OR IGNORE INTO Addresses
+  (
+    Location, Sublocation, Port, IPType, AddressType, LastOnline,
+    ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
+    ClientVersionMinor, ClientVersionPatch, ClientName, RealmId,
+    LocalArrival
+  ) VALUES (
+    :Location, :Sublocation, :Port,:IPType, :AddressType, :LastOnline,
+    :ProtocolVersionMajor, :ProtocolVersionMinor, :ClientVersionMajor,
+    :ClientVersionMinor, :ClientVersionPatch, :ClientName, :RealmId,
+    :LocalArrival
+  )`
+
+// Address update insert is mutable. This is used when the node connects to the address itself. Example: When a node connects to 256.253.231.123:8080, it will update the entry for that address with the data coming from the remote node. This is the only way to mutate an address object.
+var addressUpdateInsert = `REPLACE INTO Addresses
+  (
+    Location, Sublocation, Port, IPType, AddressType, LastOnline,
+    ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
+    ClientVersionMinor, ClientVersionPatch, ClientName, RealmId,
+    LocalArrival
+  ) VALUES (
+    :Location, :Sublocation, :Port,:IPType, :AddressType, :LastOnline,
+    :ProtocolVersionMajor, :ProtocolVersionMinor, :ClientVersionMajor,
+    :ClientVersionMinor, :ClientVersionPatch, :ClientName, :RealmId,
+    :LocalArrival
+  )`
+
+// Subprotocol insert is the part of address insertion series. This makes it so that we have a list of all subprotocols flying around.
+var subprotocolInsert = `REPLACE INTO Subprotocols
+  (
+    Fingerprint, Name, VersionMajor, VersionMinor, SupportedEntities
+  ) VALUES (
+    :Fingerprint, :Name, :VersionMajor, :VersionMinor, :SupportedEntities
+  )`
+
+// AddressSubprotocolInsert inserts into the many to many junction table so that we can keep track of the subprotocols an address uses.
+
+var addressSubprotocolInsertMySQL = `INSERT IGNORE INTO AddressesSubprotocols
+   (
+     AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint
+   ) VALUES (
+     :AddressLocation, :AddressSublocation, :AddressPort, :SubprotocolFingerprint
+   )`
+
+var addressSubprotocolInsertSQLite = `INSERT OR IGNORE INTO AddressesSubprotocols
+    (
+      AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint
+    ) VALUES (
+      :AddressLocation, :AddressSublocation, :AddressPort, :SubprotocolFingerprint
+    )`

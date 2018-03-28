@@ -57,7 +57,7 @@ var cmdOrchestrate = &cobra.Command{
 	Short: "",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		flags := establishConfigs(cmd)
+		flags := EstablishConfigs(cmd)
 		// do things here
 		// If all of them are changed, or if none of them are changed, we're good. If SOME of them are changed, we crash.
 		if !((flags.bootstrapIp.changed && flags.bootstrapPort.changed && flags.bootstrapType.changed) || (!flags.bootstrapIp.changed && !flags.bootstrapPort.changed && !flags.bootstrapType.changed)) {
@@ -71,15 +71,21 @@ var cmdOrchestrate = &cobra.Command{
 		persistence.CreateDatabase()
 		persistence.CheckDatabaseReady()
 		addrs := []api.Address{addr}
-		persistence.InsertOrUpdateAddresses(&addrs)
+		errs := persistence.InsertOrUpdateAddresses(&addrs)
+		if len(errs) > 0 {
+			logging.LogCrash(fmt.Sprintf("These errors were encountered on InsertOrUpdateAddress attempt: %s", errs))
+		}
 		showIntro()
 		// startup()
 		globals.BackendTransientConfig.DispatcherExclusions = make(map[*interface{}]time.Time)
 		if flags.syncAndQuit.value.(bool) {
 			// First, verify external port, so that our metrics will report the right port.
 			// We just want to connect, pull and quit.
-			dispatch.Sync(addr)
-			logging.Log(1, fmt.Sprintf("We've gotten everything in the node %#v.", addr))
+			err := dispatch.Sync(addr)
+			if err != nil {
+				logging.LogCrash(err)
+			}
+			logging.Log(2, fmt.Sprintf("We've gotten everything in the node %#v.", addr))
 		} else {
 			startSchedules()
 			if flags.swarmPlan.changed {
@@ -100,7 +106,7 @@ var cmdOrchestrate = &cobra.Command{
 
 func constructCallAddress(ip api.Location, port uint16, addrtype uint8) api.Address {
 	subprots := []api.Subprotocol{api.Subprotocol{"c0", 1, 0, []string{"board", "thread", "post", "vote", "key", "truststate"}}}
-	addr, err := create.CreateAddress(ip, "", 4, port, addrtype, 0, 1, 0, subprots, 2, 0, 0, "Aether")
+	addr, err := create.CreateAddress(ip, "", 4, port, addrtype, 1, 1, 0, subprots, 2, 0, 0, "Aether", "")
 	if err != nil {
 		logging.LogCrash(err)
 	}
@@ -147,7 +153,10 @@ func scheduleSwarmPlan(planloc string) {
 			// color.Cyan(fmt.Sprintf("Injecting the address: %s:%d into the database now.", ip, port))
 			addr := constructCallAddress(api.Location(ip), port, nodetype)
 			addrs := []api.Address{addr}
-			persistence.InsertOrUpdateAddresses(&addrs)
+			errs := persistence.InsertOrUpdateAddresses(&addrs)
+			if len(errs) > 0 {
+				logging.LogCrash(fmt.Sprintf("These errors were encountered on InsertOrUpdateAddress attempt: %s", errs))
+			}
 		}, triggerafter)
 	}
 	// spew.Dump(plans)

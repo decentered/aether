@@ -7,12 +7,14 @@ import (
 	"aether-core/io/api"
 	"fmt"
 	// _ "github.com/mattn/go-sqlite3"
-	"aether-core/backend/metrics"
+	// "aether-core/backend/metrics"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
 	"errors"
 	"github.com/fatih/color"
 	// "github.com/jmoiron/sqlx/types"
+	// "github.com/davecgh/go-spew/spew"
+	// "runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -24,24 +26,31 @@ func InsertNode(n DbNode) error {
 	err := insertNode(n)
 	if err != nil {
 		if strings.Contains(err.Error(), "Database was locked") {
-			logging.Log(1, err)
-			if strings.Contains(err.Error(), "Database was locked") {
-				logging.Log(1, "This transaction was not committed because database was locked. We'll wait 10 seconds and retry the transaction.")
-				time.Sleep(10 * time.Second)
-				logging.Log(1, "Retrying the previously failed InsertNode transaction.")
-				err2 := insertNode(n)
-				if err2 != nil {
+			logging.Log(1, "This transaction was not committed because database was locked. We'll wait 10 seconds and retry the transaction.")
+			time.Sleep(10 * time.Second)
+			logging.Log(1, "Retrying the previously failed InsertNode transaction.")
+			err2 := insertNode(n)
+			if err2 != nil {
+				if strings.Contains(err2.Error(), "Database was locked") {
 					logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
-				} else { // If the reattempted transaction succeeds
-					logging.Log(1, "The retry attempt of the failed transaction succeeded.")
+				} else { // err2 != nil, but error isn't "database was locked"
+					return errors.New(fmt.Sprintf("InsertNode encountered an error. Error: %s", err2))
 				}
+			} else { // If the reattempted transaction succeeds
+				logging.Log(1,
+					"The retry attempt of the failed transaction succeeded.")
 			}
+		} else { // err != nil, but error isn't "database was locked"
+			logging.Log(1, err)
+			return errors.New(fmt.Sprintf("InsertNode encountered an error. Error: %s", err))
 		}
 	}
 	return nil
 }
 func insertNode(n DbNode) error {
+	// fmt.Println(globals.DumpStack())
 	// fmt.Println("Node to be inserted:")
+	// spew.Dump(n)
 	// fmt.Printf("%#v\n", n)
 	// TODO: Consider whether this needs a enforceNoEmptyIdentityFields or enforceNoEmptyRequiredFields
 	if api.Fingerprint(globals.BackendConfig.GetNodeId()) == n.Fingerprint {
@@ -75,16 +84,19 @@ func insertNode(n DbNode) error {
 	nodeAsMap["KeysLastCheckin"] = strconv.Itoa(int(n.KeysLastCheckin))
 	nodeAsMap["TruststatesLastCheckin"] = strconv.Itoa(int(n.TruststatesLastCheckin))
 	nodeAsMap["AddressesLastCheckin"] = strconv.Itoa(int(n.AddressesLastCheckin))
-	metrics.CollateMetrics("NodeInsertionsSinceLastMetricsDbg", nodeAsMap)
-	client, conn := metrics.StartConnection()
-	defer conn.Close()
-	metrics.SendMetrics(client)
+	// metrics.CollateMetrics("NodeInsertionsSinceLastMetricsDbg", nodeAsMap)
+	// client, conn := metrics.StartConnection()
+	// defer conn.Close()
+	// metrics.SendMetrics(client)
 	return nil
 }
 
 // InsertOrUpdateAddresses is the multi-entry of the core function InsertOrUpdateAddress. This is the only public API, and it should be used exclusively, because this is where we have the connection retry logic that we need.
-func InsertOrUpdateAddresses(a *[]api.Address) {
+
+// TODO: We need to do validation here and if the address does not pass validation (i.e. the versions are either zero, or they're outside of the range this node supports) we need to return an error and then bail from connecting.
+func InsertOrUpdateAddresses(a *[]api.Address) []error {
 	addresses := *a
+	errs := []error{}
 	logging.Log(2, fmt.Sprintf("We got an insert or update address request for these addresses: %#v", addresses))
 	for i, _ := range addresses {
 		err := insertOrUpdateAddress(addresses[i])
@@ -97,32 +109,66 @@ func InsertOrUpdateAddresses(a *[]api.Address) {
 				err2 := insertOrUpdateAddress(addresses[i])
 				if err2 != nil {
 					fmt.Println(err2)
-					logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
-				} else { // If the reattempted transaction succeeds
+					logging.Log(1, err2)
+					if strings.Contains(err.Error(), "Database was locked") {
+						logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
+					} else { // err2 != nil, but it's not "DB is locked".
+						errs = append(errs, err2)
+					}
+				} else { // err2 = nil (reattempted locked transaction succeeded.)
 					logging.Log(1, "The retry attempt of the failed transaction succeeded.")
 				}
+			} else { // err != nil, but it's not "DB is locked".
+				errs = append(errs, err)
 			}
 		}
 	}
+	// We collect non-transient errors into a bucket and send it back.
+	return errs
+}
+
+func enforceNoEmptyTrustedAddressRequiredFields(obj AddressPack) error {
+	if obj.Address.LocationType == 0 || obj.Address.LastOnline == 0 || obj.Address.ProtocolVersionMajor == 0 || obj.Address.ClientVersionMajor == 0 || obj.Address.ClientName == "" || len(obj.Subprotocols) < 1 {
+		return errors.New(
+			fmt.Sprintf(
+				"This address has some required fields empty (One or more of: LocationType, LastOnline, ProtocolVersionMajor, Subprotocols, ClientVersionMajor, ClientName). Address: %#v\n", obj))
+	}
+	for _, subprot := range obj.Subprotocols {
+		if subprot.Fingerprint == "" || subprot.Name == "" || subprot.VersionMajor == 0 || subprot.SupportedEntities == "" {
+			return errors.New(
+				fmt.Sprintf(
+					"This address' subprotocol has some required fields empty (One or more of: Fingerprint, Name, VersionMajor, SupportedEntities). Address: %#v\n Subprotocol: %#v\n", obj, subprot))
+		}
+	}
+	return nil
 }
 
 // insertOrUpdateAddress is the ONLY way to update an address in the database. Be very careful with this, careless use of this function can result in entry of untrusted data from the remotes into the local database. The only legitimate use of this is to put in the details of nodes that this local machine has personally connected to.
 func insertOrUpdateAddress(a api.Address) error {
+	// fmt.Println("This is the address asked to do trusted entry")
+	// // _, file, line, _ := runtime.Caller(1)
+	// _, file2, line2, _ := runtime.Caller(2)
+	// _, file3, line3, _ := runtime.Caller(3)
+	// fmt.Printf("It was called by \n%s:%d\n%s:%d\n ",
+	// 	file2, line2, file3, line3)
+	// spew.Dump(a.Client)
 	addressPackAsInterface, err := APItoDB(a)
 	if err != nil {
 		return errors.New(fmt.Sprint(
 			"Error raised from APItoDB function used in Batch insert. Error: ", err))
 	}
 	addressPack := addressPackAsInterface.(AddressPack)
+
 	err2 := enforceNoEmptyIdentityFields(addressPack)
 	if err2 != nil {
 		// If this unit does have empty identity fields, we pass on adding it to the database.
 		return err2
 	}
-	err7 := enforceNoEmptyRequiredFields(addressPack)
+	err7 := enforceNoEmptyTrustedAddressRequiredFields(addressPack)
 	if err7 != nil {
 		// If this unit does have empty identity fields, we pass on adding it to the database.
-		return err7
+
+		return errors.New(fmt.Sprintf("InsertOrUpdateAddress encountered an error. Error: %s", err7))
 	}
 	dbAddress := DbAddress{}
 	dbSubprotocols := []DbSubprotocol{}
@@ -180,14 +226,17 @@ func generateAdrSprotJunctionItem(addr DbAddress, sprot DbSubprotocol) DbAddress
 }
 
 // This is where we capture DB errors like 'DB is locked' and take action, such as retrying.
-func BatchInsert(apiObjects []interface{}) error {
-	err := batchInsert(&apiObjects)
+func BatchInsert(apiObjects []interface{}) (InsertMetrics, error) {
+	var im InsertMetrics
+	var err error
+	im, err = batchInsert(&apiObjects)
 	if err != nil {
 		if strings.Contains(err.Error(), "Database was locked") {
 			logging.Log(1, "This transaction was not committed because database was locked. We'll wait 10 seconds and retry the transaction.")
 			time.Sleep(10 * time.Second)
 			logging.Log(1, "Retrying the previously failed BatchInsert transaction.")
-			err2 := batchInsert(&apiObjects)
+			var err2 error
+			im, err2 = batchInsert(&apiObjects)
 			if err2 != nil {
 				logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
 			} else { // If the reattempted transaction succeeds
@@ -195,7 +244,7 @@ func BatchInsert(apiObjects []interface{}) error {
 			}
 		}
 	}
-	return err
+	return im, nil
 }
 
 type batchBucket struct {
@@ -213,18 +262,56 @@ type batchBucket struct {
 	// // Parent: Address
 	// dbSubprotocols := []DbSubprotocol{}
 	// WHY? Because this is untrusted address entry, and subprotocol info coming from the environment is not committed, alongside many other parts of the address data.
-	// // Parent: Key
-	DbCurrencyAddresses        []DbCurrencyAddress
-	DbCurrencyAddressDeletions []DbCurrencyAddress
+}
+
+// InsertMetrics collects how many entities in each type that ended up as candidates for DB insert. These are only candidates, and we cannot know whether an entity will make into the database - because the logic in SQL filters out duplicate entries, or entries with updates older than we have.
+type InsertMetrics struct {
+	BoardsReceived                 int
+	BoardsDBCommitTime             float64
+	BoardOwnerDBCommitTime         float64
+	BoardOwnerDeletionDBCommitTime float64
+	ThreadsReceived                int
+	ThreadsDBCommitTime            float64
+	PostsReceived                  int
+	PostsDBCommitTime              float64
+	VotesReceived                  int
+	VotesDBCommitTime              float64
+	KeysReceived                   int
+	KeysDBCommitTime               float64
+	TruststatesReceived            int
+	TruststatesDBCommitTime        float64
+	AddressesReceived              int
+	AddressesDBCommitTime          float64
+	TimeElapsedSeconds             int
+}
+
+func (im *InsertMetrics) Add(im2 InsertMetrics) {
+	im.BoardsReceived = im.BoardsReceived + im2.BoardsReceived
+	im.BoardsDBCommitTime = im.BoardsDBCommitTime + im2.BoardsDBCommitTime
+	im.BoardOwnerDBCommitTime = im.BoardOwnerDBCommitTime + im2.BoardOwnerDBCommitTime
+	im.BoardOwnerDeletionDBCommitTime = im.BoardOwnerDeletionDBCommitTime + im2.BoardOwnerDeletionDBCommitTime
+	im.ThreadsReceived = im.ThreadsReceived + im2.ThreadsReceived
+	im.ThreadsDBCommitTime = im.ThreadsDBCommitTime + im2.ThreadsDBCommitTime
+	im.PostsReceived = im.PostsReceived + im2.PostsReceived
+	im.PostsDBCommitTime = im.PostsDBCommitTime + im2.PostsDBCommitTime
+	im.VotesReceived = im.VotesReceived + im2.VotesReceived
+	im.VotesDBCommitTime = im.VotesDBCommitTime + im2.VotesDBCommitTime
+	im.KeysReceived = im.KeysReceived + im2.KeysReceived
+	im.KeysDBCommitTime = im.KeysDBCommitTime + im2.KeysDBCommitTime
+	im.TruststatesReceived = im.TruststatesReceived + im2.TruststatesReceived
+	im.TruststatesDBCommitTime = im.TruststatesDBCommitTime + im2.TruststatesDBCommitTime
+	im.AddressesReceived = im.AddressesReceived + im2.AddressesReceived
+	im.AddressesDBCommitTime = im.AddressesDBCommitTime + im2.AddressesDBCommitTime
+	im.TimeElapsedSeconds = im.TimeElapsedSeconds + im2.TimeElapsedSeconds
 }
 
 // TODO: Mind that any errors happening within the transaction, if they need to bail from the transaction, they need to close it! otherwise you get database is locked.
 // TODO: Should this take a pointer instead? It's dealing with some big amounts of data.
 // BatchInsert insert a set of objects in a batch as a transaction.
-func batchInsert(apiObjectsPtr *[]interface{}) error {
+func batchInsert(apiObjectsPtr *[]interface{}) (InsertMetrics, error) {
 	apiObjects := *apiObjectsPtr
-	logging.Log(1, "Batch insert starting.")
-	defer logging.Log(1, "Batch insert is complete.")
+	logging.Log(2, "Batch insert starting.")
+	defer logging.Log(2, "Batch insert is complete.")
 	numberOfObjectsCommitted := len(apiObjects)
 	logging.Log(2, fmt.Sprintf("%v objects are being committed.", numberOfObjectsCommitted))
 	start := time.Now()
@@ -234,7 +321,7 @@ func batchInsert(apiObjectsPtr *[]interface{}) error {
 		// apiObject: API type, dbObj: DB type.
 		dbo, err := APItoDB(apiObject) // does not hit DB
 		if err != nil {
-			return errors.New(fmt.Sprint(
+			return InsertMetrics{}, errors.New(fmt.Sprint(
 				"Error raised from APItoDB function used in Batch insert. Error: ", err))
 		}
 		err2 := enforceNoEmptyIdentityFields(dbo) // does not hit DB
@@ -251,6 +338,7 @@ func batchInsert(apiObjectsPtr *[]interface{}) error {
 		}
 		switch dbObject := dbo.(type) {
 		case BoardPack:
+			// Should be commited? Checks for whether the update is newer than creation. This check is normally done at the database layer for other objects.
 			if packShouldBeCommitted(dbObject) { // HITS DB
 				bb.DbBoards = append(bb.DbBoards, dbObject.Board)
 				// Get the list of board owners before the transaction.
@@ -294,54 +382,45 @@ func batchInsert(apiObjectsPtr *[]interface{}) error {
 			dbObject.Address.ClientVersionPatch = 0
 			dbObject.Address.ClientName = ""
 			bb.DbAddresses = append(bb.DbAddresses, dbObject.Address)
-		case KeyPack:
-			if packShouldBeCommitted(dbObject) {
-				bb.DbKeys = append(bb.DbKeys, dbObject.Key)
-				currencyAddressesBeforeTx, err := getCurrencyAddressesBeforeTx(dbObject.Key.Fingerprint)
-				if err != nil {
-					logging.LogCrash(err)
-				}
-				// Get the changelist.
-				changelist := generateCurrencyAddressChangelist(
-					currencyAddressesBeforeTx, dbObject.CurrencyAddresses)
-				for currencyAddress, keepcurrencyAddress := range changelist {
-					if keepcurrencyAddress == true {
-						// We keep the owner's existence. This can either be a creation or an update, SQL deals with that.
-						bb.DbCurrencyAddresses = append(bb.DbCurrencyAddresses, currencyAddress)
-					} else {
-						// The owner is deleted. So we remove it from the database.
-						bb.DbCurrencyAddressDeletions = append(bb.DbCurrencyAddressDeletions, currencyAddress)
-					}
-				}
-			}
+		case DbKey:
+			bb.DbKeys = append(bb.DbKeys, dbObject)
 		case DbTruststate:
 			bb.DbTruststates = append(bb.DbTruststates, dbObject)
 		default:
-			return errors.New(
+			return InsertMetrics{}, errors.New(
 				fmt.Sprintf(
 					"This object type is something batch insert does not understand. Your object: %#v\n", dbObject))
 		}
 	}
-	err := insert(&bb)
+	im := InsertMetrics{}
+	err := insert(&bb, &im)
 	if err != nil {
-		return err
+		return InsertMetrics{}, err
 	}
+	im.BoardsReceived = len(bb.DbBoards)
+	im.ThreadsReceived = len(bb.DbThreads)
+	im.PostsReceived = len(bb.DbPosts)
+	im.VotesReceived = len(bb.DbVotes)
+	im.KeysReceived = len(bb.DbKeys)
+	im.TruststatesReceived = len(bb.DbTruststates)
+	im.AddressesReceived = len(bb.DbAddresses)
 	elapsed := time.Since(start)
+	im.TimeElapsedSeconds = int(elapsed.Seconds())
 	clr := color.New(color.FgCyan)
-	logging.Log(1, clr.Sprintf("It took %v to insert %v objects. %s", elapsed.Round(time.Millisecond), numberOfObjectsCommitted, generateInsertLog(&bb)))
+	logging.Log(2, clr.Sprintf("It took %v to insert %v objects. %s", elapsed.Round(time.Millisecond), numberOfObjectsCommitted, generateInsertLog(&bb)))
 	committedToDb := len(bb.DbBoards) + len(bb.DbThreads) + len(bb.DbPosts) + len(bb.DbVotes) + len(bb.DbKeys) + +len(bb.DbTruststates) + len(bb.DbAddresses)
 	if (committedToDb != numberOfObjectsCommitted) && numberOfObjectsCommitted == 1 {
 		clr2 := color.New(color.FgRed)
 		logging.Log(1, clr2.Sprintf("There is a discrepancy between the number of entities in the inbound package, and those that end up being committed. Inbound entities count: %d, Committed to DB: %d", numberOfObjectsCommitted, committedToDb))
 		logging.Log(1, clr.Sprintf("Inbound entities: %#v", apiObjects))
 	}
-	if len(apiObjects) > 0 {
-		metrics.CollateMetrics("ArrivedEntitiesSinceLastMetricsDbg", apiObjects)
-		client, conn := metrics.StartConnection()
-		defer conn.Close()
-		metrics.SendMetrics(client)
-	}
-	return nil
+	// if len(apiObjects) > 0 {
+	// 	metrics.CollateMetrics("ArrivedEntitiesSinceLastMetricsDbg", apiObjects)
+	// 	client, conn := metrics.StartConnection()
+	// 	defer conn.Close()
+	// 	metrics.SendMetrics(client)
+	// }
+	return im, nil
 }
 
 func generateInsertLog(bb *batchBucket) string {
@@ -371,9 +450,6 @@ func generateInsertLog(bb *batchBucket) string {
 	// if len(bb.DbBoardOwners) > 0 {
 	// 	str = str + fmt.Sprintf(" %d Board Owners", len(bb.DbBoardOwners))
 	// }
-	// if len(bb.DbCurrencyAddresses) > 0 {
-	// 	str = str + fmt.Sprintf(" %d Currency Addresses", len(bb.DbCurrencyAddresses))
-	// }
 	if len(bb.DbBoards) == 0 &&
 		len(bb.DbThreads) == 0 &&
 		len(bb.DbPosts) == 0 &&
@@ -388,105 +464,101 @@ func generateInsertLog(bb *batchBucket) string {
 	return str
 }
 
-func insert(batchBucket *batchBucket) error {
+func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 	// We have our final list of entries. Add these objects to DB and let DB deal with what is a new addition and what is an update.
 	// (Hot code path.) Start transaction.
+	start := time.Now()
 	bb := *batchBucket
+	insertType := []string{}
 	tx, err := globals.DbInstance.Beginx()
 	if err != nil {
 		logging.LogCrash(err)
 	}
 	if len(bb.DbBoards) > 0 {
+		etype := "dbBoard"
+		insertType = append(insertType, etype)
 		for _, dbBoard := range bb.DbBoards {
-			_, err := tx.NamedExec(getSQLCommand("dbBoard"), dbBoard)
+			_, err := tx.NamedExec(getSQLCommand(etype), dbBoard)
 			if err != nil {
 				logging.LogCrash(err)
 			}
 		}
 	}
 	if len(bb.DbThreads) > 0 {
+		etype := "dbThread"
+		insertType = append(insertType, etype)
 		for _, dbThread := range bb.DbThreads {
-			_, err := tx.NamedExec(getSQLCommand("dbThread"), dbThread)
+			_, err := tx.NamedExec(getSQLCommand(etype), dbThread)
 			if err != nil {
 				logging.LogCrash(err)
 			}
 		}
 	}
 	if len(bb.DbPosts) > 0 {
+		etype := "dbPost"
+		insertType = append(insertType, etype)
 		for _, dbPost := range bb.DbPosts {
-			_, err := tx.NamedExec(getSQLCommand("dbPost"), dbPost)
+			_, err := tx.NamedExec(getSQLCommand(etype), dbPost)
 			if err != nil {
 				logging.LogCrash(err)
 			}
 		}
 	}
 	if len(bb.DbVotes) > 0 {
+		etype := "dbVote"
+		insertType = append(insertType, etype)
 		for _, dbVote := range bb.DbVotes {
-			_, err := tx.NamedExec(getSQLCommand("dbVote"), dbVote)
+			_, err := tx.NamedExec(getSQLCommand(etype), dbVote)
 			if err != nil {
 				logging.LogCrash(err)
 			}
 		}
 	}
 	if len(bb.DbKeys) > 0 {
+		etype := "dbKey"
+		insertType = append(insertType, etype)
 		for _, dbKey := range bb.DbKeys {
-			_, err := tx.NamedExec(getSQLCommand("dbKey"), dbKey)
+			_, err := tx.NamedExec(getSQLCommand(etype), dbKey)
 			if err != nil {
 				logging.LogCrash(err)
 			}
 		}
 	}
 	if len(bb.DbTruststates) > 0 {
+		etype := "dbTruststate"
+		insertType = append(insertType, etype)
 		for _, dbTruststate := range bb.DbTruststates {
-			_, err := tx.NamedExec(getSQLCommand("dbTruststate"), dbTruststate)
+			_, err := tx.NamedExec(getSQLCommand(etype), dbTruststate)
 			if err != nil {
 				logging.LogCrash(err)
 			}
 		}
 	}
 	if len(bb.DbAddresses) > 0 {
+		etype := "dbAddress"
+		insertType = append(insertType, etype)
 		for _, dbAddress := range bb.DbAddresses {
-			_, err := tx.NamedExec(getSQLCommand("dbAddress"), dbAddress)
+			_, err := tx.NamedExec(getSQLCommand(etype), dbAddress)
 			if err != nil {
 				logging.LogCrash(err)
 			}
 		}
 	}
 	if len(bb.DbBoardOwners) > 0 {
+		etype := "dbBoardOwner"
+		insertType = append(insertType, etype)
 		for _, dbBoardOwner := range bb.DbBoardOwners {
-			_, err := tx.NamedExec(getSQLCommand("dbBoardOwner"), dbBoardOwner)
+			_, err := tx.NamedExec(getSQLCommand(etype), dbBoardOwner)
 			if err != nil {
 				logging.LogCrash(err)
 			}
 		}
 	}
 	if len(bb.DbBoardOwnerDeletions) > 0 {
+		etype := "dbBoardOwnerDeletion"
+		insertType = append(insertType, etype)
 		for _, dbBoardOwner := range bb.DbBoardOwnerDeletions {
-			_, err := tx.NamedExec(getSQLCommand("dbBoardOwnerDeletion"), dbBoardOwner)
-			if err != nil {
-				logging.LogCrash(err)
-			}
-		}
-	}
-	if len(bb.DbBoardOwnerDeletions) > 0 {
-		for _, dbBoardOwner := range bb.DbBoardOwnerDeletions {
-			_, err := tx.NamedExec(getSQLCommand("dbBoardOwnerDeletion"), dbBoardOwner)
-			if err != nil {
-				logging.LogCrash(err)
-			}
-		}
-	}
-	if len(bb.DbCurrencyAddresses) > 0 {
-		for _, dbCurrencyAddress := range bb.DbCurrencyAddresses {
-			_, err := tx.NamedExec(getSQLCommand("dbCurrencyAddress"), dbCurrencyAddress)
-			if err != nil {
-				logging.LogCrash(err)
-			}
-		}
-	}
-	if len(bb.DbCurrencyAddressDeletions) > 0 {
-		for _, dbCurrencyAddress := range bb.DbCurrencyAddressDeletions {
-			_, err := tx.NamedExec(getSQLCommand("dbCurrencyAddressDeletions"), dbCurrencyAddress)
+			_, err := tx.NamedExec(getSQLCommand(etype), dbBoardOwner)
 			if err != nil {
 				logging.LogCrash(err)
 			}
@@ -502,7 +574,28 @@ func insert(batchBucket *batchBucket) error {
 		}
 		return err2
 	}
-	fmt.Println("batchInsert successfully completed.")
+	elapsed := time.Since(start)
+	if len(insertType) == 1 { // If this is a multiple insert, I won't save the time it takes, because we don't know which part takes the most time.
+		if insertType[0] == "dbBoard" {
+			im.BoardsDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+		} else if insertType[0] == "dbThread" {
+			im.ThreadsDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+		} else if insertType[0] == "dbPost" {
+			im.PostsDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+		} else if insertType[0] == "dbVote" {
+			im.VotesDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+		} else if insertType[0] == "dbKey" {
+			im.KeysDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+		} else if insertType[0] == "dbTruststate" {
+			im.TruststatesDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+		} else if insertType[0] == "dbAddress" {
+			im.AddressesDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+		} else if insertType[0] == "dbBoardOwner" {
+			im.BoardOwnerDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+		} else if insertType[0] == "dbBoardOwnerDeletion" {
+			im.BoardOwnerDeletionDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+		}
+	}
 	return nil
 }
 
@@ -511,21 +604,9 @@ func getSQLCommand(dbType string) string {
 	if dbType == "dbBoard" {
 		sqlstr = boardInsert
 	} else if dbType == "dbThread" {
-		if globals.BackendConfig.GetDbEngine() == "mysql" {
-			sqlstr = threadInsertMySQL
-		} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
-			sqlstr = threadInsertSQLite
-		} else {
-			logging.LogCrash(fmt.Sprintf("Db Engine type not recognised."))
-		}
+		sqlstr = threadInsert
 	} else if dbType == "dbPost" {
-		if globals.BackendConfig.GetDbEngine() == "mysql" {
-			sqlstr = postInsertMySQL
-		} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
-			sqlstr = postInsertSQLite
-		} else {
-			logging.LogCrash(fmt.Sprintf("Db Engine type not recognised."))
-		}
+		sqlstr = postInsert
 	} else if dbType == "dbVote" {
 		sqlstr = voteInsert
 	} else if dbType == "dbKey" {
@@ -548,10 +629,6 @@ func getSQLCommand(dbType string) string {
 		sqlstr = boardOwnerDelete
 	} else if dbType == "dbSubprotocol" {
 		sqlstr = subprotocolInsert
-	} else if dbType == "dbCurrencyAddress" {
-		sqlstr = currencyAddressInsert
-	} else if dbType == "dbCurrencyAddressDeletion" {
-		sqlstr = currencyAddressDelete
 	} else if dbType == "dbAddressSubprotocol" {
 		if globals.BackendConfig.GetDbEngine() == "mysql" {
 			sqlstr = addressSubprotocolInsertMySQL
@@ -582,35 +659,13 @@ func packShouldBeCommitted(pack interface{}) bool {
 		} else if len(resp) > 0 {
 			// If the response is not empty, then do the regular update check.
 			extantBoard := resp[0]
-
 			if pack.Board.LastUpdate > extantBoard.LastUpdate &&
 				pack.Board.LastUpdate > extantBoard.Creation {
-
-				return true
-			} else {
-
-				return false
-			}
-		}
-	case KeyPack:
-		resp, err := ReadKeys([]api.Fingerprint{pack.Key.Fingerprint}, 0, 0)
-		if err != nil {
-			return false
-		}
-		// If the response is empty, this is a new key. Insert.
-		if len(resp) == 0 {
-			return true
-		} else if len(resp) > 0 {
-			// If the response is not empty, then do the regular update check.
-			extantKey := resp[0]
-			if pack.Key.LastUpdate > extantKey.LastUpdate &&
-				pack.Key.LastUpdate > extantKey.Creation {
 				return true
 			} else {
 				return false
 			}
 		}
-
 	}
 	return false
 }
@@ -638,26 +693,6 @@ func getBoardOwnersBeforeTx(boardFingerprint api.Fingerprint) ([]DbBoardOwner, e
 	return boardBoardOwnersBeforeTx, nil
 }
 
-// getCurrencyAddressesBeforeTx is an internal function of the Writer. This gets the pre-transaction state of the currency addresses of the key that is being inserted.
-func getCurrencyAddressesBeforeTx(keyFingerprint api.Fingerprint) ([]DbCurrencyAddress, error) {
-	var currencyAddressesBeforeTx []DbCurrencyAddress
-	// Fetch all currency addresses of this key that is already in database.
-	rowsOfCurrencyAddressesBeforeTx, err := globals.DbInstance.Queryx("SELECT * from CurrencyAddresses WHERE KeyFingerprint = ?", keyFingerprint)
-	if err != nil {
-		return currencyAddressesBeforeTx, err
-	}
-	// Do the struct scan into the row.
-	for rowsOfCurrencyAddressesBeforeTx.Next() {
-		var ca DbCurrencyAddress
-		err := rowsOfCurrencyAddressesBeforeTx.StructScan(&ca)
-		if err != nil {
-			return currencyAddressesBeforeTx, err
-		}
-		currencyAddressesBeforeTx = append(currencyAddressesBeforeTx, ca)
-	}
-	return currencyAddressesBeforeTx, nil
-}
-
 // generateBoardOwnerDeletionList creates the list which shows which board owners will have to be deleted.
 func generateBoardOwnerChangelist(
 	currentBoardOwners []DbBoardOwner,
@@ -671,23 +706,6 @@ func generateBoardOwnerChangelist(
 	for _, candidateBoardOwner := range candidateBoardOwners {
 		// Everything in the candidate list will be added by default, hence true.
 		set[candidateBoardOwner] = true
-	}
-	return set
-}
-
-// generateCurrencyAddressChangelist creates the list which shows which currency addresses will have to be deleted.
-func generateCurrencyAddressChangelist(
-	currentCurrencyAddresses []DbCurrencyAddress,
-	candidateCurrencyAddresses []DbCurrencyAddress) map[DbCurrencyAddress]bool {
-	set := make(map[DbCurrencyAddress]bool)
-	// Add both current and candidate currency addresses into the set.
-	for _, currentCurrencyAddress := range currentCurrencyAddresses {
-		// Make so that if not in the candidate list, will be removed.
-		set[currentCurrencyAddress] = false
-	}
-	for _, candidateCurrencyAddress := range candidateCurrencyAddresses {
-		// Everything in the candidate list will be added by default, hence true.
-		set[candidateCurrencyAddress] = true
 	}
 	return set
 }
@@ -733,19 +751,11 @@ func enforceNoEmptyIdentityFields(object interface{}) error {
 				fmt.Sprintf(
 					"This address has one or more empty primary key(s). Address: %#v\n", obj))
 		}
-	case KeyPack:
-		if obj.Key.Fingerprint == "" {
+	case DbKey:
+		if obj.Fingerprint == "" {
 			return errors.New(
 				fmt.Sprintf(
-					"This key has an empty primary key. KeyPack: %#v\n", obj))
-		}
-		for _, ca := range obj.CurrencyAddresses {
-			if ca.KeyFingerprint == "" || ca.Address == "" {
-				return errors.New(
-					fmt.Sprintf(
-						"This currency address has one or more empty primary key(s). KeyPack: %#v\n", obj))
-			}
-
+					"This key has an empty primary key. Key: %#v\n", obj))
 		}
 	case DbTruststate:
 		if obj.Fingerprint == "" {
@@ -792,20 +802,7 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 				fmt.Sprintf(
 					"This vote has some required fields empty (One or more of: Board, Thread, Target, Owner, Type, Creation, Signature, PoW). Vote: %#v\n", obj))
 		}
-	case AddressPack: // fix
-		// if obj.Address.LocationType == 0 || obj.Address.LastOnline == 0 || obj.Address.ProtocolVersionMajor == 0 || obj.Address.ClientVersionMajor == 0 || obj.Address.ClientName == "" || len(obj.Subprotocols) < 1 {
-		// 	return errors.New(
-		// 		fmt.Sprintf(
-		// 			"This address has some required fields empty (One or more of: LocationType, LastOnline, ProtocolVersionMajor, Subprotocols, ClientVersionMajor, ClientName). Address: %#v\n", obj))
-		// }
-		// for _, subprot := range obj.Subprotocols {
-		// 	if subprot.Fingerprint == "" || subprot.Name == "" || subprot.VersionMajor == 0 || subprot.SupportedEntities == "" {
-		// 		return errors.New(
-		// 			fmt.Sprintf(
-		// 				"This address' subprotocol has some required fields empty (One or more of: Fingerprint, Name, VersionMajor, SupportedEntities). Address: %#v\n Subprotocol: %#v\n", obj, subprot))
-		// 	}
-		// }
-
+	case AddressPack:
 		/*
 			Why only these? Address is special. When address traverses over the network, it is mostly emptied out, because the information it contains is untrustable - a remote might be maliciously replacing those fields to get the network to do its bidding.
 			The only address entry that is trustable is gained first-person, that is, this node connects to the node on the address, and that direct connection can update this address entity with real, first-party data.
@@ -817,18 +814,11 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 					"This address has some required fields empty (One or more of: Location, Port. Address: %#v", obj))
 		}
 
-	case KeyPack:
-		if obj.Key.Type == "" || obj.Key.PublicKey == "" || obj.Key.Creation == 0 || obj.Key.ProofOfWork == "" || obj.Key.Signature == "" {
+	case DbKey:
+		if obj.Type == "" || obj.PublicKey == "" || obj.Creation == 0 || obj.ProofOfWork == "" || obj.Signature == "" {
 			return errors.New(
 				fmt.Sprintf(
-					"This key has some required fields empty (One or more of: Type, PublicKey, Creation, PoW, Signature). KeyPack: %#v\n", obj))
-		}
-		for _, ca := range obj.CurrencyAddresses {
-			if ca.CurrencyCode == "" {
-				return errors.New(
-					fmt.Sprintf(
-						"This currency address has some required fields empty (One or more of: CurrencyCode). KeyPack: %#v\n", obj))
-			}
+					"This key has some required fields empty (One or more of: Type, PublicKey, Creation, PoW, Signature). Key: %#v\n", obj))
 		}
 	case DbTruststate:
 		if obj.Target == "" || obj.Owner == "" || obj.Type == 0 || obj.Creation == 0 || obj.ProofOfWork == "" || obj.Signature == "" {

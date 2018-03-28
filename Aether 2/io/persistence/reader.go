@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jmoiron/sqlx"
+	"strconv"
 	"time"
 )
 
@@ -62,7 +63,7 @@ func enforceReadValidity(
 		valid = true
 	}
 	if !valid {
-		return errors.New(fmt.Sprintf("You can either search for a time range, or for fingerprint(s). You can't do both or neither at the same time - you have to do one. Asked fingerprints: %#v, BeginTimestamp: %s, EndTimestamp: %s", fingerprints, beginTimestamp, endTimestamp))
+		return errors.New(fmt.Sprintf("You can either search for a time range, or for fingerprint(s). You can't do both or neither at the same time - you have to do one. Asked fingerprints: %#v, BeginTimestamp: %s, EndTimestamp: %s", fingerprints, strconv.Itoa(int(beginTimestamp)), strconv.Itoa(int(endTimestamp))))
 	}
 	return nil
 }
@@ -77,7 +78,7 @@ func sanitiseTimeRange(
 	}
 	// If the begin is newer than the end, flip. We haven't started to enforce limits yet, so the change here will be entirely coming from the remote.
 	if beginTimestamp > endTimestamp {
-		return beginTimestamp, endTimestamp, errors.New(fmt.Sprintf("Your BeginTimestamp is larger than your EndTimestamp. BeginTimestamp: %s, EndTimestamp: %s", beginTimestamp, endTimestamp))
+		return beginTimestamp, endTimestamp, errors.New(fmt.Sprintf("Your BeginTimestamp is larger than your EndTimestamp. BeginTimestamp: %s, EndTimestamp: %s", strconv.Itoa(int(beginTimestamp)), strconv.Itoa(int(endTimestamp))))
 	}
 	// Internal processing starts.
 
@@ -94,7 +95,7 @@ func sanitiseTimeRange(
 	}
 	//If beginTimestamp is in the future, return error.
 	if beginTimestamp > now {
-		return beginTimestamp, endTimestamp, errors.New(fmt.Sprintf("Your beginTimestamp is in the future. BeginTimestamp: %s, Now: %s", beginTimestamp, now))
+		return beginTimestamp, endTimestamp, errors.New(fmt.Sprintf("Your beginTimestamp is in the future. BeginTimestamp: %s, Now: %s", strconv.Itoa(int(beginTimestamp)), strconv.Itoa(int(now))))
 	}
 	// End of internal processing
 	// After we do these things, if we end up with a begin timestamp that is newer than the end, the end timestamp will be 'now'. This can happen in the case where both the start and end timestamps are within the cached period.
@@ -910,7 +911,7 @@ func ReadAddresses(
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
 		// If the end timestamp is 0, it's assumed that endTs is right now.
-		logging.Log(1, "This is an address search. Type: Time Range.")
+		logging.Log(2, "This is an address search. Type: Time Range.")
 		arrPointer, err := readAddressesTimeRangeSearch(beginTimestamp, endTimestamp, offset, timeRangeSearchType)
 		arr = *arrPointer
 		if err != nil {
@@ -1059,47 +1060,6 @@ func ReadTruststates(
 }
 
 // The Reader functions that return DB instances, rather than API ones.
-
-// ReadDBCurrencyAddresses reads currency addresses from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
-
-// This is left as a single-select, not multiple, because it already supports returning multiple entities, and there is no demand for these to be fetched in bulk.
-func ReadDBCurrencyAddresses(KeyFingerprint api.Fingerprint,
-	Address string) ([]DbCurrencyAddress, error) {
-	var arr []DbCurrencyAddress
-	// If this query is without address (we want all addresses with that key fingerprint), change the query as such.
-	if Address == "" {
-		rows, err := globals.DbInstance.Queryx("SELECT * from CurrencyAddresses WHERE KeyFingerprint = ?", KeyFingerprint)
-		defer rows.Close() // In case of premature exit.
-		if err != nil {
-			logging.LogCrash(err)
-		}
-		for rows.Next() {
-			var currencyAddress DbCurrencyAddress
-			err = rows.StructScan(&currencyAddress)
-			if err != nil {
-				logging.LogCrash(err)
-			}
-			arr = append(arr, currencyAddress)
-		}
-		rows.Close()
-	} else {
-		rows, err := globals.DbInstance.Queryx("SELECT * from CurrencyAddresses WHERE KeyFingerprint = ? AND Address = ?", KeyFingerprint, Address)
-		defer rows.Close() // In case of premature exit.
-		if err != nil {
-			logging.LogCrash(err)
-		}
-		for rows.Next() {
-			var currencyAddress DbCurrencyAddress
-			err = rows.StructScan(&currencyAddress)
-			if err != nil {
-				logging.LogCrash(err)
-			}
-			arr = append(arr, currencyAddress)
-		}
-		rows.Close()
-	}
-	return arr, nil
-}
 
 // ReadDBBoardOwners reads board owners from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
 

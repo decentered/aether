@@ -35,7 +35,7 @@ This will do three main things:
 - Expose an API to the external world that serves the data this computer has under the rules set by the Mim protocol.
 `,
 	Run: func(cmd *cobra.Command, args []string) {
-		establishConfigs(cmd)
+		EstablishConfigs(cmd)
 		showIntro() // This isn't first because it needs configs to show app version.
 		persistence.CreateDatabase()
 		persistence.CheckDatabaseReady()

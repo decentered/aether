@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	// "github.com/davecgh/go-spew/spew"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -692,8 +693,8 @@ func saveFileToDisk(fileContents []byte, path string, filename string) {
 	ioutil.WriteFile(fmt.Sprint(path, "/", filename), fileContents, 0755)
 }
 
-// bakeFinalApiResponse looks at the resultpages. If there is one, it is directly provided as is. If there is more, the results are committed into the file system, and a cachelink page is provided instead.
-func bakeFinalApiResponse(resultPages *[]api.ApiResponse) (*api.ApiResponse, error) {
+// bakeFinalPOSTApiResponse looks at the resultpages. If there is one, it is directly provided as is. If there is more, the results are committed into the file system, and a cachelink page is provided instead.
+func bakeFinalPOSTApiResponse(resultPages *[]api.ApiResponse, indexPages *[]api.ApiResponse) (*api.ApiResponse, error) {
 	resp := GeneratePrefilledApiResponse()
 	if len(*resultPages) > 1 {
 		// Create a random SHA256 hash as folder name
@@ -704,6 +705,21 @@ func bakeFinalApiResponse(resultPages *[]api.ApiResponse) (*api.ApiResponse, err
 		// Generate the responses directory if doesn't exist. Add the expiry date to the folder name to be searched for.
 		foldername := fmt.Sprint(generateExpiryTimestamp(), "_", dirname)
 		responsedir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/responses/", foldername)
+		// Create index path
+		if indexPages != nil {
+			indexpg := *indexPages
+			indexdir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/responses/", foldername, "/index")
+			createPath(indexdir)
+			for key, val := range indexpg {
+				filename := fmt.Sprint(key, ".json")
+				indexJsonResp, err := ConvertApiResponseToJson(&val)
+				if err != nil {
+					logging.Log(1, fmt.Sprintf("This page of the index of a multiple-page post response failed to convert to JSON. Error: %#v\n", err))
+				}
+				saveFileToDisk(indexJsonResp, indexdir, filename)
+			}
+		}
+		// Create index end
 		os.MkdirAll(responsedir, 0755)
 		var jsons [][]byte
 		// For each response, number it, set timestamps etc. And save to disk.
@@ -779,8 +795,11 @@ func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) 
 			return []byte{}, errors.New(fmt.Sprintf("The query coming from the remote caused an error in the local database while trying to respond to this request. Error: %#v\n, Request: %#v\n", dbError, req))
 		}
 		pages := splitEntitiesToPages(&localData)
+		indexes := createIndexes(pages)
+		indexPages := splitEntityIndexesToPages(indexes)
+		indexApiResponse := convertResponsesToApiResponses(indexPages)
 		pagesAsApiResponses := convertResponsesToApiResponses(pages)
-		finalResponse, err := bakeFinalApiResponse(pagesAsApiResponses)
+		finalResponse, err := bakeFinalPOSTApiResponse(pagesAsApiResponses, indexApiResponse)
 		// fmt.Printf("%#v", finalResponse)
 		if err != nil {
 			return []byte{}, errors.New(fmt.Sprintf("An error was encountered while trying to finalise the API response. Error: %#v\n, Request: %#v\n", err, req))
@@ -801,7 +820,7 @@ func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) 
 		}
 		pages := splitEntitiesToPages(&localData)
 		pagesAsApiResponses := convertResponsesToApiResponses(pages)
-		finalResponse, err := bakeFinalApiResponse(pagesAsApiResponses)
+		finalResponse, err := bakeFinalPOSTApiResponse(pagesAsApiResponses, nil)
 		if err != nil {
 			return []byte{}, errors.New(fmt.Sprintf("An error was encountered while trying to finalise the API response. Error: %#v\n, Request: %#v\n", err, req))
 		}
@@ -1084,7 +1103,6 @@ func updateCacheIndex(cacheIndex *api.ApiResponse, cacheData *CacheResponse) {
 	cacheIndex.Results = append(cacheIndex.Results, c)
 	cacheIndex.Timestamp = api.Timestamp(int64(time.Now().Unix()))
 	cacheIndex.Caching.ServedFromCache = true
-	cacheIndex.Caching.CacheScope = "day"
 	// TODO: How many places am I setting this ".Caching" data?
 }
 
@@ -1149,8 +1167,6 @@ func saveCacheToDisk(entityCacheDir string, cacheData *CacheResponse, respType s
 		indexPages[i].Timestamp = api.Timestamp(int64(time.Now().Unix()))
 		indexPages[i].Caching.ServedFromCache = true
 		indexPages[i].Caching.CurrentCacheUrl = cacheData.cacheName
-		// indexPages[i].Caching.PrevCacheUrl // TODO Pulling this is expensive as heck here. Reconsider the need.
-		indexPages[i].Caching.CacheScope = "day"
 		// For each index, look at the page number and save the result as that.
 		json, _ := ConvertApiResponseToJson(&indexPages[i])
 		saveFileToDisk(json, indexDir, fmt.Sprint(indexPages[i].Pagination.CurrentPage, ".json"))
@@ -1161,8 +1177,6 @@ func saveCacheToDisk(entityCacheDir string, cacheData *CacheResponse, respType s
 		entityPages[i].Timestamp = api.Timestamp(int64(time.Now().Unix()))
 		entityPages[i].Caching.ServedFromCache = true
 		entityPages[i].Caching.CurrentCacheUrl = cacheData.cacheName
-		// indexPages[i].Caching.PrevCacheUrl // TODO Pulling this is expensive as heck here. Reconsider the need.
-		entityPages[i].Caching.CacheScope = "day"
 		// For each index, look at the page number and save the result as that.
 		json, _ := ConvertApiResponseToJson(&entityPages[i])
 		saveFileToDisk(json, cacheDir, fmt.Sprint(entityPages[i].Pagination.CurrentPage, ".json"))

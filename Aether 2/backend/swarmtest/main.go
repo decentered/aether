@@ -60,8 +60,8 @@ var settings settingsStruct
 
 func setDefaults() {
 	createPath("Runtime-Generated-Files")
-	settings.swarmsize = 5
-	settings.testdurationsec = 300
+	settings.swarmsize = 2
+	settings.testdurationsec = 1200
 	settings.staticnodeloc = "Runtime-Generated-Files/temp_generated_data"
 	spl, err := filepath.Abs("Runtime-Generated-Files/swarm-plan.json")
 	if err != nil {
@@ -98,7 +98,7 @@ func generateNodeData(n *node) {
 	n.generatedDataPath = abspath
 	// Check if there is anything that exists in the folder. If so, skip this.
 	if _, err := os.Stat(abspath); os.IsNotExist(err) {
-		cmd := exec.Command("node", "main.js", "--xsmall", "--nosign", abspath)
+		cmd := exec.Command("node", "main.js", "--small", "--nosign", abspath)
 		cmd.Dir = "../../../Documentation/database-generator/"
 		cmd.Run()
 		log.Printf("Random database generation for %s is complete.", n.appname)

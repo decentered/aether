@@ -97,17 +97,25 @@ func showIntro() {
 
 // Start methods for Mim.
 
-// establishConfigs establishes the configs (both transient and permanent) based on the flags provided through the CLI. Some flags are available directly (if they're local variables) and some of them are saved into transient config, made available globally until the app quits. If you need to have the data that is provided by the flag used in multiple places, create a new item in the transient config and put it there, it will be made available to the whole app. If you need the value once (ex: inserting a value into a database) then you can just use the value from the flags struct.
-func establishConfigs(cmd *cobra.Command) flags {
-	flgs := renderFlags(cmd)
+// EstablishConfigs establishes the configs (both transient and permanent) based on the flags provided through the CLI. Some flags are available directly (if they're local variables) and some of them are saved into transient config, made available globally until the app quits. If you need to have the data that is provided by the flag used in multiple places, create a new item in the transient config and put it there, it will be made available to the whole app. If you need the value once (ex: inserting a value into a database) then you can just use the value from the flags struct.
+func EstablishConfigs(cmd *cobra.Command) flags {
+	// Cmd can be nil, in which case it's running under a testing environment.
+	flgs := flags{}
+	if cmd != nil {
+		flgs = renderFlags(cmd)
+	}
 	// Transient configs are established before permanent (saved to file) configs because appname and orgname in the transient configs determine where permanent configs get saved to. This is useful when running swarm tests, because specifying these effectively makes a swarm spawn save configs and caches into a different location than what it would normally not save.
 	globals.BackendTransientConfig = &configstore.Btc
 	globals.BackendTransientConfig.SetDefaults()
 	globals.FrontendTransientConfig = &configstore.Ftc
 	globals.FrontendTransientConfig.SetDefaults()
 	// Set the transient config data.
-	globals.BackendTransientConfig.AppIdentifier = flgs.appName.value.(string)
-	globals.BackendTransientConfig.OrgIdentifier = flgs.orgName.value.(string)
+	if cmd != nil {
+		globals.BackendTransientConfig.AppIdentifier = flgs.appName.value.(string)
+		globals.BackendTransientConfig.OrgIdentifier = flgs.orgName.value.(string)
+	} else { // cmd == nil, this is a unit test.
+		globals.BackendTransientConfig.AppIdentifier = "A-UnitTest"
+	}
 	// Establish permanent configs.
 	becfg, err := configstore.EstablishBackendConfig()
 	if err != nil {
@@ -122,12 +130,15 @@ func establishConfigs(cmd *cobra.Command) flags {
 	fecfg.Cycle()
 	globals.FrontendConfig = fecfg
 	// Determine whether the configs have been manipulated by flags. If so, disable editing of permanent configs for this session.
-	if flagsChanged(cmd) {
+	if cmd != nil && flagsChanged(cmd) {
 		globals.BackendTransientConfig.PermConfigReadOnly = true
 		globals.FrontendTransientConfig.PermConfigReadOnly = true
 	}
-	// Start setting permanent configs. These are NO-OPs if the permament config is read only.
-	globals.BackendConfig.SetLoggingLevel(flgs.loggingLevel.value.(int))
+	if cmd != nil {
+		// Start setting permanent configs. These are NO-OPs if the permament config is read only.
+		globals.BackendConfig.SetLoggingLevel(flgs.loggingLevel.value.(int))
+	}
+
 	// If the permanent config is read only, we probably should tell.
 	if globals.BackendTransientConfig.PermConfigReadOnly {
 		// This is double because we want to both print on the console, and have it in the logs. Also providing even the default value explicitly through the command line triggers a changed=true, so even if you do logginglevel=0 (whose default is also 0), the configs will end up read only.
@@ -140,8 +151,13 @@ func establishConfigs(cmd *cobra.Command) flags {
 	if flgs.externalIp.changed {
 		globals.BackendConfig.SetExternalIp(flgs.externalIp.value.(string))
 	}
-	globals.BackendTransientConfig.PrintToStdout = flgs.printToStdout.value.(bool)
-	globals.BackendTransientConfig.MetricsDebugMode = flgs.metricsDebugMode.value.(bool)
+	// These are booleans but still gated, because the values can be nil in case of testing, not only true/false.
+	if flgs.printToStdout.changed {
+		globals.BackendTransientConfig.PrintToStdout = flgs.printToStdout.value.(bool)
+	}
+	if flgs.metricsDebugMode.changed {
+		globals.BackendTransientConfig.MetricsDebugMode = flgs.metricsDebugMode.value.(bool)
+	}
 	if flgs.swarmNodeId.changed {
 		globals.BackendTransientConfig.SwarmNodeId = flgs.swarmNodeId.value.(int)
 	} else {

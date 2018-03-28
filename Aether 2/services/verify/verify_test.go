@@ -56,7 +56,7 @@ func teardown() {
 
 func TestVerify_Success(t *testing.T) {
 	keyEntity, err3 := create.CreateKey(
-		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -81,7 +81,7 @@ func TestVerify_Success(t *testing.T) {
 
 func TestVerify_BrokenFingerprint_Fail(t *testing.T) {
 	keyEntity, err3 := create.CreateKey(
-		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -107,7 +107,7 @@ func TestVerify_BrokenFingerprint_Fail(t *testing.T) {
 
 func TestVerify_BrokenPoW1_Fail(t *testing.T) {
 	keyEntity, err3 := create.CreateKey(
-		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -138,7 +138,7 @@ func TestVerify_BrokenPoW1_Fail(t *testing.T) {
 func TestVerify_BrokenPoW2_Fail(t *testing.T) {
 	// Changing a mutable element, but not actually running update.
 	keyEntity, err3 := create.CreateKey(
-		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -163,7 +163,7 @@ func TestVerify_BrokenPoW2_Fail(t *testing.T) {
 
 func TestVerify_BrokenSignature_Fail(t *testing.T) {
 	keyEntity, err3 := create.CreateKey(
-		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -200,7 +200,7 @@ func TestVerify_BrokenSignature_Fail(t *testing.T) {
 
 func TestVerify_UpdatedItemSuccess(t *testing.T) {
 	keyEntity, err3 := create.CreateKey(
-		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -230,7 +230,7 @@ func TestVerify_UpdatedItemSuccess(t *testing.T) {
 func TestVerify_UpdatedItemFailure_Pow(t *testing.T) {
 	// Failed to call the update request.
 	keyEntity, err3 := create.CreateKey(
-		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -257,7 +257,7 @@ func TestVerify_UpdatedItemFailure_Pow(t *testing.T) {
 func TestVerify_UpdatedItemFailure_Fingerprint(t *testing.T) {
 	// Failed to call the update request.
 	keyEntity, err3 := create.CreateKey(
-		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}
@@ -284,7 +284,7 @@ func TestVerify_UpdatedItemFailure_Fingerprint(t *testing.T) {
 func TestVerify_UpdatedItemFailure_Signature(t *testing.T) {
 	// Failed to call the update request.
 	keyEntity, err3 := create.CreateKey(
-		"", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+		"", MarshaledPubKey, "", "")
 	if err3 != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err3)
 	}

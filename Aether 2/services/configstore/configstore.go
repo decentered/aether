@@ -109,7 +109,9 @@ type MinimumPoWStrengths struct {
 	Board            int
 	BoardUpdate      int
 	Thread           int
+	ThreadUpdate     int
 	Post             int
+	PostUpdate       int
 	Vote             int
 	VoteUpdate       int
 	Key              int
@@ -144,7 +146,7 @@ const (
 	defaultPastBlocksToCheck                       = 3
 	defaultCacheGenerationIntervalHours            = 24
 	defaultPOSTResponseExpiryMinutes               = 30
-	defaultConnectionTimeout                       = 10 * time.Second
+	defaultConnectionTimeout                       = 60 * time.Second
 	defaultTCPConnectTimeout                       = 3 * time.Second
 	defaultTLSHandshakeTimeout                     = 1 * time.Second
 	defaultPingerPageSize                          = 100
@@ -155,7 +157,7 @@ const (
 	defaultExternalIp                              = "0.0.0.0" // Localhost, if this is still 0.0.0.0 at any point in the future we failed at finding this out.
 	defaultExternalIpType                          = 4         // IPv4
 	defaultExternalPort                            = 49999
-	defaultDbEngine                                = "mysql" // 'sqlite' or 'mysql'
+	defaultDbEngine                                = "sqlite" // 'sqlite' or 'mysql'
 	defaultDBIp                                    = "127.0.0.1"
 	defaultDbPort                                  = 3306
 	defaultDbUsername                              = "aether-app-db-access-user"
@@ -165,20 +167,20 @@ const (
 // Default entity page sizes
 
 const (
-	defaultBoardsPageSize            = 500   // 0.2x
-	defaultBoardIndexesPageSize      = 4000  // 0.025x
-	defaultThreadsPageSize           = 100   // 1x
-	defaultThreadIndexesPageSize     = 4000  // 0.025x
-	defaultPostsPageSize             = 100   // 1x
-	defaultPostIndexesPageSize       = 3000  // 0.033x
-	defaultVotesPageSize             = 500   // 0.2x
-	defaultVoteIndexesPageSize       = 1000  // 0.1x
-	defaultAddressesPageSize         = 4000  // 0.025x
-	defaultAddressIndexesPageSize    = 4000  // 0.025x - Address is its own index
-	defaultKeysPageSize              = 500   // 0.2x
-	defaultKeyIndexesPageSize        = 5000  // 0.02x
-	defaultTruststatesPageSize       = 4000  // 0.025x
-	defaultTruststateIndexesPageSize = 10000 // 0.01x
+	defaultBoardsPageSize            = 2000  // 0.2x
+	defaultBoardIndexesPageSize      = 8000  // 0.025x
+	defaultThreadsPageSize           = 400   // 1x
+	defaultThreadIndexesPageSize     = 16000 // 0.025x
+	defaultPostsPageSize             = 400   // 1x
+	defaultPostIndexesPageSize       = 12000 // 0.033x
+	defaultVotesPageSize             = 2000  // 0.2x
+	defaultVoteIndexesPageSize       = 4000  // 0.1x
+	defaultAddressesPageSize         = 16000 // 0.025x
+	defaultAddressIndexesPageSize    = 16000 // 0.025x - Address is its own index
+	defaultKeysPageSize              = 2000  // 0.2x
+	defaultKeyIndexesPageSize        = 20000 // 0.02x
+	defaultTruststatesPageSize       = 6000  // 0.025x
+	defaultTruststateIndexesPageSize = 15000 // 0.01x
 	// Every regular page is about 500kb that way.
 	// Every index page is about 1mb.
 )
@@ -470,12 +472,20 @@ func (config *BackendConfig) GetMinimumPoWStrengths() MinimumPoWStrengths {
 		config.MinimumPoWStrengths.BoardUpdate > 0 &&
 		config.MinimumPoWStrengths.Thread < maxPOWStrength &&
 		config.MinimumPoWStrengths.Thread > 0 &&
+		config.MinimumPoWStrengths.ThreadUpdate < maxPOWStrength &&
+		config.MinimumPoWStrengths.ThreadUpdate > 0 &&
 		config.MinimumPoWStrengths.Post < maxPOWStrength &&
 		config.MinimumPoWStrengths.Post > 0 &&
+		config.MinimumPoWStrengths.PostUpdate < maxPOWStrength &&
+		config.MinimumPoWStrengths.PostUpdate > 0 &&
 		config.MinimumPoWStrengths.Vote < maxPOWStrength &&
 		config.MinimumPoWStrengths.Vote > 0 &&
 		config.MinimumPoWStrengths.VoteUpdate < maxPOWStrength &&
 		config.MinimumPoWStrengths.VoteUpdate > 0 &&
+		config.MinimumPoWStrengths.Key < maxPOWStrength &&
+		config.MinimumPoWStrengths.Key > 0 &&
+		config.MinimumPoWStrengths.KeyUpdate < maxPOWStrength &&
+		config.MinimumPoWStrengths.KeyUpdate > 0 &&
 		config.MinimumPoWStrengths.Truststate < maxPOWStrength &&
 		config.MinimumPoWStrengths.Truststate > 0 &&
 		config.MinimumPoWStrengths.TruststateUpdate < maxPOWStrength &&
@@ -937,7 +947,9 @@ func (config *BackendConfig) SetMinimumPoWStrengths(powStr int) error {
 		mps.Board = powStr
 		mps.BoardUpdate = powStr
 		mps.Thread = powStr
+		mps.ThreadUpdate = powStr
 		mps.Post = powStr
+		mps.PostUpdate = powStr
 		mps.Vote = powStr
 		mps.VoteUpdate = powStr
 		mps.Key = powStr
@@ -1477,7 +1489,9 @@ func (config *BackendConfig) BlankCheck() {
 	if config.MinimumPoWStrengths.Board == 0 ||
 		config.MinimumPoWStrengths.BoardUpdate == 0 ||
 		config.MinimumPoWStrengths.Thread == 0 ||
+		config.MinimumPoWStrengths.ThreadUpdate == 0 ||
 		config.MinimumPoWStrengths.Post == 0 ||
+		config.MinimumPoWStrengths.PostUpdate == 0 ||
 		config.MinimumPoWStrengths.Vote == 0 ||
 		config.MinimumPoWStrengths.VoteUpdate == 0 ||
 		config.MinimumPoWStrengths.Key == 0 ||
@@ -1962,6 +1976,36 @@ This is the number that this specific node will route to the main swarm orchestr
 
 ## ShutdownInitiated
 This is set when the shutdown of the backend service is initiated. The processes that take a long time to return should be checking this value periodically, and if it is set, they should stop whatever they're doing and do a graceful shutdown.
+
+## DispatcherExclusions
+This is the temporary exclusions for the dispatcher. When you connect to a node, that node is placed in the exclusions list for a while, so that you don't repeatedly keep connecting back to that node again.
+
+## StopStaticDispatcherCycle
+This is the channel to send the message to when you want to stop the static dispatcher repeated task.
+
+## StopAddressScannerCycle
+This is the channel to send the message to when you want to stop the address scanner repeated task.
+
+## StopUPNPCycle
+This is the channel to send the message to when you want to stop the UPNP mapper repeated task.
+
+## StopCacheGenerationCycle
+This is the channel to send the message to when you want to stop the cache generator repeated task.
+
+## AddressesScannerActive
+This is the mutex that gets activated when the address scanner is active, so that it cannot be triggered twice at the same time.
+
+## LiveDispatchRunning
+This is the mutex that gets activated when the live dispatcher is active, so that it cannot be triggered twice at the same time.
+
+## StaticDispatchRunning
+This is the mutex that gets activated when the static dispatcher is active, so that it cannot be triggered twice at the same time.
+
+## CurrentMetricsPage
+This is the current metrics struct that we are building to send to the metrics server, if enabled.
+
+## ConfigMutex
+This is the mutex that prevents configuration from being written from multiple places.
 
 */
 

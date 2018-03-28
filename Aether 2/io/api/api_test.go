@@ -2,7 +2,9 @@ package api_test
 
 import (
 	"aether-core/io/api"
+	"aether-core/services/configstore"
 	"aether-core/services/globals"
+	"aether-core/services/logging"
 	"aether-core/services/signaturing"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -32,7 +34,28 @@ var testNodePort uint16
 var nodeLocation string
 
 func TestMain(m *testing.M) {
-	globals.SetGlobals()
+	// Establish transient configs.
+	globals.BackendTransientConfig = &configstore.Btc
+	globals.BackendTransientConfig.SetDefaults()
+	globals.FrontendTransientConfig = &configstore.Ftc
+	globals.FrontendTransientConfig.SetDefaults()
+	// Establish permanent configs.
+	becfg, err := configstore.EstablishBackendConfig()
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	becfg.Cycle()
+	globals.BackendConfig = becfg
+	fecfg, err := configstore.EstablishFrontendConfig()
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	fecfg.Cycle()
+	globals.FrontendConfig = fecfg
+	globals.BackendTransientConfig.PermConfigReadOnly = true
+	globals.FrontendTransientConfig.PermConfigReadOnly = true
+	globals.BackendConfig.SetMinimumPoWStrengths(5)
+	globals.BackendConfig.SetLoggingLevel(0)
 	testNodeAddress = "127.0.0.1"
 	testNodePort = 8089
 	setup(testNodeAddress, testNodePort)
@@ -171,7 +194,7 @@ func setup(testNodeAddress string, testNodePort uint16) {
 
 	if len(nodeLocation) == 0 {
 		// If no node location is given, assume default. This will break when you move that folder off desktop...
-		nodeLocation = "/Users/Helios/Desktop/generated nodes/node-newest_16/static_mim_node"
+		nodeLocation = "/Users/Helios/Desktop/Hazel Desktop/2015-Q4 /generated nodes/node-newest_16/static_mim_node"
 	}
 
 	// // Vote endpoint borkage test setup start.
@@ -310,12 +333,6 @@ func setup(testNodeAddress string, testNodePort uint16) {
 
 	// // Query tests setup end.
 
-	// // ProofOfWork bailout initialisation.
-
-	globals.SetBailoutTime()
-
-	// // ProofOfWork bailout initialisation end.
-
 	// Create a HTTP server serving the nodeloc.
 	fs := http.FileServer(http.Dir(nodeLocation))
 	http.Handle("/", fs)
@@ -332,6 +349,7 @@ func teardown() {
 }
 
 func ValidateTest(expected interface{}, actual interface{}, t *testing.T) {
+	t.Helper()
 	if actual != expected {
 		t.Errorf("Test failed, expected: '%s', got:  '%s'", expected, actual)
 	}
@@ -354,7 +372,7 @@ func TestFetch_Success(t *testing.T) {
 
 func TestFetch_404(t *testing.T) {
 	_, err := api.Fetch(testNodeAddress, "", testNodePort, "this is a nonexistent location", "GET", []byte{})
-	expected := "Non-200 status code returned from Fetch. Received status code: 404, Host: 127.0.0.1, Subhost: , Port: 8089, Location: this is a nonexistent location"
+	expected := "Non-200 status code returned from Fetch. Received status code: 404, Host: 127.0.0.1, Subhost: , Port: 8089, Location: this is a nonexistent location, Method: GET"
 	actual := err.Error()
 	ValidateTest(expected, actual, t)
 }
@@ -391,7 +409,7 @@ func TestGetPageRaw_Unparsable(t *testing.T) {
 }
 
 func TestGetPage_Success(t *testing.T) {
-	resp, err := api.GetPage(testNodeAddress, "", testNodePort, "c0/boards/index.json", "GET", []byte{})
+	resp, _, err := api.GetPage(testNodeAddress, "", testNodePort, "c0/boards/index.json", "GET", []byte{})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.CacheLinks) == 0 {

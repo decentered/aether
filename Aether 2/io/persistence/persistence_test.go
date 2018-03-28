@@ -1,6 +1,7 @@
 package persistence_test
 
 import (
+	"aether-core/backend/cmd"
 	"aether-core/io/api"
 	"aether-core/io/persistence"
 	"fmt"
@@ -21,8 +22,10 @@ func TestMain(m *testing.M) {
 }
 
 func setup() {
-	// Create the database.
+	// Create the database and configs.
+	cmd.EstablishConfigs(nil)
 	persistence.CreateDatabase()
+	persistence.CheckDatabaseReady()
 	// Insert some basic data.
 	createNodeData()
 }
@@ -50,14 +53,10 @@ func createNodeData() {
 	var s api.Subprotocol
 	var k api.Key
 	var k2 api.Key
-	var ca api.CurrencyAddress
 	var ts api.Truststate
 	// Insert the data for board. Only the bare minimum of data required.
 	k.Fingerprint = "2389749283fasdf"
 	k2.Fingerprint = "asdfasfdfa9023423"
-	ca.Address = "1241245342513412341234123412341234"
-	ca.CurrencyCode = "XXX"
-	k.CurrencyAddresses = append(k.CurrencyAddresses, ca)
 	k.Key = "public key"
 	k.Creation = 1
 	k.ProofOfWork = "pow"
@@ -305,18 +304,12 @@ func TestRead_TruststateEmbedKey_Success(t *testing.T) {
 
 	var ts4 api.Truststate
 	var k4 api.Key
-	var ca4 api.CurrencyAddress
-
 	k4.Fingerprint = "2389749283fasdf"
-	ca4.Address = "1241245342513412341234123412341234"
-	ca4.CurrencyCode = "XXX"
-	k4.CurrencyAddresses = append(k4.CurrencyAddresses, ca4)
 	k4.Key = "public key"
 	k4.Creation = 1
 	k4.ProofOfWork = "pow"
 	k4.Signature = "sig"
 	k4.Type = "key type"
-
 	ts4.Fingerprint = "my truststate fingerprint99"
 	ts4.Target = "an awesome user's key"
 	ts4.Owner = k4.Fingerprint
@@ -404,7 +397,7 @@ func TestReadBoard_Empty(t *testing.T) {
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp) > 0 {
-		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%s'", resp)
+		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%#v'", resp)
 	}
 }
 
@@ -443,7 +436,7 @@ func TestReadDBBoardOwner_Empty(t *testing.T) {
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp) > 0 {
-		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%s'", resp)
+		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%#v'", resp)
 	}
 }
 
@@ -465,7 +458,7 @@ func TestReadThread_Empty(t *testing.T) {
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp) > 0 {
-		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%s'", resp)
+		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%#v'", resp)
 	}
 }
 
@@ -487,7 +480,7 @@ func TestReadPost_Empty(t *testing.T) {
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp) > 0 {
-		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%s'", resp)
+		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%#v'", resp)
 	}
 }
 
@@ -509,7 +502,7 @@ func TestReadVote_Empty(t *testing.T) {
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp) > 0 {
-		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%s'", resp)
+		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%#v'", resp)
 	}
 }
 
@@ -560,8 +553,7 @@ func TestFirstPartyInsertReadAddress_Success(t *testing.T) {
 
 	resp, err := persistence.ReadAddresses(
 		loc, subloc, port, 0, 0, 0, 0, 0, "")
-	fmt.Printf("%#v\n", resp)
-	if resp[0].Protocol.Subprotocols[0].Name != "c0" {
+	if !(resp[0].Protocol.Subprotocols[0].Name == "c0" || resp[0].Protocol.Subprotocols[1].Name == "c0") {
 		t.Errorf(fmt.Sprintf("Test failed, the subprotocol information has not been committed. Response: %#v", resp))
 	}
 	if err != nil {
@@ -580,7 +572,7 @@ func TestReadAddress_Empty(t *testing.T) {
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp) > 0 {
-		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%s'", resp)
+		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%#v'", resp)
 	}
 }
 
@@ -602,47 +594,7 @@ func TestReadKey_Empty(t *testing.T) {
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp) > 0 {
-		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%s'", resp)
-	}
-}
-
-func TestReadDBCurrencyAddress_Success(t *testing.T) {
-	keyFp := api.Fingerprint("2389749283fasdf")
-	currAddr := "1241245342513412341234123412341234"
-	resp, err := persistence.ReadDBCurrencyAddresses(
-		keyFp, currAddr)
-	// fmt.Printf("%#v\n", resp)
-	if err != nil {
-		t.Errorf("Test failed, err: '%s'", err)
-	} else if len(resp) == 0 {
-		t.Errorf("Test failed, the response is empty.")
-	} else if resp[0].KeyFingerprint != keyFp {
-		t.Errorf("The response received isn't the expected one. Key fingerprint: '%s'", resp[0].KeyFingerprint)
-	}
-}
-
-func TestReadDBCurrencyAddress_PartialData_Success(t *testing.T) {
-	keyFp := api.Fingerprint("2389749283fasdf")
-	currAddr := "" // empty means we don't know about it.
-	resp, err := persistence.ReadDBCurrencyAddresses(
-		keyFp, currAddr)
-	// fmt.Printf("%#v\n", resp)
-	if err != nil {
-		t.Errorf("Test failed, err: '%s'", err)
-	} else if len(resp) == 0 {
-		t.Errorf("Test failed, the response is empty.")
-	} else if resp[0].KeyFingerprint != keyFp {
-		t.Errorf("The response received isn't the expected one. Key fingerprint: '%s'", resp[0].KeyFingerprint)
-	}
-}
-
-func TestReadDBCurrencyAddress_Empty(t *testing.T) {
-	resp, err := persistence.ReadDBCurrencyAddresses(
-		"fake key fingerprint", "fake addr")
-	if err != nil {
-		t.Errorf("Test failed, err: '%s'", err)
-	} else if len(resp) > 0 {
-		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%s'", resp)
+		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%#v'", resp)
 	}
 }
 
@@ -664,7 +616,7 @@ func TestReadTruststate_Empty(t *testing.T) {
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp) > 0 {
-		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%s'", resp)
+		t.Errorf("Test failed, the response is expected to be empty, but is not. Response: '%#v'", resp)
 	}
 }
 
@@ -968,7 +920,7 @@ func TestInsert_MultipleTypes_Success(t *testing.T) {
 	} else if len(resp) == 0 {
 		t.Errorf("Test failed, the response is empty.")
 	} else if resp[0].Location != addressLoc {
-		t.Errorf("The response received isn't the expected one. Address: '%s'", resp[0])
+		t.Errorf("The response received isn't the expected one. Address: '%#v'", resp[0])
 	}
 	// Check for second
 	resp2, err3 := persistence.ReadTruststates([]api.Fingerprint{tfp}, 0, 0)
@@ -1004,7 +956,7 @@ func TestInsert_ItemsWithUpdates_Board_SimpleField_Success(t *testing.T) {
 		t.Errorf("Test failed, err: '%s'", err2)
 	}
 	if resp[0].Fingerprint != fp {
-		t.Errorf("The response received isn't the expected one. Board: '%s'", resp[0])
+		t.Errorf("The response received isn't the expected one. Board: '%#v'", resp[0])
 	}
 
 	// // Checking for field changes based on last update.
@@ -1091,7 +1043,7 @@ func TestInsert_ItemsWithUpdates_Board_SubObject_Success(t *testing.T) {
 		t.Errorf("Test failed, err: '%s'", err2)
 	}
 	if resp[0].Fingerprint != fp {
-		t.Errorf("The response received isn't the expected one. Board: '%s'", resp[0])
+		t.Errorf("The response received isn't the expected one. Board: '%#v'", resp[0])
 	}
 
 	// // Checking sub entity changes based on last update.
@@ -1164,7 +1116,7 @@ func TestInsert_ItemsWithUpdates_Key_SimpleField_Success(t *testing.T) {
 		t.Errorf("Test failed, err: '%s'", err2)
 	}
 	if resp[0].Fingerprint != fp {
-		t.Errorf("The response received isn't the expected one. Board: '%s'", resp[0])
+		t.Errorf("The response received isn't the expected one. Board: '%#v'", resp[0])
 	}
 
 	// // Checking for field changes based on last update.
@@ -1221,18 +1173,8 @@ func TestInsert_ItemsWithUpdates_Key_SimpleField_Success(t *testing.T) {
 func TestInsert_ItemsWithUpdates_Key_SubObject_Success(t *testing.T) {
 	// Insert a board.
 	var k api.Key
-	var ca1 api.CurrencyAddress
-	var ca2 api.CurrencyAddress
-	var ca3 api.CurrencyAddress
-	ca1.Address = "my awesome address"
-	ca1.CurrencyCode = "XXX"
-	ca2.Address = "my awesome address2"
-	ca2.CurrencyCode = "XXX"
-	ca3.Address = "my awesome address3"
-	ca3.CurrencyCode = "XXX"
 	fp := api.Fingerprint("my cool key fingerprint subobject test")
 	k.Fingerprint = fp
-	k.CurrencyAddresses = []api.CurrencyAddress{ca1, ca2}
 	k.Creation = 2
 	k.Key = "public key"
 	k.ProofOfWork = "pow"
@@ -1248,54 +1190,53 @@ func TestInsert_ItemsWithUpdates_Key_SubObject_Success(t *testing.T) {
 		t.Errorf("Test failed, err: '%s'", err2)
 	}
 	if resp[0].Fingerprint != fp {
-		t.Errorf("The response received isn't the expected one. Board: '%s'", resp[0])
+		t.Errorf("The response received isn't the expected one. Board: '%#v'", resp[0])
 	}
 
-	// // Checking sub entity changes based on last update.
+	// // // Checking sub entity changes based on last update.
 
-	// Change a board, but make last update earlier than creation. This means it won't enter the database.
-	k.CurrencyAddresses = []api.CurrencyAddress{ca1, ca2, ca3}
-	k.LastUpdate = 1
-	err3 := persistence.BatchInsert([]interface{}{k})
-	if err3 != nil {
-		t.Errorf("Test failed, err: '%s'", err3)
-	}
-	resp2, err4 := persistence.ReadKeys([]api.Fingerprint{fp}, 0, 0)
-	if err4 != nil {
-		t.Errorf("Test failed, err: '%s'", err4)
-	}
-	if len(resp2[0].CurrencyAddresses) > 2 {
-		t.Errorf("The currency address shouldn't have gotten in because it's from an update that is earlier than creation. Current key: '%#v\n', Attempted key: '%#v\n'", resp2[0], k)
-		t.Fatal()
-	}
-	// Now change the last update to be the same as creation. This also should not go in.
-	k.LastUpdate = 2
-	err5 := persistence.BatchInsert([]interface{}{k})
-	if err5 != nil {
-		t.Errorf("Test failed, err: '%s'", err5)
-	}
-	resp3, err6 := persistence.ReadKeys([]api.Fingerprint{fp}, 0, 0)
-	if err6 != nil {
-		t.Errorf("Test failed, err: '%s'", err6)
-	}
-	if len(resp3[0].CurrencyAddresses) > 2 {
-		t.Errorf("The currency address shouldn't have gotten in because it's from an update that is the same date as creation. Key: '%#v\n'", resp3[0])
-		t.Fatal()
-	}
-	// Now change the last update to be after creation. This should go in.
-	k.LastUpdate = 3
-	err7 := persistence.BatchInsert([]interface{}{k})
-	if err7 != nil {
-		t.Errorf("Test failed, err: '%s'", err7)
-	}
-	resp4, err8 := persistence.ReadKeys([]api.Fingerprint{fp}, 0, 0)
-	if err8 != nil {
-		t.Errorf("Test failed, err: '%s'", err8)
-	}
-	if len(resp4[0].CurrencyAddresses) < 3 {
-		t.Errorf("The currency address should have gotten in (but did not) because it's from an update that is later than creation. Current Key: '%#v\n', Attempted key: '%#v\n'", resp4[0], k)
-		t.Fatal()
-	}
+	// // Change a key, but make last update earlier than creation. This means it won't enter the database.
+	// k.LastUpdate = 1
+	// err3 := persistence.BatchInsert([]interface{}{k})
+	// if err3 != nil {
+	// 	t.Errorf("Test failed, err: '%s'", err3)
+	// }
+	// resp2, err4 := persistence.ReadKeys([]api.Fingerprint{fp}, 0, 0)
+	// if err4 != nil {
+	// 	t.Errorf("Test failed, err: '%s'", err4)
+	// }
+	// if len(resp2[0].CurrencyAddresses) > 2 {
+	// 	t.Errorf("The currency address shouldn't have gotten in because it's from an update that is earlier than creation. Current key: '%#v\n', Attempted key: '%#v\n'", resp2[0], k)
+	// 	t.Fatal()
+	// }
+	// // Now change the last update to be the same as creation. This also should not go in.
+	// k.LastUpdate = 2
+	// err5 := persistence.BatchInsert([]interface{}{k})
+	// if err5 != nil {
+	// 	t.Errorf("Test failed, err: '%s'", err5)
+	// }
+	// resp3, err6 := persistence.ReadKeys([]api.Fingerprint{fp}, 0, 0)
+	// if err6 != nil {
+	// 	t.Errorf("Test failed, err: '%s'", err6)
+	// }
+	// if len(resp3[0].CurrencyAddresses) > 2 {
+	// 	t.Errorf("The currency address shouldn't have gotten in because it's from an update that is the same date as creation. Key: '%#v\n'", resp3[0])
+	// 	t.Fatal()
+	// }
+	// // Now change the last update to be after creation. This should go in.
+	// k.LastUpdate = 3
+	// err7 := persistence.BatchInsert([]interface{}{k})
+	// if err7 != nil {
+	// 	t.Errorf("Test failed, err: '%s'", err7)
+	// }
+	// resp4, err8 := persistence.ReadKeys([]api.Fingerprint{fp}, 0, 0)
+	// if err8 != nil {
+	// 	t.Errorf("Test failed, err: '%s'", err8)
+	// }
+	// if len(resp4[0].CurrencyAddresses) < 3 {
+	// 	t.Errorf("The currency address should have gotten in (but did not) because it's from an update that is later than creation. Current Key: '%#v\n', Attempted key: '%#v\n'", resp4[0], k)
+	// 	t.Fatal()
+	// }
 }
 
 func TestInsert_NonsensicalItem_Success(t *testing.T) {
@@ -1429,81 +1370,5 @@ func TestInsert_DuplicateBoardOwner(t *testing.T) {
 		t.Errorf("Test failed, err: '%s'", err3)
 	} else if len(resp[0].BoardOwners) > 2 {
 		t.Errorf("This should have returned 2 board owners. Error: '%#v\n' Current Board: '%#v\n', Board owners: '%#v\n'", err3, resp[0], resp[0].BoardOwners)
-	}
-}
-
-func TestInsert_AddRemoveCurrencyAddress(t *testing.T) {
-	var k api.Key
-	fp := api.Fingerprint("hello this is a key")
-	k.Fingerprint = fp
-	var ca1 api.CurrencyAddress
-	var ca2 api.CurrencyAddress
-	var ca3 api.CurrencyAddress
-	var ca4 api.CurrencyAddress
-	ca1.Address = "hello"
-	ca1.CurrencyCode = "XXX"
-	ca2.Address = "hello2"
-	ca2.CurrencyCode = "XXX"
-	ca3.Address = "hello3"
-	ca3.CurrencyCode = "XXX"
-	ca4.Address = "hello4"
-	ca4.CurrencyCode = "XXX"
-	k.CurrencyAddresses = []api.CurrencyAddress{ca1, ca2, ca3}
-	k.Key = "public key"
-	k.Creation = 1
-	k.ProofOfWork = "pow"
-	k.Signature = "sig"
-	k.Type = "key type"
-	err := persistence.BatchInsert([]interface{}{k})
-	if err != nil {
-		t.Errorf("Test failed, err: '%s'", err)
-	}
-	k.CurrencyAddresses = []api.CurrencyAddress{ca1, ca2, ca4}
-	k.LastUpdate = 1 // Remember, we need to do this otherwise it won't go in.
-	err2 := persistence.BatchInsert([]interface{}{k})
-	if err2 != nil {
-		t.Errorf("Test failed, err: '%s'", err2)
-	}
-	resp, err3 := persistence.ReadKeys([]api.Fingerprint{fp}, 0, 0)
-	// fmt.Printf("%#v\n", resp[0].CurrencyAddresses)
-	if err3 != nil {
-		t.Errorf("Test failed, err: '%s'", err3)
-	} else if len(resp[0].CurrencyAddresses) > 3 {
-		t.Errorf("This should have returned 3 currency addresses. Error: '%#v\n' Current Key: '%#v\n', Currency addresses: '%#v\n'", err3, resp[0], resp[0].CurrencyAddresses)
-	}
-}
-
-func TestInsert_DuplicateCurrencyAddress(t *testing.T) {
-	var k api.Key
-	fp := api.Fingerprint("hello this is a key")
-	k.Fingerprint = fp
-	var ca1 api.CurrencyAddress
-	var ca2 api.CurrencyAddress
-	var ca3 api.CurrencyAddress
-	var ca4 api.CurrencyAddress
-	ca1.Address = "hello"
-	ca1.CurrencyCode = "XXX"
-	ca2.Address = "hello2"
-	ca2.CurrencyCode = "XXX"
-	ca3.Address = "hello2"
-	ca3.CurrencyCode = "XXX"
-	ca4.Address = "hello4"
-	ca4.CurrencyCode = "XXX"
-	k.CurrencyAddresses = []api.CurrencyAddress{ca1, ca2, ca3, ca4}
-	k.Key = "public key"
-	k.Creation = 1
-	k.ProofOfWork = "pow"
-	k.Signature = "sig"
-	k.Type = "key type"
-	err := persistence.BatchInsert([]interface{}{k})
-	if err != nil {
-		t.Errorf("Test failed, err: '%s'", err)
-	}
-	resp, err3 := persistence.ReadKeys([]api.Fingerprint{fp}, 0, 0)
-	// fmt.Printf("%#v\n", resp[0].CurrencyAddresses)
-	if err3 != nil {
-		t.Errorf("Test failed, err: '%s'", err3)
-	} else if len(resp[0].CurrencyAddresses) > 3 {
-		t.Errorf("This should have returned 3 currency addresses. Error: '%#v\n' Current Key: '%#v\n', Currency addresses: '%#v\n'", err3, resp[0], resp[0].CurrencyAddresses)
 	}
 }

@@ -51,7 +51,7 @@ func setup() {
 
 	// globals.SetMinPoWStrengths(16)
 	MarshaledPubKey = hex.EncodeToString(elliptic.Marshal(elliptic.P521(), globals.FrontendConfig.GetUserKeyPair().PublicKey.X, globals.FrontendConfig.GetUserKeyPair().PublicKey.Y))
-	UserKeyEntity, _ = create.CreateKey("", MarshaledPubKey, "", *new([]api.CurrencyAddress), "")
+	UserKeyEntity, _ = create.CreateKey("", MarshaledPubKey, "", "")
 
 }
 
@@ -68,16 +68,6 @@ func TestCreateBoardOwner_Success(t *testing.T) {
 			"my key fingerprint",
 			api.Timestamp(12345678),
 			uint8(1))
-	if err != nil {
-		t.Errorf("Object creation failed. Err: '%s'", err)
-	}
-}
-
-func TestCreateCurrencyAddress_Success(t *testing.T) {
-	_, err :=
-		create.CreateCurrencyAddress(
-			"XFK",
-			"My currency address")
 	if err != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err)
 	}
@@ -194,7 +184,6 @@ func TestCreateKey_Success(t *testing.T) {
 			"key type",
 			MarshaledPubKey,
 			"user name",
-			*new([]api.CurrencyAddress),
 			"key info")
 	if err != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err)
@@ -292,7 +281,6 @@ func TestUpdateKey_Success(t *testing.T) {
 			"key type",
 			MarshaledPubKey,
 			"user name",
-			*new([]api.CurrencyAddress),
 			"key info")
 	if err != nil {
 		t.Errorf("Object creation failed. Err: '%s'", err)

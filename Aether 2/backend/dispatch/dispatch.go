@@ -9,9 +9,9 @@ import (
 	"aether-core/services/globals"
 	"aether-core/services/logging"
 	// "aether-core/services/safesleep"
+	"errors"
 	"fmt"
 	// "strings"
-	"errors"
 	"time"
 )
 
@@ -199,7 +199,11 @@ func GetOnlineAddresses(
 		// Put the read addresses into Pinger to extract the live addresses,
 		updatedAddresses := Pinger(resp)
 		// (And commit the newly found addressed to DB, just in case.) Even if the address found is not the type we want, it is still saved as a  prior-connected (above) for future use.
-		persistence.InsertOrUpdateAddresses(&updatedAddresses)
+		errs := persistence.InsertOrUpdateAddresses(&updatedAddresses)
+		if len(errs) > 0 {
+			logging.Log(1, fmt.Sprintf("These errors were encountered on InsertOrUpdateAddress attempt: %s", errs))
+			continue
+		}
 		// Check for the exclusions, so that the address we have isn't what we want to exclude. This also enforces the address type.
 		cleanedUpdatedAddresses := eliminateExcludedAddressesFromList(&updatedAddresses, &exclude, addressType)
 		// Add the found online addresses to the result set,
@@ -276,7 +280,10 @@ func AddressScanner() error {
 	}
 	logging.Log(1, fmt.Sprintf("We have this many prior-unconnected addresses to check: %d", len(resp)))
 	updatedAddresses := Pinger(resp)
-	persistence.InsertOrUpdateAddresses(&updatedAddresses)
+	errs := persistence.InsertOrUpdateAddresses(&updatedAddresses)
+	if len(errs) > 0 {
+		logging.Log(1, fmt.Sprintf("These errors were encountered on InsertOrUpdateAddress attempt: %s", errs))
+	}
 	return nil
 }
 

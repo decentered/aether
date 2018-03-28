@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // Structs for the entity types. There are 7 types. Board, Thread, Post, Vote, Key, Address, Truststate.
@@ -28,6 +29,14 @@ type ProofOfWork string // temp
 // type Signature [512]byte
 type Signature string // temp
 type Location string
+
+func (t Timestamp) Humanise() string {
+	if t != 0 {
+		return fmt.Sprintf("%s (%d)", time.Unix(int64(t), 0).Format(time.Stamp), t)
+	} else {
+		return fmt.Sprint("Blank")
+	}
+}
 
 func (f Fingerprint) Value() (driver.Value, error) {
 	return string(f), nil
@@ -102,12 +111,6 @@ type BoardOwner struct {
 	Level          uint8       `json:"level"`           // Admin (2), mod (1), or abdicated admin (0)
 }
 
-type CurrencyAddress struct {
-	// CurrencyCode [5]byte    `json:"currency_code"`
-	CurrencyCode string `json:"currency_code"`
-	Address      string `json:"address"`
-}
-
 type Subprotocol struct {
 	Name              string   `json:"name"`
 	VersionMajor      uint8    `json:"version_major"`
@@ -137,70 +140,84 @@ type Board struct {
 	Description string       `json:"description"`  // Max 65535 char unicode
 	Owner       Fingerprint  `json:"owner"`
 	Meta        string       `json:"meta"` // This is the dynamic JSON field
+	RealmId     Fingerprint  `json:"realmid"`
+	EncrContent string       `json:"encrcontent"`
 	UpdateableFieldSet
 }
 
 type Thread struct {
 	ProvableFieldSet
-	Board Fingerprint `json:"board"`
-	Name  string      `json:"name"`
-	Body  string      `json:"body"`
-	Link  string      `json:"link"`
-	Owner Fingerprint `json:"owner"`
-	Meta  string      `json:"meta"`
+	Board       Fingerprint `json:"board"`
+	Name        string      `json:"name"`
+	Body        string      `json:"body"`
+	Link        string      `json:"link"`
+	Owner       Fingerprint `json:"owner"`
+	Meta        string      `json:"meta"`
+	RealmId     Fingerprint `json:"realmid"`
+	EncrContent string      `json:"encrcontent"`
+	UpdateableFieldSet
 }
 
 type Post struct {
 	ProvableFieldSet
-	Board  Fingerprint `json:"board"`
-	Thread Fingerprint `json:"thread"`
-	Parent Fingerprint `json:"parent"`
-	Body   string      `json:"body"`
-	Owner  Fingerprint `json:"owner"`
-	Meta   string      `json:"meta"`
+	Board       Fingerprint `json:"board"`
+	Thread      Fingerprint `json:"thread"`
+	Parent      Fingerprint `json:"parent"`
+	Body        string      `json:"body"`
+	Owner       Fingerprint `json:"owner"`
+	Meta        string      `json:"meta"`
+	RealmId     Fingerprint `json:"realmid"`
+	EncrContent string      `json:"encrcontent"`
+	UpdateableFieldSet
 }
 
 type Vote struct {
 	ProvableFieldSet
-	Board  Fingerprint `json:"board"`
-	Thread Fingerprint `json:"thread"`
-	Target Fingerprint `json:"target"`
-	Owner  Fingerprint `json:"owner"`
-	Type   uint8       `json:"type"`
-	Meta   string      `json:"meta"`
+	Board       Fingerprint `json:"board"`
+	Thread      Fingerprint `json:"thread"`
+	Target      Fingerprint `json:"target"`
+	Owner       Fingerprint `json:"owner"`
+	Type        uint8       `json:"type"`
+	Meta        string      `json:"meta"`
+	RealmId     Fingerprint `json:"realmid"`
+	EncrContent string      `json:"encrcontent"`
 	UpdateableFieldSet
 }
 
 type Address struct {
-	Location     Location  `json:"location"`
-	Sublocation  Location  `json:"sublocation"`
-	LocationType uint8     `json:"location_type"`
-	Port         uint16    `json:"port"`
-	Type         uint8     `json:"type"`
-	LastOnline   Timestamp `json:"last_online"`
-	Protocol     Protocol  `json:"protocol"`
-	Client       Client    `json:"client"`
+	Location     Location    `json:"location"`
+	Sublocation  Location    `json:"sublocation"`
+	LocationType uint8       `json:"location_type"`
+	Port         uint16      `json:"port"`
+	Type         uint8       `json:"type"`
+	LastOnline   Timestamp   `json:"last_online"`
+	Protocol     Protocol    `json:"protocol"`
+	Client       Client      `json:"client"`
+	RealmId      Fingerprint `json:"realmid"`
 }
 
 type Key struct {
 	ProvableFieldSet
-	Type              string            `json:"type"`
-	Key               string            `json:"key"`
-	Name              string            `json:"name"`
-	CurrencyAddresses []CurrencyAddress `json:"currency_addresses"` // max 10 addresses
-	Info              string            `json:"info"`
-	Meta              string            `json:"meta"`
+	Type        string      `json:"type"`
+	Key         string      `json:"key"`
+	Name        string      `json:"name"`
+	Info        string      `json:"info"`
+	Meta        string      `json:"meta"`
+	RealmId     Fingerprint `json:"realmid"`
+	EncrContent string      `json:"encrcontent"`
 	UpdateableFieldSet
 }
 
 type Truststate struct {
 	ProvableFieldSet
-	Target  Fingerprint   `json:"target"`
-	Owner   Fingerprint   `json:"owner"`
-	Type    uint8         `json:"type"`
-	Domains []Fingerprint `json:"domain"` // max 100 domains fingerprint
-	Expiry  Timestamp     `json:"expiry"`
-	Meta    string        `json:"meta"`
+	Target      Fingerprint   `json:"target"`
+	Owner       Fingerprint   `json:"owner"`
+	Type        uint8         `json:"type"`
+	Domains     []Fingerprint `json:"domain"` // max 100 domains fingerprint
+	Expiry      Timestamp     `json:"expiry"`
+	Meta        string        `json:"meta"`
+	RealmId     Fingerprint   `json:"realmid"`
+	EncrContent string        `json:"encrcontent"`
 	UpdateableFieldSet
 }
 
@@ -223,6 +240,7 @@ type ThreadIndex struct {
 	Fingerprint Fingerprint `json:"fingerprint"`
 	Board       Fingerprint `json:"board"`
 	Creation    Timestamp   `json:"creation"`
+	LastUpdate  Timestamp   `json:"last_update"`
 	PageNumber  int         `json:"page_number"`
 }
 
@@ -231,6 +249,7 @@ type PostIndex struct {
 	Board       Fingerprint `json:"board"`
 	Thread      Fingerprint `json:"thread"`
 	Creation    Timestamp   `json:"creation"`
+	LastUpdate  Timestamp   `json:"last_update"`
 	PageNumber  int         `json:"page_number"`
 }
 
@@ -270,8 +289,6 @@ type Pagination struct {
 
 type Caching struct {
 	ServedFromCache bool   `json:"served_from_cache"`
-	CacheScope      string `json:"cache_scope"`
-	PrevCacheUrl    string `json:"prev_cache_url"`
 	CurrentCacheUrl string `json:"current_cache_url"`
 }
 
@@ -393,6 +410,8 @@ func (entity *Truststate) GetSignature() Signature { return entity.Signature }
 // UpdateSignature accessors
 
 func (entity *Board) GetUpdateSignature() Signature      { return entity.UpdateSignature }
+func (entity *Thread) GetUpdateSignature() Signature     { return entity.UpdateSignature }
+func (entity *Post) GetUpdateSignature() Signature       { return entity.UpdateSignature }
 func (entity *Vote) GetUpdateSignature() Signature       { return entity.UpdateSignature }
 func (entity *Key) GetUpdateSignature() Signature        { return entity.UpdateSignature }
 func (entity *Truststate) GetUpdateSignature() Signature { return entity.UpdateSignature }
@@ -409,6 +428,8 @@ func (entity *Truststate) GetProofOfWork() ProofOfWork { return entity.ProofOfWo
 // UpdateProofOfWork accessors
 
 func (entity *Board) GetUpdateProofOfWork() ProofOfWork      { return entity.UpdateProofOfWork }
+func (entity *Thread) GetUpdateProofOfWork() ProofOfWork     { return entity.UpdateProofOfWork }
+func (entity *Post) GetUpdateProofOfWork() ProofOfWork       { return entity.UpdateProofOfWork }
 func (entity *Vote) GetUpdateProofOfWork() ProofOfWork       { return entity.UpdateProofOfWork }
 func (entity *Key) GetUpdateProofOfWork() ProofOfWork        { return entity.UpdateProofOfWork }
 func (entity *Truststate) GetUpdateProofOfWork() ProofOfWork { return entity.UpdateProofOfWork }
@@ -420,7 +441,7 @@ func (entity *Thread) GetOwner() Fingerprint { return entity.Owner }
 func (entity *Post) GetOwner() Fingerprint   { return entity.Owner }
 func (entity *Vote) GetOwner() Fingerprint   { return entity.Owner }
 
-// Owner of the key is itself.
+// (For below, owner of the entity is itself.)
 func (entity *Key) GetOwner() Fingerprint        { return entity.Fingerprint }
 func (entity *Truststate) GetOwner() Fingerprint { return entity.Owner }
 
@@ -448,8 +469,11 @@ func (b *Board) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 
 func (t *Thread) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 	cpI := *t
-	// Non-updateable
+	// Updateable
 	cpI.Fingerprint = ""
+	cpI.LastUpdate = 0
+	cpI.UpdateProofOfWork = ""
+	cpI.UpdateSignature = ""
 	// Remove the existing proof of work if any exists so as to not accidentally take it as an input to the new proof of work about to be calculated.
 	cpI.ProofOfWork = ""
 	// Convert to JSON
@@ -465,8 +489,11 @@ func (t *Thread) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 
 func (p *Post) CreatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
 	cpI := *p
-	// Non-updateable
+	// Updateable
 	cpI.Fingerprint = ""
+	cpI.LastUpdate = 0
+	cpI.UpdateProofOfWork = ""
+	cpI.UpdateSignature = ""
 	// Remove the existing proof of work if any exists so as to not accidentally take it as an input to the new proof of work about to be calculated.
 	cpI.ProofOfWork = ""
 	// Convert to JSON
@@ -554,6 +581,36 @@ func (b *Board) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error
 		return err
 	}
 	b.UpdateProofOfWork = ProofOfWork(pow)
+	return nil
+}
+
+func (t *Thread) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
+	cpI := *t
+	// Updateable
+	cpI.UpdateProofOfWork = ""
+	// Convert to JSON
+	res, _ := json.Marshal(cpI)
+	// Create PoW
+	pow, err := proofofwork.Create(string(res), difficulty, keyPair)
+	if err != nil {
+		return err
+	}
+	t.UpdateProofOfWork = ProofOfWork(pow)
+	return nil
+}
+
+func (p *Post) CreateUpdatePoW(keyPair *ecdsa.PrivateKey, difficulty int) error {
+	cpI := *p
+	// Updateable
+	cpI.UpdateProofOfWork = ""
+	// Convert to JSON
+	res, _ := json.Marshal(cpI)
+	// Create PoW
+	pow, err := proofofwork.Create(string(res), difficulty, keyPair)
+	if err != nil {
+		return err
+	}
+	p.UpdateProofOfWork = ProofOfWork(pow)
 	return nil
 }
 
@@ -654,12 +711,30 @@ func (b *Board) VerifyPoW(pubKey string) (bool, error) {
 
 func (t *Thread) VerifyPoW(pubKey string) (bool, error) {
 	cpI := *t
-	// Non-updateable
-	cpI.Fingerprint = ""
-	// Save PoW to be verified
-	pow := string(cpI.ProofOfWork)
-	// Delete PoW so that the PoW will match
-	cpI.ProofOfWork = ""
+	var pow string
+	var neededStrength int
+	// Determine if we are checking for original or update PoW
+	if len(cpI.UpdateProofOfWork) > 0 {
+		// This is a VerifyUpdatePoW. (The object was subject to some updates.)
+		// Updateable
+		// Save PoW to be verified
+		pow = string(cpI.UpdateProofOfWork)
+		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		// Delete PoW so that the PoW will match
+		cpI.UpdateProofOfWork = ""
+	} else {
+		// This is a VerifyPoW (there is no update on this object.)
+		// Updateable
+		cpI.Fingerprint = ""
+		cpI.LastUpdate = 0
+		cpI.UpdateProofOfWork = ""
+		cpI.UpdateSignature = ""
+		// Save PoW to be verified
+		pow = string(cpI.ProofOfWork)
+		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		// Delete PoW so that the PoW will match
+		cpI.ProofOfWork = ""
+	}
 	// Convert to JSON
 	res, _ := json.Marshal(cpI)
 	// Verify PoW
@@ -670,7 +745,7 @@ func (t *Thread) VerifyPoW(pubKey string) (bool, error) {
 	// If the PoW is valid
 	if verifyResult {
 		// Check if satisfies required minimum
-		if strength >= globals.BackendConfig.GetMinimumPoWStrengths().Thread {
+		if strength >= neededStrength {
 			return true, nil
 		} else {
 			return false, errors.New(fmt.Sprint(
@@ -684,12 +759,30 @@ func (t *Thread) VerifyPoW(pubKey string) (bool, error) {
 
 func (p *Post) VerifyPoW(pubKey string) (bool, error) {
 	cpI := *p
-	// Non-updateable
-	cpI.Fingerprint = ""
-	// Save PoW to be verified
-	pow := string(cpI.ProofOfWork)
-	// Delete PoW so that the PoW will match
-	cpI.ProofOfWork = ""
+	var pow string
+	var neededStrength int
+	// Determine if we are checking for original or update PoW
+	if len(cpI.UpdateProofOfWork) > 0 {
+		// This is a VerifyUpdatePoW. (The object was subject to some updates.)
+		// Updateable
+		// Save PoW to be verified
+		pow = string(cpI.UpdateProofOfWork)
+		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		// Delete PoW so that the PoW will match
+		cpI.UpdateProofOfWork = ""
+	} else {
+		// This is a VerifyPoW (there is no update on this object.)
+		// Updateable
+		cpI.Fingerprint = ""
+		cpI.LastUpdate = 0
+		cpI.UpdateProofOfWork = ""
+		cpI.UpdateSignature = ""
+		// Save PoW to be verified
+		pow = string(cpI.ProofOfWork)
+		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		// Delete PoW so that the PoW will match
+		cpI.ProofOfWork = ""
+	}
 	// Convert to JSON
 	res, _ := json.Marshal(cpI)
 	// Verify PoW
@@ -700,7 +793,7 @@ func (p *Post) VerifyPoW(pubKey string) (bool, error) {
 	// If the PoW is valid
 	if verifyResult {
 		// Check if satisfies required minimum
-		if strength >= globals.BackendConfig.GetMinimumPoWStrengths().Post {
+		if strength >= neededStrength {
 			return true, nil
 		} else {
 			return false, errors.New(fmt.Sprint(
@@ -867,6 +960,7 @@ func (b *Board) CreateFingerprint() {
 	var emptyBOList []BoardOwner
 	cpI.BoardOwners = emptyBOList
 	cpI.Description = ""
+	cpI.Meta = ""
 	// Remove the existing fingerprint if any exists so as to not accidentally take it as an input to the new fingerprint about to be calculated.
 	cpI.Fingerprint = ""
 	// Convert to JSON
@@ -879,7 +973,11 @@ func (b *Board) CreateFingerprint() {
 func (t *Thread) CreateFingerprint() {
 	cpI := *t
 	// Remove ALL mutable fields
-	// (Thread does not have any mutable fields)
+	cpI.LastUpdate = 0
+	cpI.UpdateProofOfWork = ""
+	cpI.UpdateSignature = ""
+	cpI.Body = ""
+	cpI.Meta = ""
 	// Remove the existing fingerprint if any exists so as to not accidentally take it as an input to the new fingerprint about to be calculated.
 	cpI.Fingerprint = ""
 	// Convert to JSON
@@ -892,7 +990,11 @@ func (t *Thread) CreateFingerprint() {
 func (p *Post) CreateFingerprint() {
 	cpI := *p
 	// Remove ALL mutable fields
-	// (Post does not have any mutable fields)
+	cpI.LastUpdate = 0
+	cpI.UpdateProofOfWork = ""
+	cpI.UpdateSignature = ""
+	cpI.Body = ""
+	cpI.Meta = ""
 	// Remove the existing fingerprint if any exists so as to not accidentally take it as an input to the new fingerprint about to be calculated.
 	cpI.Fingerprint = ""
 	// Convert to JSON
@@ -909,6 +1011,7 @@ func (v *Vote) CreateFingerprint() {
 	cpI.UpdateProofOfWork = ""
 	cpI.UpdateSignature = ""
 	cpI.Type = uint8(0)
+	cpI.Meta = ""
 	// Remove the existing fingerprint if any exists so as to not accidentally take it as an input to the new fingerprint about to be calculated.
 	cpI.Fingerprint = ""
 	// Convert to JSON
@@ -924,20 +1027,15 @@ func (k *Key) CreateFingerprint() {
 	cpI.LastUpdate = 0
 	cpI.UpdateProofOfWork = ""
 	cpI.UpdateSignature = ""
-	var emptyCAList []CurrencyAddress
-	cpI.CurrencyAddresses = emptyCAList
 	cpI.Info = ""
+	cpI.Meta = ""
 	// Remove the existing fingerprint if any exists so as to not accidentally take it as an input to the new fingerprint about to be calculated.
-	fmt.Println("old fingerprint")
-	fmt.Println(cpI.Fingerprint)
 	cpI.Fingerprint = ""
 	// Convert to JSON
 	res, _ := json.Marshal(cpI)
 	// Create Fingerprint
 	fp := fingerprinting.Create(string(res))
 	k.Fingerprint = Fingerprint(fp)
-	fmt.Println("new fingerprint")
-	fmt.Println(k.Fingerprint)
 }
 
 func (ts *Truststate) CreateFingerprint() {
@@ -950,6 +1048,7 @@ func (ts *Truststate) CreateFingerprint() {
 	var emptyDList []Fingerprint
 	cpI.Domains = emptyDList
 	cpI.Expiry = 0
+	cpI.Meta = ""
 	// Remove the existing fingerprint if any exists so as to not accidentally take it as an input to the new fingerprint about to be calculated.
 	cpI.Fingerprint = ""
 	// Convert to JSON
@@ -972,6 +1071,7 @@ func (b *Board) VerifyFingerprint() bool {
 	var emptyBOList []BoardOwner
 	cpI.BoardOwners = emptyBOList
 	cpI.Description = ""
+	cpI.Meta = ""
 	// Remove the existing fingerprint so that it won't be included as part of the input to be verified.
 	cpI.Fingerprint = ""
 	// Convert to JSON
@@ -985,8 +1085,11 @@ func (t *Thread) VerifyFingerprint() bool {
 	cpI := *t
 	var fp string
 	fp = string(cpI.Fingerprint)
-	// Remove ALL mutable fields
-	// (Thread does not have any mutable fields)
+	cpI.LastUpdate = 0
+	cpI.UpdateProofOfWork = ""
+	cpI.UpdateSignature = ""
+	cpI.Body = ""
+	cpI.Meta = ""
 	// Remove the existing fingerprint so that it won't be included as part of the input to be verified.
 	cpI.Fingerprint = ""
 	// Convert to JSON
@@ -1001,7 +1104,11 @@ func (p *Post) VerifyFingerprint() bool {
 	var fp string
 	fp = string(cpI.Fingerprint)
 	// Remove ALL mutable fields
-	// (Post does not have any mutable fields)
+	cpI.LastUpdate = 0
+	cpI.UpdateProofOfWork = ""
+	cpI.UpdateSignature = ""
+	cpI.Body = ""
+	cpI.Meta = ""
 	// Remove the existing fingerprint so that it won't be included as part of the input to be verified.
 	cpI.Fingerprint = ""
 	// Convert to JSON
@@ -1020,6 +1127,7 @@ func (v *Vote) VerifyFingerprint() bool {
 	cpI.UpdateProofOfWork = ""
 	cpI.UpdateSignature = ""
 	cpI.Type = uint8(0)
+	cpI.Meta = ""
 	// Remove the existing fingerprint so that it won't be included as part of the input to be verified.
 	cpI.Fingerprint = ""
 	// Convert to JSON
@@ -1037,9 +1145,8 @@ func (k *Key) VerifyFingerprint() bool {
 	cpI.LastUpdate = 0
 	cpI.UpdateProofOfWork = ""
 	cpI.UpdateSignature = ""
-	var emptyCAList []CurrencyAddress
-	cpI.CurrencyAddresses = emptyCAList
 	cpI.Info = ""
+	cpI.Meta = ""
 	// Remove the existing fingerprint so that it won't be included as part of the input to be verified.
 	cpI.Fingerprint = ""
 	// Convert to JSON
@@ -1061,6 +1168,7 @@ func (ts *Truststate) VerifyFingerprint() bool {
 	var emptyDList []Fingerprint
 	cpI.Domains = emptyDList
 	cpI.Expiry = 0
+	cpI.Meta = ""
 	// Remove the existing fingerprint so that it won't be included as part of the input to be verified.
 	cpI.Fingerprint = ""
 	// Convert to JSON
@@ -1095,8 +1203,11 @@ func (b *Board) CreateSignature(keyPair *ecdsa.PrivateKey) error {
 
 func (t *Thread) CreateSignature(keyPair *ecdsa.PrivateKey) error {
 	cpI := *t
-	// Non-updateable
+	// Updateable
 	cpI.Fingerprint = ""
+	cpI.LastUpdate = 0
+	cpI.UpdateProofOfWork = ""
+	cpI.UpdateSignature = ""
 	cpI.ProofOfWork = ""
 	// Remove existing signature if any so it won't end up in the mix accidentally.
 	cpI.Signature = ""
@@ -1113,8 +1224,11 @@ func (t *Thread) CreateSignature(keyPair *ecdsa.PrivateKey) error {
 
 func (p *Post) CreateSignature(keyPair *ecdsa.PrivateKey) error {
 	cpI := *p
-	// Non-updateable
+	// Updateable
 	cpI.Fingerprint = ""
+	cpI.LastUpdate = 0
+	cpI.UpdateProofOfWork = ""
+	cpI.UpdateSignature = ""
 	cpI.ProofOfWork = ""
 	// Remove existing signature if any so it won't end up in the mix accidentally.
 	cpI.Signature = ""
@@ -1210,6 +1324,38 @@ func (b *Board) CreateUpdateSignature(keyPair *ecdsa.PrivateKey) error {
 	return nil
 }
 
+func (t *Thread) CreateUpdateSignature(keyPair *ecdsa.PrivateKey) error {
+	cpI := *t
+	// Updateable
+	cpI.UpdateProofOfWork = ""
+	cpI.UpdateSignature = ""
+	// Convert to JSON
+	res, _ := json.Marshal(cpI)
+	// Create signature
+	signature, err := signaturing.Sign(string(res), keyPair)
+	if err != nil {
+		return err
+	}
+	t.UpdateSignature = Signature(signature)
+	return nil
+}
+
+func (p *Post) CreateUpdateSignature(keyPair *ecdsa.PrivateKey) error {
+	cpI := *p
+	// Updateable
+	cpI.UpdateProofOfWork = ""
+	cpI.UpdateSignature = ""
+	// Convert to JSON
+	res, _ := json.Marshal(cpI)
+	// Create signature
+	signature, err := signaturing.Sign(string(res), keyPair)
+	if err != nil {
+		return err
+	}
+	p.UpdateSignature = Signature(signature)
+	return nil
+}
+
 func (v *Vote) CreateUpdateSignature(keyPair *ecdsa.PrivateKey) error {
 	cpI := *v
 	// Updateable
@@ -1300,17 +1446,32 @@ func (b *Board) VerifySignature(pubKey string) (bool, error) {
 
 func (t *Thread) VerifySignature(pubKey string) (bool, error) {
 	cpI := *t
-	// Save signature to be verified
-	signature := string(cpI.Signature)
-	// Non-updateable
-	cpI.Fingerprint = ""
-	cpI.ProofOfWork = ""
-	// Remove existing signature if any so it won't end up in the mix accidentally.
-	cpI.Signature = ""
-	// Delete signature so that the signature will match
-	cpI.Signature = ""
+	var signature string
+	// Determine if we are checking for original or update signature
+	if len(cpI.UpdateSignature) > 0 {
+		// This is a VerifyUpdateSignature. (The object was subject to some updates.)
+		// Updateable
+		// Save Signature to be verified
+		signature = string(cpI.UpdateSignature)
+		// Delete Signature and PoW so that the Signature check will match
+		cpI.UpdateSignature = ""
+		cpI.UpdateProofOfWork = ""
+	} else {
+		// This is a VerifySignature (there is no update on this object.)
+		// Updateable
+		cpI.Fingerprint = ""
+		cpI.LastUpdate = 0
+		cpI.UpdateProofOfWork = ""
+		cpI.UpdateSignature = ""
+		// Save signature to be verified
+		signature = string(cpI.Signature)
+		// This happens *after* Signature, so should be empty here.
+		cpI.ProofOfWork = ""
+		cpI.Signature = ""
+	}
 	// Convert to JSON
 	res, _ := json.Marshal(cpI)
+	// Verify Signature
 	// Verify Signature
 	verifyResult := signaturing.Verify(string(res), signature, pubKey)
 	// If the Signature is valid
@@ -1324,17 +1485,32 @@ func (t *Thread) VerifySignature(pubKey string) (bool, error) {
 
 func (p *Post) VerifySignature(pubKey string) (bool, error) {
 	cpI := *p
-	// Save signature to be verified
-	signature := string(cpI.Signature)
-	// Non-updateable
-	cpI.Fingerprint = ""
-	cpI.ProofOfWork = ""
-	// Remove existing signature if any so it won't end up in the mix accidentally.
-	cpI.Signature = ""
-	// Delete signature so that the signature will match
-	cpI.Signature = ""
+	var signature string
+	// Determine if we are checking for original or update signature
+	if len(cpI.UpdateSignature) > 0 {
+		// This is a VerifyUpdateSignature. (The object was subject to some updates.)
+		// Updateable
+		// Save Signature to be verified
+		signature = string(cpI.UpdateSignature)
+		// Delete Signature and PoW so that the Signature check will match
+		cpI.UpdateSignature = ""
+		cpI.UpdateProofOfWork = ""
+	} else {
+		// This is a VerifySignature (there is no update on this object.)
+		// Updateable
+		cpI.Fingerprint = ""
+		cpI.LastUpdate = 0
+		cpI.UpdateProofOfWork = ""
+		cpI.UpdateSignature = ""
+		// Save signature to be verified
+		signature = string(cpI.Signature)
+		// This happens *after* Signature, so should be empty here.
+		cpI.ProofOfWork = ""
+		cpI.Signature = ""
+	}
 	// Convert to JSON
 	res, _ := json.Marshal(cpI)
+	// Verify Signature
 	// Verify Signature
 	verifyResult := signaturing.Verify(string(res), signature, pubKey)
 	// If the Signature is valid

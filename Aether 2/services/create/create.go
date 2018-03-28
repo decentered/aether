@@ -57,6 +57,10 @@ func Rebake(entity api.Updateable) error {
 	switch ent := entity.(type) {
 	case *api.Board:
 		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().BoardUpdate)
+	case *api.Thread:
+		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().ThreadUpdate)
+	case *api.Post:
+		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().PostUpdate)
 	case *api.Vote:
 		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().VoteUpdate)
 	case *api.Key:
@@ -86,17 +90,6 @@ func CreateBoardOwner(
 	return bo, nil
 }
 
-func CreateCurrencyAddress(
-	currCode string,
-	address string,
-) (api.CurrencyAddress, error) {
-
-	var ca api.CurrencyAddress
-	ca.CurrencyCode = currCode
-	ca.Address = address
-	return ca, nil
-}
-
 // Create main entities
 
 func CreateBoard(
@@ -104,6 +97,8 @@ func CreateBoard(
 	ownerFp api.Fingerprint,
 	boardOwners []api.BoardOwner,
 	description string,
+	meta string,
+	realmId api.Fingerprint,
 ) (api.Board, error) {
 
 	var entity api.Board
@@ -112,6 +107,8 @@ func CreateBoard(
 	entity.Owner = ownerFp
 	entity.BoardOwners = boardOwners
 	entity.Description = description
+	entity.Meta = meta
+	entity.RealmId = realmId
 	err := Bake(&entity)
 	if err != nil {
 		var blankEntity api.Board
@@ -126,6 +123,8 @@ func CreateThread(
 	body string,
 	link string,
 	ownerFp api.Fingerprint,
+	meta string,
+	realmId api.Fingerprint,
 ) (api.Thread, error) {
 
 	var entity api.Thread
@@ -135,6 +134,8 @@ func CreateThread(
 	entity.Body = body
 	entity.Link = link
 	entity.Owner = ownerFp
+	entity.Meta = meta
+	entity.RealmId = realmId
 	err := Bake(&entity)
 	if err != nil {
 		var blankEntity api.Thread
@@ -149,6 +150,8 @@ func CreatePost(
 	parentFp api.Fingerprint,
 	body string,
 	ownerFp api.Fingerprint,
+	meta string,
+	realmId api.Fingerprint,
 ) (api.Post, error) {
 
 	var entity api.Post
@@ -158,6 +161,8 @@ func CreatePost(
 	entity.Parent = parentFp
 	entity.Body = body
 	entity.Owner = ownerFp
+	entity.Meta = meta
+	entity.RealmId = realmId
 	err := Bake(&entity)
 	if err != nil {
 		var blankEntity api.Post
@@ -172,6 +177,8 @@ func CreateVote(
 	targetFp api.Fingerprint,
 	ownerFp api.Fingerprint,
 	voteType uint8,
+	meta string,
+	realmId api.Fingerprint,
 ) (api.Vote, error) {
 
 	var entity api.Vote
@@ -181,6 +188,8 @@ func CreateVote(
 	entity.Target = targetFp
 	entity.Owner = ownerFp
 	entity.Type = voteType
+	entity.Meta = meta
+	entity.RealmId = realmId
 	err := Bake(&entity)
 	if err != nil {
 		var blankEntity api.Vote
@@ -203,6 +212,7 @@ func CreateAddress(
 	clientVMinor uint16,
 	clientVPatch uint16,
 	clientName string,
+	realmId api.Fingerprint,
 ) (api.Address, error) {
 
 	var addr api.Address
@@ -223,6 +233,7 @@ func CreateAddress(
 	client.ClientName = clientName
 	addr.Protocol = prot
 	addr.Client = client
+	addr.RealmId = realmId
 	return addr, nil
 }
 
@@ -230,8 +241,9 @@ func CreateKey(
 	keyType string,
 	key string,
 	name string,
-	currAddrs []api.CurrencyAddress,
 	info string,
+	meta string,
+	realmId api.Fingerprint,
 ) (api.Key, error) {
 
 	var entity api.Key
@@ -239,8 +251,9 @@ func CreateKey(
 	entity.Type = keyType
 	entity.Key = key
 	entity.Name = name
-	entity.CurrencyAddresses = currAddrs
 	entity.Info = info
+	entity.Meta = meta
+	entity.RealmId = realmId
 	err := Bake(&entity)
 	if err != nil {
 		var blankEntity api.Key
@@ -255,6 +268,8 @@ func CreateTruststate(
 	tsType uint8,
 	domains []api.Fingerprint,
 	expiry api.Timestamp,
+	meta string,
+	realmId api.Fingerprint,
 ) (api.Truststate, error) {
 
 	var entity api.Truststate
@@ -264,6 +279,8 @@ func CreateTruststate(
 	entity.Type = tsType
 	entity.Domains = domains
 	entity.Expiry = expiry
+	entity.Meta = meta
+	entity.RealmId = realmId
 	err := Bake(&entity)
 	if err != nil {
 		var blankEntity api.Truststate
@@ -297,6 +314,42 @@ func UpdateBoard(request BoardUpdateRequest) error {
 	return nil
 }
 
+type ThreadUpdateRequest struct {
+	Entity      *api.Thread
+	BodyUpdated bool
+	NewBody     string
+}
+
+func UpdateThread(request ThreadUpdateRequest) error {
+	if request.BodyUpdated {
+		request.Entity.Body = request.NewBody
+	}
+	request.Entity.LastUpdate = api.Timestamp(time.Now().Unix())
+	err := Rebake(request.Entity)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+type PostUpdateRequest struct {
+	Entity      *api.Post
+	BodyUpdated bool
+	NewBody     string
+}
+
+func UpdatePost(request PostUpdateRequest) error {
+	if request.BodyUpdated {
+		request.Entity.Body = request.NewBody
+	}
+	request.Entity.LastUpdate = api.Timestamp(time.Now().Unix())
+	err := Rebake(request.Entity)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 type VoteUpdateRequest struct {
 	Entity      *api.Vote
 	TypeUpdated bool
@@ -316,17 +369,12 @@ func UpdateVote(request VoteUpdateRequest) error {
 }
 
 type KeyUpdateRequest struct {
-	Entity                   *api.Key
-	CurrencyAddressesUpdated bool
-	NewCurrencyAddresses     []api.CurrencyAddress
-	InfoUpdated              bool
-	NewInfo                  string
+	Entity      *api.Key
+	InfoUpdated bool
+	NewInfo     string
 }
 
 func UpdateKey(request KeyUpdateRequest) error {
-	if request.CurrencyAddressesUpdated {
-		request.Entity.CurrencyAddresses = request.NewCurrencyAddresses
-	}
 	if request.InfoUpdated {
 		request.Entity.Info = request.NewInfo
 	}
