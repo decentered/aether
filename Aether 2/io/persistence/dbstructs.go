@@ -5,13 +5,14 @@ package persistence
 
 import (
 	"aether-core/io/api"
+	// "aether-core/services/compress"
 	"aether-core/services/fingerprinting"
 	"aether-core/services/logging"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jmoiron/sqlx/types"
+	// "github.com/jmoiron/sqlx/types"
 	"strings"
 	"time"
 )
@@ -33,10 +34,12 @@ type DbProvable struct {
 // Subentities
 
 type DbBoardOwner struct {
-	BoardFingerprint api.Fingerprint `db:"BoardFingerprint"`
-	KeyFingerprint   api.Fingerprint `db:"KeyFingerprint"`
-	Expiry           api.Timestamp   `db:"Expiry"`
-	Level            uint8           `db:"Level"`
+	BoardFingerprint      api.Fingerprint `db:"BoardFingerprint"`
+	KeyFingerprint        api.Fingerprint `db:"KeyFingerprint"`
+	Expiry                api.Timestamp   `db:"Expiry"`
+	Level                 uint8           `db:"Level"`
+	ParentBoardCreation   api.Timestamp   `db:"ParentBoardCreation"`
+	ParentBoardLastUpdate api.Timestamp   `db:"ParentBoardLastUpdate"`
 }
 
 type DbSubprotocol struct {
@@ -59,59 +62,72 @@ type DbAddressSubprotocol struct {
 // Entities
 
 type DbBoard struct {
-	Fingerprint  api.Fingerprint   `db:"Fingerprint"`
-	Name         string            `db:"Name"`
-	Owner        api.Fingerprint   `db:"Owner"`
-	Description  types.GzippedText `db:"Description"`
-	LocalArrival api.Timestamp     `db:"LocalArrival"`
-	Meta         string            `db:"Meta"`
-	RealmId      api.Fingerprint   `db:"RealmId"`
-	EncrContent  string            `db:"EncrContent"`
+	Fingerprint    api.Fingerprint `db:"Fingerprint"`
+	Name           string          `db:"Name"`
+	Owner          api.Fingerprint `db:"Owner"`
+	OwnerPublicKey string          `db:"OwnerPublicKey"`
+	Description    string          `db:"Description"`
+	LocalArrival   api.Timestamp   `db:"LocalArrival"`
+	LastReferenced api.Timestamp   `db:"LastReferenced"`
+	EntityVersion  int             `db:"EntityVersion"`
+	Language       string          `db:"Language"`
+	Meta           string          `db:"Meta"`
+	RealmId        api.Fingerprint `db:"RealmId"`
+	EncrContent    string          `db:"EncrContent"`
 	DbProvable
 	DbUpdateable
 }
 
 type DbThread struct {
-	Fingerprint  api.Fingerprint   `db:"Fingerprint"`
-	Board        api.Fingerprint   `db:"Board"`
-	Name         string            `db:"Name"`
-	Body         types.GzippedText `db:"Body"`
-	Link         string            `db:"Link"`
-	Owner        api.Fingerprint   `db:"Owner"`
-	LocalArrival api.Timestamp     `db:"LocalArrival"`
-	Meta         string            `db:"Meta"`
-	RealmId      api.Fingerprint   `db:"RealmId"`
-	EncrContent  string            `db:"EncrContent"`
+	Fingerprint    api.Fingerprint `db:"Fingerprint"`
+	Board          api.Fingerprint `db:"Board"`
+	Name           string          `db:"Name"`
+	Body           string          `db:"Body"`
+	Link           string          `db:"Link"`
+	Owner          api.Fingerprint `db:"Owner"`
+	OwnerPublicKey string          `db:"OwnerPublicKey"`
+	LocalArrival   api.Timestamp   `db:"LocalArrival"`
+	LastReferenced api.Timestamp   `db:"LastReferenced"`
+	EntityVersion  int             `db:"EntityVersion"`
+	Meta           string          `db:"Meta"`
+	RealmId        api.Fingerprint `db:"RealmId"`
+	EncrContent    string          `db:"EncrContent"`
 	DbProvable
 	DbUpdateable
 }
 
 type DbPost struct {
-	Fingerprint  api.Fingerprint   `db:"Fingerprint"`
-	Board        api.Fingerprint   `db:"Board"`
-	Thread       api.Fingerprint   `db:"Thread"`
-	Parent       api.Fingerprint   `db:"Parent"`
-	Body         types.GzippedText `db:"Body"`
-	Owner        api.Fingerprint   `db:"Owner"`
-	LocalArrival api.Timestamp     `db:"LocalArrival"`
-	Meta         string            `db:"Meta"`
-	RealmId      api.Fingerprint   `db:"RealmId"`
-	EncrContent  string            `db:"EncrContent"`
+	Fingerprint    api.Fingerprint `db:"Fingerprint"`
+	Board          api.Fingerprint `db:"Board"`
+	Thread         api.Fingerprint `db:"Thread"`
+	Parent         api.Fingerprint `db:"Parent"`
+	Body           string          `db:"Body"`
+	Owner          api.Fingerprint `db:"Owner"`
+	OwnerPublicKey string          `db:"OwnerPublicKey"`
+	LocalArrival   api.Timestamp   `db:"LocalArrival"`
+	LastReferenced api.Timestamp   `db:"LastReferenced"`
+	EntityVersion  int             `db:"EntityVersion"`
+	Meta           string          `db:"Meta"`
+	RealmId        api.Fingerprint `db:"RealmId"`
+	EncrContent    string          `db:"EncrContent"`
 	DbProvable
 	DbUpdateable
 }
 
 type DbVote struct {
-	Fingerprint  api.Fingerprint `db:"Fingerprint"`
-	Board        api.Fingerprint `db:"Board"`
-	Thread       api.Fingerprint `db:"Thread"`
-	Target       api.Fingerprint `db:"Target"`
-	Owner        api.Fingerprint `db:"Owner"`
-	Type         uint8           `db:"Type"`
-	LocalArrival api.Timestamp   `db:"LocalArrival"`
-	Meta         string          `db:"Meta"`
-	RealmId      api.Fingerprint `db:"RealmId"`
-	EncrContent  string          `db:"EncrContent"`
+	Fingerprint    api.Fingerprint `db:"Fingerprint"`
+	Board          api.Fingerprint `db:"Board"`
+	Thread         api.Fingerprint `db:"Thread"`
+	Target         api.Fingerprint `db:"Target"`
+	Owner          api.Fingerprint `db:"Owner"`
+	OwnerPublicKey string          `db:"OwnerPublicKey"`
+	Type           int             `db:"Type"`
+	LocalArrival   api.Timestamp   `db:"LocalArrival"`
+	LastReferenced api.Timestamp   `db:"LastReferenced"`
+	EntityVersion  int             `db:"EntityVersion"`
+	Meta           string          `db:"Meta"`
+	RealmId        api.Fingerprint `db:"RealmId"`
+	EncrContent    string          `db:"EncrContent"`
 	DbProvable
 	DbUpdateable
 }
@@ -130,34 +146,43 @@ type DbAddress struct {
 	ClientVersionPatch   uint16          `db:"ClientVersionPatch"`
 	ClientName           string          `db:"ClientName"`
 	LocalArrival         api.Timestamp   `db:"LocalArrival"`
+	LastReferenced       api.Timestamp   `db:"LastReferenced"`
+	EntityVersion        int             `db:"EntityVersion"`
 	RealmId              api.Fingerprint `db:"RealmId"`
 }
 
 type DbKey struct {
-	Fingerprint  api.Fingerprint   `db:"Fingerprint"`
-	Type         string            `db:"Type"`
-	PublicKey    string            `db:"PublicKey"`
-	Name         string            `db:"Name"`
-	Info         types.GzippedText `db:"Info"`
-	LocalArrival api.Timestamp     `db:"LocalArrival"`
-	Meta         string            `db:"Meta"`
-	RealmId      api.Fingerprint   `db:"RealmId"`
-	EncrContent  string            `db:"EncrContent"`
+	Fingerprint          api.Fingerprint `db:"Fingerprint"`
+	Type                 string          `db:"Type"`
+	PublicKey            string          `db:"PublicKey"`
+	PublicKeyFingerprint api.Fingerprint `db:"PublicKeyFingerprint"`
+	Expiry               api.Timestamp   `db:"Expiry"`
+	Name                 string          `db:"Name"`
+	Info                 string          `db:"Info"`
+	LocalArrival         api.Timestamp   `db:"LocalArrival"`
+	LastReferenced       api.Timestamp   `db:"LastReferenced"`
+	EntityVersion        int             `db:"EntityVersion"`
+	Meta                 string          `db:"Meta"`
+	RealmId              api.Fingerprint `db:"RealmId"`
+	EncrContent          string          `db:"EncrContent"`
 	DbProvable
 	DbUpdateable
 }
 
 type DbTruststate struct {
-	Fingerprint  api.Fingerprint `db:"Fingerprint"`
-	Target       api.Fingerprint `db:"Target"`
-	Owner        api.Fingerprint `db:"Owner"`
-	Type         uint8           `db:"Type"`
-	Domains      string          `db:"Domains"` // comma separated fingerprint list
-	Expiry       api.Timestamp   `db:"Expiry"`
-	LocalArrival api.Timestamp   `db:"LocalArrival"`
-	Meta         string          `db:"Meta"`
-	RealmId      api.Fingerprint `db:"RealmId"`
-	EncrContent  string          `db:"EncrContent"`
+	Fingerprint    api.Fingerprint `db:"Fingerprint"`
+	Target         api.Fingerprint `db:"Target"`
+	Owner          api.Fingerprint `db:"Owner"`
+	OwnerPublicKey string          `db:"OwnerPublicKey"`
+	Type           int             `db:"Type"`
+	Domains        string          `db:"Domains"` // comma separated fingerprint list
+	Expiry         api.Timestamp   `db:"Expiry"`
+	LocalArrival   api.Timestamp   `db:"LocalArrival"`
+	LastReferenced api.Timestamp   `db:"LastReferenced"`
+	EntityVersion  int             `db:"EntityVersion"`
+	Meta           string          `db:"Meta"`
+	RealmId        api.Fingerprint `db:"RealmId"`
+	EncrContent    string          `db:"EncrContent"`
 	DbProvable
 	DbUpdateable
 }
@@ -186,19 +211,26 @@ type AddressPack struct {
 	Subprotocols []DbSubprotocol
 }
 
-// APItoDB translates structs of API objects into structs of DB objects.
+// APItoDB translates structs of API objects into structs of DB objects. It also checks whether the objects are verified or not, and if not, it prevents them entry into the database layer.
 func APItoDB(object interface{}) (interface{}, error) {
 	switch obj := object.(type) {
 	// obj: typed API object.
 	case api.Board:
 		// Corner case: board owners
+		if !obj.GetVerified() {
+			return BoardPack{}, errors.New(fmt.Sprintf("This Api entity failed verification (or the verification hasn't been run on it), thus is denied conversion to the Db entity. Entity %#v", obj))
+		}
 		var dbObj DbBoard
 		dbObj.Fingerprint = obj.Fingerprint
 		dbObj.Name = obj.Name
 		dbObj.Owner = obj.Owner
-		dbObj.Description = types.GzippedText(obj.Description)
+		dbObj.OwnerPublicKey = obj.OwnerPublicKey
+		dbObj.Description = obj.Description
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.LastReferenced = api.Timestamp(now)
+		dbObj.EntityVersion = obj.EntityVersion
+		dbObj.Language = obj.Language
 		dbObj.Meta = obj.Meta
 		dbObj.RealmId = obj.RealmId
 		dbObj.EncrContent = obj.EncrContent
@@ -217,6 +249,8 @@ func APItoDB(object interface{}) (interface{}, error) {
 			bo.KeyFingerprint = val.KeyFingerprint
 			bo.Expiry = val.Expiry
 			bo.Level = val.Level
+			bo.ParentBoardCreation = obj.Creation
+			bo.ParentBoardLastUpdate = obj.LastUpdate
 			DbBoardOwners = append(DbBoardOwners, bo)
 		}
 		var result BoardPack
@@ -225,15 +259,21 @@ func APItoDB(object interface{}) (interface{}, error) {
 		return result, nil
 
 	case api.Thread:
+		if !obj.GetVerified() {
+			return DbThread{}, errors.New(fmt.Sprintf("This Api entity failed verification (or the verification hasn't been run on it), thus is denied conversion to the Db entity. Entity %#v", obj))
+		}
 		var dbObj DbThread
 		dbObj.Fingerprint = obj.Fingerprint
 		dbObj.Board = obj.Board
 		dbObj.Name = obj.Name
-		dbObj.Body = types.GzippedText(obj.Body)
+		dbObj.Body = obj.Body
 		dbObj.Link = obj.Link
 		dbObj.Owner = obj.Owner
+		dbObj.OwnerPublicKey = obj.OwnerPublicKey
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.LastReferenced = api.Timestamp(now)
+		dbObj.EntityVersion = obj.EntityVersion
 		dbObj.Meta = obj.Meta
 		dbObj.RealmId = obj.RealmId
 		dbObj.EncrContent = obj.EncrContent
@@ -241,18 +281,33 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
 		dbObj.Signature = obj.Signature
+		// Updateable set
+		dbObj.LastUpdate = obj.LastUpdate
+		dbObj.UpdateProofOfWork = obj.UpdateProofOfWork
+		dbObj.UpdateSignature = obj.UpdateSignature
 		return dbObj, nil
 
 	case api.Post:
+		if !obj.GetVerified() {
+			return DbPost{}, errors.New(fmt.Sprintf("This Api entity failed verification (or the verification hasn't been run on it), thus is denied conversion to the Db entity. Entity %#v", obj))
+		}
+		// If a post is its own parent, this is a maliciously crafted post and we do not accept this in. Verification system also checks for this.
+		if obj.Parent == obj.Fingerprint {
+			logging.Log(1, fmt.Sprintf("We've received a post whose parent is itself, attempting to cross into the database. This might happen normally if you have disabled the verification, but if the verification is enabled in this node, investigate. Post: %#v", obj))
+			return DbPost{}, errors.New(fmt.Sprintf("This post's parent is its own fingerprint, therefore attempting to insert this to the database would create infinite recursion up to recursion limit. This does not break the app, but it freezes it for a couple minutes until the recursion limit is reached. This post is thus denied conversion to the Db entity. Entity %#v", obj))
+		}
 		var dbObj DbPost
 		dbObj.Fingerprint = obj.Fingerprint
 		dbObj.Board = obj.Board
 		dbObj.Thread = obj.Thread
 		dbObj.Parent = obj.Parent
-		dbObj.Body = types.GzippedText(obj.Body)
+		dbObj.Body = obj.Body
 		dbObj.Owner = obj.Owner
+		dbObj.OwnerPublicKey = obj.OwnerPublicKey
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.LastReferenced = api.Timestamp(now)
+		dbObj.EntityVersion = obj.EntityVersion
 		dbObj.Meta = obj.Meta
 		dbObj.RealmId = obj.RealmId
 		dbObj.EncrContent = obj.EncrContent
@@ -260,18 +315,28 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Creation = obj.Creation
 		dbObj.ProofOfWork = obj.ProofOfWork
 		dbObj.Signature = obj.Signature
+		// Updateable set
+		dbObj.LastUpdate = obj.LastUpdate
+		dbObj.UpdateProofOfWork = obj.UpdateProofOfWork
+		dbObj.UpdateSignature = obj.UpdateSignature
 		return dbObj, nil
 
 	case api.Vote:
+		if !obj.GetVerified() {
+			return DbVote{}, errors.New(fmt.Sprintf("This Api entity failed verification (or the verification hasn't been run on it), thus is denied conversion to the Db entity. Entity %#v", obj))
+		}
 		var dbObj DbVote
 		dbObj.Fingerprint = obj.Fingerprint
 		dbObj.Board = obj.Board
 		dbObj.Thread = obj.Thread
 		dbObj.Target = obj.Target
 		dbObj.Owner = obj.Owner
+		dbObj.OwnerPublicKey = obj.OwnerPublicKey
 		dbObj.Type = obj.Type
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.LastReferenced = api.Timestamp(now)
+		dbObj.EntityVersion = obj.EntityVersion
 		dbObj.Meta = obj.Meta
 		dbObj.RealmId = obj.RealmId
 		dbObj.EncrContent = obj.EncrContent
@@ -286,6 +351,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		return dbObj, nil
 
 	case api.Address:
+		// Addresses are not verifiable, thus the verification step does not apply.
 		var dbObj DbAddress
 		dbObj.Location = obj.Location
 		dbObj.Sublocation = obj.Sublocation
@@ -301,6 +367,8 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.ClientName = obj.Client.ClientName
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.LastReferenced = api.Timestamp(now)
+		dbObj.EntityVersion = obj.EntityVersion
 		dbObj.RealmId = obj.RealmId
 		var ap AddressPack
 		ap.Address = dbObj
@@ -337,15 +405,21 @@ func APItoDB(object interface{}) (interface{}, error) {
 		return ap, nil
 
 	case api.Key:
-		// Corner case: currency addresses
+		if !obj.GetVerified() {
+			return DbKey{}, errors.New(fmt.Sprintf("This Api entity failed verification (or the verification hasn't been run on it), thus is denied conversion to the Db entity. Entity %#v", obj))
+		}
 		var dbObj DbKey
 		dbObj.Fingerprint = obj.Fingerprint
 		dbObj.Type = obj.Type
 		dbObj.PublicKey = obj.Key
+		dbObj.PublicKeyFingerprint = api.Fingerprint(fingerprinting.Create(dbObj.PublicKey))
+		dbObj.Expiry = obj.Expiry
 		dbObj.Name = obj.Name
-		dbObj.Info = types.GzippedText(obj.Info)
+		dbObj.Info = obj.Info
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.LastReferenced = api.Timestamp(now)
+		dbObj.EntityVersion = obj.EntityVersion
 		dbObj.Meta = obj.Meta
 		dbObj.RealmId = obj.RealmId
 		dbObj.EncrContent = obj.EncrContent
@@ -360,15 +434,21 @@ func APItoDB(object interface{}) (interface{}, error) {
 		return dbObj, nil
 
 	case api.Truststate:
+		if !obj.GetVerified() {
+			return DbTruststate{}, errors.New(fmt.Sprintf("This Api entity failed verification (or the verification hasn't been run on it), thus is denied conversion to the Db entity. Entity %#v", obj))
+		}
 		// Corner case: domain is a slice of fingerprints, convert to that.
 		var dbObj DbTruststate
 		dbObj.Fingerprint = obj.Fingerprint
 		dbObj.Target = obj.Target
 		dbObj.Owner = obj.Owner
+		dbObj.OwnerPublicKey = obj.OwnerPublicKey
 		dbObj.Type = obj.Type
 		dbObj.Expiry = obj.Expiry
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.LastReferenced = api.Timestamp(now)
+		dbObj.EntityVersion = obj.EntityVersion
 		dbObj.Meta = obj.Meta
 		dbObj.RealmId = obj.RealmId
 		dbObj.EncrContent = obj.EncrContent
@@ -405,7 +485,10 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Fingerprint = obj.Fingerprint
 		apiObj.Name = obj.Name
 		apiObj.Owner = obj.Owner
+		apiObj.OwnerPublicKey = obj.OwnerPublicKey
 		apiObj.Description = string(obj.Description)
+		apiObj.EntityVersion = obj.EntityVersion
+		apiObj.Language = obj.Language
 		apiObj.Meta = obj.Meta
 		apiObj.RealmId = obj.RealmId
 		apiObj.EncrContent = obj.EncrContent
@@ -440,6 +523,8 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Body = string(obj.Body)
 		apiObj.Link = obj.Link
 		apiObj.Owner = obj.Owner
+		apiObj.OwnerPublicKey = obj.OwnerPublicKey
+		apiObj.EntityVersion = obj.EntityVersion
 		apiObj.Meta = obj.Meta
 		apiObj.RealmId = obj.RealmId
 		apiObj.EncrContent = obj.EncrContent
@@ -447,6 +532,10 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
 		apiObj.Signature = obj.Signature
+		// Updateable set
+		apiObj.LastUpdate = obj.LastUpdate
+		apiObj.UpdateProofOfWork = obj.UpdateProofOfWork
+		apiObj.UpdateSignature = obj.UpdateSignature
 		return apiObj, nil
 
 	case DbPost:
@@ -457,6 +546,8 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Parent = obj.Parent
 		apiObj.Body = string(obj.Body)
 		apiObj.Owner = obj.Owner
+		apiObj.OwnerPublicKey = obj.OwnerPublicKey
+		apiObj.EntityVersion = obj.EntityVersion
 		apiObj.Meta = obj.Meta
 		apiObj.RealmId = obj.RealmId
 		apiObj.EncrContent = obj.EncrContent
@@ -464,6 +555,10 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Creation = obj.Creation
 		apiObj.ProofOfWork = obj.ProofOfWork
 		apiObj.Signature = obj.Signature
+		// Updateable set
+		apiObj.LastUpdate = obj.LastUpdate
+		apiObj.UpdateProofOfWork = obj.UpdateProofOfWork
+		apiObj.UpdateSignature = obj.UpdateSignature
 		return apiObj, nil
 
 	case DbVote:
@@ -473,7 +568,9 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Thread = obj.Thread
 		apiObj.Target = obj.Target
 		apiObj.Owner = obj.Owner
+		apiObj.OwnerPublicKey = obj.OwnerPublicKey
 		apiObj.Type = obj.Type
+		apiObj.EntityVersion = obj.EntityVersion
 		apiObj.Meta = obj.Meta
 		apiObj.RealmId = obj.RealmId
 		apiObj.EncrContent = obj.EncrContent
@@ -502,6 +599,7 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Client.VersionMinor = obj.ClientVersionMinor
 		apiObj.Client.VersionPatch = obj.ClientVersionPatch
 		apiObj.Client.ClientName = obj.ClientName
+		apiObj.EntityVersion = obj.EntityVersion
 		apiObj.RealmId = obj.RealmId
 		dbSubprotocols, err := ReadDBSubprotocols(obj.Location, obj.Sublocation, obj.Port)
 		if err != nil {
@@ -530,8 +628,10 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Fingerprint = obj.Fingerprint
 		apiObj.Type = obj.Type
 		apiObj.Key = obj.PublicKey
+		apiObj.Expiry = obj.Expiry
 		apiObj.Name = obj.Name
 		apiObj.Info = string(obj.Info)
+		apiObj.EntityVersion = obj.EntityVersion
 		apiObj.Meta = obj.Meta
 		apiObj.RealmId = obj.RealmId
 		apiObj.EncrContent = obj.EncrContent
@@ -551,8 +651,10 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Fingerprint = obj.Fingerprint
 		apiObj.Target = obj.Target
 		apiObj.Owner = obj.Owner
+		apiObj.OwnerPublicKey = obj.OwnerPublicKey
 		apiObj.Type = obj.Type
 		apiObj.Expiry = obj.Expiry
+		apiObj.EntityVersion = obj.EntityVersion
 		apiObj.Meta = obj.Meta
 		apiObj.RealmId = obj.RealmId
 		apiObj.EncrContent = obj.EncrContent

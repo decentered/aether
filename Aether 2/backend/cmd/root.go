@@ -167,6 +167,18 @@ func EstablishConfigs(cmd *cobra.Command) flags {
 		// Also change the client name so that the name change communicates out into the analytics server when under orchestrate test harness. This is different than AppIdentifier which determines the folders that the node saves to the local drive.
 		globals.BackendConfig.SetClientName(flgs.appName.value.(string))
 	}
+	if flgs.fpCheckEnabled.changed {
+		globals.BackendTransientConfig.FingerprintCheckEnabled = flgs.fpCheckEnabled.value.(bool)
+	}
+	if flgs.sigCheckEnabled.changed {
+		globals.BackendTransientConfig.SignatureCheckEnabled = flgs.sigCheckEnabled.value.(bool)
+	}
+	if flgs.powCheckEnabled.changed {
+		globals.BackendTransientConfig.ProofOfWorkCheckEnabled = flgs.powCheckEnabled.value.(bool)
+	}
+	if flgs.pageSigCheckEnabled.changed {
+		globals.BackendTransientConfig.PageSignatureCheckEnabled = flgs.pageSigCheckEnabled.value.(bool)
+	}
 	// Set up the DB Instance so that we get access to the database.
 	if globals.BackendConfig.GetDbEngine() == "sqlite" {
 		conn, err := sqlx.Connect(
@@ -225,20 +237,24 @@ type flag struct {
 
 // Struct for flags. When there's a new flag, add it here.
 type flags struct {
-	loggingLevel     flag // int
-	orgName          flag // string
-	appName          flag // string
-	port             flag // int
-	externalIp       flag // string
-	bootstrapIp      flag // string
-	bootstrapPort    flag // int
-	bootstrapType    flag // int
-	syncAndQuit      flag // bool
-	printToStdout    flag // bool
-	metricsDebugMode flag // bool
-	swarmPlan        flag // string
-	killTimeout      flag // int
-	swarmNodeId      flag // int
+	loggingLevel        flag // int
+	orgName             flag // string
+	appName             flag // string
+	port                flag // int
+	externalIp          flag // string
+	bootstrapIp         flag // string
+	bootstrapPort       flag // int
+	bootstrapType       flag // int
+	syncAndQuit         flag // bool
+	printToStdout       flag // bool
+	metricsDebugMode    flag // bool
+	swarmPlan           flag // string
+	killTimeout         flag // int
+	swarmNodeId         flag // int
+	fpCheckEnabled      flag //bool
+	sigCheckEnabled     flag //bool
+	powCheckEnabled     flag //bool
+	pageSigCheckEnabled flag //bool
 	// Flags will be all lowercase in terminal input, heads up.
 }
 
@@ -354,6 +370,38 @@ func renderFlags(cmd *cobra.Command) flags {
 	}
 	fl.swarmNodeId.value = sni
 	fl.swarmNodeId.changed = cmd.Flags().Changed("swarmnodeid")
+
+	fp, err15 := cmd.Flags().GetBool("fpcheckenabled")
+	if err15 != nil && !strings.Contains(
+		err15.Error(), "flag accessed but not defined") {
+		logging.LogCrash(err15)
+	}
+	fl.fpCheckEnabled.value = fp
+	fl.fpCheckEnabled.changed = cmd.Flags().Changed("fpcheckenabled")
+
+	sig, err16 := cmd.Flags().GetBool("sigcheckenabled")
+	if err16 != nil && !strings.Contains(
+		err16.Error(), "flag accessed but not defined") {
+		logging.LogCrash(err16)
+	}
+	fl.sigCheckEnabled.value = sig
+	fl.sigCheckEnabled.changed = cmd.Flags().Changed("sigcheckenabled")
+
+	pow, err17 := cmd.Flags().GetBool("powcheckenabled")
+	if err17 != nil && !strings.Contains(
+		err17.Error(), "flag accessed but not defined") {
+		logging.LogCrash(err17)
+	}
+	fl.powCheckEnabled.value = pow
+	fl.powCheckEnabled.changed = cmd.Flags().Changed("powcheckenabled")
+
+	psig, err18 := cmd.Flags().GetBool("pagesigcheckenabled")
+	if err18 != nil && !strings.Contains(
+		err18.Error(), "flag accessed but not defined") {
+		logging.LogCrash(err18)
+	}
+	fl.pageSigCheckEnabled.value = psig
+	fl.pageSigCheckEnabled.changed = cmd.Flags().Changed("pagesigcheckenabled")
 
 	return fl
 }

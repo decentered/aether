@@ -128,10 +128,10 @@ func InsertOrUpdateAddresses(a *[]api.Address) []error {
 }
 
 func enforceNoEmptyTrustedAddressRequiredFields(obj AddressPack) error {
-	if obj.Address.LocationType == 0 || obj.Address.LastOnline == 0 || obj.Address.ProtocolVersionMajor == 0 || obj.Address.ClientVersionMajor == 0 || obj.Address.ClientName == "" || len(obj.Subprotocols) < 1 {
+	if obj.Address.LocationType == 0 || obj.Address.LastOnline == 0 || obj.Address.ProtocolVersionMajor == 0 || obj.Address.ClientVersionMajor == 0 || obj.Address.ClientName == "" || obj.Address.EntityVersion == 0 || len(obj.Subprotocols) < 1 {
 		return errors.New(
 			fmt.Sprintf(
-				"This address has some required fields empty (One or more of: LocationType, LastOnline, ProtocolVersionMajor, Subprotocols, ClientVersionMajor, ClientName). Address: %#v\n", obj))
+				"This address has some required fields empty (One or more of: LocationType, LastOnline, ProtocolVersionMajor, Subprotocols, ClientVersionMajor, ClientName, EntityVersion). Address: %#v\n", obj))
 	}
 	for _, subprot := range obj.Subprotocols {
 		if subprot.Fingerprint == "" || subprot.Name == "" || subprot.VersionMajor == 0 || subprot.SupportedEntities == "" {
@@ -145,13 +145,6 @@ func enforceNoEmptyTrustedAddressRequiredFields(obj AddressPack) error {
 
 // insertOrUpdateAddress is the ONLY way to update an address in the database. Be very careful with this, careless use of this function can result in entry of untrusted data from the remotes into the local database. The only legitimate use of this is to put in the details of nodes that this local machine has personally connected to.
 func insertOrUpdateAddress(a api.Address) error {
-	// fmt.Println("This is the address asked to do trusted entry")
-	// // _, file, line, _ := runtime.Caller(1)
-	// _, file2, line2, _ := runtime.Caller(2)
-	// _, file3, line3, _ := runtime.Caller(3)
-	// fmt.Printf("It was called by \n%s:%d\n%s:%d\n ",
-	// 	file2, line2, file3, line3)
-	// spew.Dump(a.Client)
 	addressPackAsInterface, err := APItoDB(a)
 	if err != nil {
 		return errors.New(fmt.Sprint(
@@ -183,13 +176,13 @@ func insertOrUpdateAddress(a api.Address) error {
 	if err3 != nil {
 		logging.LogCrash(err3)
 	}
-	_, err4 := tx.NamedExec(getSQLCommand("dbAddressUpdate"), dbAddress)
+	_, err4 := tx.NamedExec(getSQLCommands("dbAddressUpdate")[0], dbAddress)
 	if err4 != nil {
 		logging.LogCrash(err4)
 	}
 	if len(dbSubprotocols) > 0 {
 		for _, dbSubprotocol := range dbSubprotocols {
-			_, err5 := tx.NamedExec(getSQLCommand("dbSubprotocol"), dbSubprotocol)
+			_, err5 := tx.NamedExec(getSQLCommands("dbSubprotocol")[0], dbSubprotocol)
 			if err5 != nil {
 				logging.LogCrash(err5)
 			}
@@ -197,7 +190,7 @@ func insertOrUpdateAddress(a api.Address) error {
 	}
 	if len(dbJunctionItems) > 0 {
 		for _, dbJunctionItem := range dbJunctionItems {
-			_, err5 := tx.NamedExec(getSQLCommand("dbAddressSubprotocol"), dbJunctionItem)
+			_, err5 := tx.NamedExec(getSQLCommands("dbAddressSubprotocol")[0], dbJunctionItem)
 			if err5 != nil {
 				logging.LogCrash(err5)
 			}
@@ -238,10 +231,16 @@ func BatchInsert(apiObjects []interface{}) (InsertMetrics, error) {
 			var err2 error
 			im, err2 = batchInsert(&apiObjects)
 			if err2 != nil {
-				logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
+				if strings.Contains(err.Error(), "Database was locked") {
+					logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
+				} else { // Error is not db locked
+					return im, err2
+				}
 			} else { // If the reattempted transaction succeeds
 				logging.Log(1, "The retry attempt of the failed transaction succeeded.")
 			}
+		} else { // Error is not db locked
+			return im, err
 		}
 	}
 	return im, nil
@@ -285,6 +284,7 @@ type InsertMetrics struct {
 	TimeElapsedSeconds             int
 }
 
+// Add adds an InsertMetrics object into another.
 func (im *InsertMetrics) Add(im2 InsertMetrics) {
 	im.BoardsReceived = im.BoardsReceived + im2.BoardsReceived
 	im.BoardsDBCommitTime = im.BoardsDBCommitTime + im2.BoardsDBCommitTime
@@ -321,8 +321,14 @@ func batchInsert(apiObjectsPtr *[]interface{}) (InsertMetrics, error) {
 		// apiObject: API type, dbObj: DB type.
 		dbo, err := APItoDB(apiObject) // does not hit DB
 		if err != nil {
-			return InsertMetrics{}, errors.New(fmt.Sprint(
-				"Error raised from APItoDB function used in Batch insert. Error: ", err))
+			logging.Log(1,
+				fmt.Sprint("Error raised from APItoDB function used in Batch insert. Error: ", err))
+			if strings.Contains(err.Error(), "APItoDB only takes API (not DB) objects") { // If this triggered, this would be a programming error, in which case, we want to know.
+				return InsertMetrics{}, errors.New(fmt.Sprint(
+					"Error raised from APItoDB function used in Batch insert. Error: ", err))
+			}
+			// return InsertMetrics{}, errors.New(fmt.Sprint(
+			// 	"Error raised from APItoDB function used in Batch insert. Error: ", err))
 		}
 		err2 := enforceNoEmptyIdentityFields(dbo) // does not hit DB
 		if err2 != nil {
@@ -336,28 +342,18 @@ func batchInsert(apiObjectsPtr *[]interface{}) (InsertMetrics, error) {
 			logging.Log(2, err3)
 			continue
 		}
+		err4 := enforceFieldLengths(dbo)
+		if err4 != nil {
+			// If this unit does have fields that are too long, we'll pass on adding these to the database.
+			logging.Log(2, err4)
+			continue
+		}
 		switch dbObject := dbo.(type) {
 		case BoardPack:
-			// Should be commited? Checks for whether the update is newer than creation. This check is normally done at the database layer for other objects.
-			if packShouldBeCommitted(dbObject) { // HITS DB
-				bb.DbBoards = append(bb.DbBoards, dbObject.Board)
-				// Get the list of board owners before the transaction.
-				boardBoardOwnersBeforeTx, err := getBoardOwnersBeforeTx(dbObject.Board.Fingerprint) // HITS DB
-				if err != nil {
-					logging.LogCrash(err)
-				}
-				// Get the changelist.
-				changelist := generateBoardOwnerChangelist( // Does not hit DB
-					boardBoardOwnersBeforeTx, dbObject.BoardOwners)
-				for boardOwner, keepBoardOwner := range changelist {
-					if keepBoardOwner == true {
-						// We keep the owner's existence. This can either be a creation or an update, SQL deals with that.
-						bb.DbBoardOwners = append(bb.DbBoardOwners, boardOwner)
-					} else {
-						// The owner is deleted. So we remove it from the database.
-						bb.DbBoardOwnerDeletions = append(bb.DbBoardOwnerDeletions, boardOwner)
-					}
-				}
+			bb.DbBoards = append(bb.DbBoards, dbObject.Board)
+			// spew.Dump(dbObject.BoardOwners)
+			for _, boardOwner := range dbObject.BoardOwners {
+				bb.DbBoardOwners = append(bb.DbBoardOwners, boardOwner)
 			}
 		case DbThread:
 			bb.DbThreads = append(bb.DbThreads, dbObject)
@@ -477,93 +473,100 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 	if len(bb.DbBoards) > 0 {
 		etype := "dbBoard"
 		insertType = append(insertType, etype)
-		for _, dbBoard := range bb.DbBoards {
-			_, err := tx.NamedExec(getSQLCommand(etype), dbBoard)
-			if err != nil {
-				logging.LogCrash(err)
+		for _, cmd := range getSQLCommands(etype) {
+			for _, dbBoard := range bb.DbBoards {
+				_, err := tx.NamedExec(cmd, dbBoard)
+				if err != nil {
+					logging.LogCrash(err)
+				}
 			}
 		}
 	}
 	if len(bb.DbThreads) > 0 {
 		etype := "dbThread"
 		insertType = append(insertType, etype)
-		for _, dbThread := range bb.DbThreads {
-			_, err := tx.NamedExec(getSQLCommand(etype), dbThread)
-			if err != nil {
-				logging.LogCrash(err)
+		for _, cmd := range getSQLCommands(etype) {
+			for _, dbThread := range bb.DbThreads {
+				_, err := tx.NamedExec(cmd, dbThread)
+				if err != nil {
+					logging.LogCrash(err)
+				}
 			}
 		}
 	}
 	if len(bb.DbPosts) > 0 {
 		etype := "dbPost"
 		insertType = append(insertType, etype)
-		for _, dbPost := range bb.DbPosts {
-			_, err := tx.NamedExec(getSQLCommand(etype), dbPost)
-			if err != nil {
-				logging.LogCrash(err)
+		for _, cmd := range getSQLCommands(etype) {
+			for _, dbPost := range bb.DbPosts {
+				_, err := tx.NamedExec(cmd, dbPost)
+				if err != nil {
+					logging.LogCrash(err)
+				}
 			}
 		}
 	}
 	if len(bb.DbVotes) > 0 {
 		etype := "dbVote"
 		insertType = append(insertType, etype)
-		for _, dbVote := range bb.DbVotes {
-			_, err := tx.NamedExec(getSQLCommand(etype), dbVote)
-			if err != nil {
-				logging.LogCrash(err)
+		for _, cmd := range getSQLCommands(etype) {
+			for _, dbVote := range bb.DbVotes {
+				_, err := tx.NamedExec(cmd, dbVote)
+				if err != nil {
+					logging.LogCrash(err)
+				}
 			}
 		}
 	}
 	if len(bb.DbKeys) > 0 {
 		etype := "dbKey"
 		insertType = append(insertType, etype)
-		for _, dbKey := range bb.DbKeys {
-			_, err := tx.NamedExec(getSQLCommand(etype), dbKey)
-			if err != nil {
-				logging.LogCrash(err)
+		for _, cmd := range getSQLCommands(etype) {
+			for _, dbKey := range bb.DbKeys {
+				_, err := tx.NamedExec(cmd, dbKey)
+				if err != nil {
+					logging.LogCrash(err)
+				}
 			}
 		}
 	}
 	if len(bb.DbTruststates) > 0 {
 		etype := "dbTruststate"
 		insertType = append(insertType, etype)
-		for _, dbTruststate := range bb.DbTruststates {
-			_, err := tx.NamedExec(getSQLCommand(etype), dbTruststate)
-			if err != nil {
-				logging.LogCrash(err)
+		for _, cmd := range getSQLCommands(etype) {
+			for _, dbTruststate := range bb.DbTruststates {
+				_, err := tx.NamedExec(cmd, dbTruststate)
+				if err != nil {
+					logging.LogCrash(err)
+				}
 			}
 		}
 	}
 	if len(bb.DbAddresses) > 0 {
 		etype := "dbAddress"
 		insertType = append(insertType, etype)
-		for _, dbAddress := range bb.DbAddresses {
-			_, err := tx.NamedExec(getSQLCommand(etype), dbAddress)
-			if err != nil {
-				logging.LogCrash(err)
+		for _, cmd := range getSQLCommands(etype) {
+			for _, dbAddress := range bb.DbAddresses {
+				_, err := tx.NamedExec(cmd, dbAddress)
+				if err != nil {
+					logging.LogCrash(err)
+				}
 			}
 		}
 	}
 	if len(bb.DbBoardOwners) > 0 {
 		etype := "dbBoardOwner"
 		insertType = append(insertType, etype)
-		for _, dbBoardOwner := range bb.DbBoardOwners {
-			_, err := tx.NamedExec(getSQLCommand(etype), dbBoardOwner)
-			if err != nil {
-				logging.LogCrash(err)
+		for _, cmd := range getSQLCommands(etype) {
+			for _, dbBoardOwner := range bb.DbBoardOwners {
+				_, err := tx.NamedExec(cmd, dbBoardOwner)
+				if err != nil {
+					logging.LogCrash(err)
+				}
 			}
 		}
 	}
-	if len(bb.DbBoardOwnerDeletions) > 0 {
-		etype := "dbBoardOwnerDeletion"
-		insertType = append(insertType, etype)
-		for _, dbBoardOwner := range bb.DbBoardOwnerDeletions {
-			_, err := tx.NamedExec(getSQLCommand(etype), dbBoardOwner)
-			if err != nil {
-				logging.LogCrash(err)
-			}
-		}
-	}
+
 	err2 := tx.Commit()
 	if err2 != nil {
 		tx.Rollback()
@@ -592,122 +595,88 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 			im.AddressesDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
 		} else if insertType[0] == "dbBoardOwner" {
 			im.BoardOwnerDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
-		} else if insertType[0] == "dbBoardOwnerDeletion" {
-			im.BoardOwnerDeletionDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
 		}
 	}
 	return nil
 }
 
-func getSQLCommand(dbType string) string {
-	var sqlstr string
+// getSQLCommands determines the order of execution of these commands based on the order they're appended here. The fundamental rule is that all of these are gated, and gate only works in the case the object has not already inserted, so the object's actual insertion always comes last.
+func getSQLCommands(dbType string) []string {
+	var sqlstrs []string
 	if dbType == "dbBoard" {
-		sqlstr = boardInsert
+		sqlstrs =
+			append(sqlstrs, boardInsert_BoardsBoardOwners_DeletePriors)
+		sqlstrs =
+			append(sqlstrs, boardInsert_BoardsKey_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, boardInsert)
 	} else if dbType == "dbThread" {
-		sqlstr = threadInsert
+		sqlstrs =
+			append(sqlstrs, threadInsert_ThreadsBoard_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, threadInsert_ThreadsKey_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, threadInsert_ThreadsBoardsKey_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, threadInsert)
 	} else if dbType == "dbPost" {
-		sqlstr = postInsert
+		sqlstrs =
+			append(sqlstrs, postInsert_PostsBoard_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, postInsert_PostsBoardsKey_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, postInsert_PostsThread_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, postInsert_PostsThreadsKey_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, postInsert_PostsKey_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, postInsert_PostsPosts_Recursive_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, postInsert_PostsPostsKeys_Recursive_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, postInsert)
 	} else if dbType == "dbVote" {
-		sqlstr = voteInsert
+		sqlstrs =
+			append(sqlstrs, voteInsert_VotesKey_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, voteInsert)
 	} else if dbType == "dbKey" {
-		sqlstr = keyInsert
+		sqlstrs =
+			append(sqlstrs, keyInsert)
 	} else if dbType == "dbTruststate" {
-		sqlstr = truststateInsert
+		sqlstrs =
+			append(sqlstrs, truststateInsert_TruststatesKey_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, truststateInsert_TruststatesTargetKey_LastReferencedUpdate)
+		sqlstrs =
+			append(sqlstrs, truststateInsert)
 	} else if dbType == "dbAddress" { // untrusted address
 		if globals.BackendConfig.GetDbEngine() == "mysql" {
-			sqlstr = addressInsertMySQL
+			sqlstrs =
+				append(sqlstrs, addressInsertMySQL)
 		} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
-			sqlstr = addressInsertSQLite
+			sqlstrs =
+				append(sqlstrs, addressInsertSQLite)
 		} else {
 			logging.LogCrash(fmt.Sprintf("Db Engine type not recognised."))
 		}
 	} else if dbType == "dbAddressUpdate" { // trusted address
-		sqlstr = addressUpdateInsert
+		sqlstrs = append(sqlstrs, addressUpdateInsert)
 	} else if dbType == "dbBoardOwner" {
-		sqlstr = boardOwnerInsert
-	} else if dbType == "dbBoardOwnerDeletion" {
-		sqlstr = boardOwnerDelete
+		sqlstrs = append(sqlstrs, boardOwnerInsert)
 	} else if dbType == "dbSubprotocol" {
-		sqlstr = subprotocolInsert
+		sqlstrs = append(sqlstrs, subprotocolInsert)
 	} else if dbType == "dbAddressSubprotocol" {
 		if globals.BackendConfig.GetDbEngine() == "mysql" {
-			sqlstr = addressSubprotocolInsertMySQL
+			sqlstrs = append(sqlstrs, addressSubprotocolInsertMySQL)
 		} else if globals.BackendConfig.GetDbEngine() == "sqlite" {
-			sqlstr = addressSubprotocolInsertSQLite
+			sqlstrs = append(sqlstrs, addressSubprotocolInsertSQLite)
 		} else {
 			logging.LogCrash(fmt.Sprintf("Db Engine type not recognised."))
 		}
 	}
-	return sqlstr
-}
-
-// packShouldBeCommitted hits DB
-func packShouldBeCommitted(pack interface{}) bool {
-	switch pack := pack.(type) {
-	case BoardPack:
-		// First, pull the item if it exists in the database.
-		resp, err := ReadBoards(
-			[]api.Fingerprint{pack.Board.Fingerprint}, 0, 0)
-		if err != nil {
-			// logging.LogCrash(err)
-			return false
-		}
-		// fmt.Printf("%#v\n", resp)
-		// If the response is empty, this is a new board. Insert.
-		if len(resp) == 0 {
-			return true
-		} else if len(resp) > 0 {
-			// If the response is not empty, then do the regular update check.
-			extantBoard := resp[0]
-			if pack.Board.LastUpdate > extantBoard.LastUpdate &&
-				pack.Board.LastUpdate > extantBoard.Creation {
-				return true
-			} else {
-				return false
-			}
-		}
-	}
-	return false
-}
-
-// getBoardOwnersBeforeTx hits DB.
-
-// getBoardOwnersBeforeTx is an internal function of the Writer. This gets the pre-transaction state of the board owners of the board that is being inserted.
-func getBoardOwnersBeforeTx(boardFingerprint api.Fingerprint) ([]DbBoardOwner, error) {
-	var boardBoardOwnersBeforeTx []DbBoardOwner
-	// Fetch all Board BoardOwners of this board that is already in database.
-	rowsOfBoardOwnersBeforeTx, err := globals.DbInstance.Queryx("SELECT * from BoardOwners WHERE BoardFingerprint = ?", boardFingerprint)
-	if err != nil {
-		return boardBoardOwnersBeforeTx, err
-	}
-	// Do the struct scan into the row.
-	for rowsOfBoardOwnersBeforeTx.Next() {
-		var bo DbBoardOwner
-		err := rowsOfBoardOwnersBeforeTx.StructScan(&bo)
-		if err != nil {
-			return boardBoardOwnersBeforeTx, err
-		}
-		boardBoardOwnersBeforeTx = append(boardBoardOwnersBeforeTx, bo)
-	}
-	rowsOfBoardOwnersBeforeTx.Close()
-	return boardBoardOwnersBeforeTx, nil
-}
-
-// generateBoardOwnerDeletionList creates the list which shows which board owners will have to be deleted.
-func generateBoardOwnerChangelist(
-	currentBoardOwners []DbBoardOwner,
-	candidateBoardOwners []DbBoardOwner) map[DbBoardOwner]bool {
-	set := make(map[DbBoardOwner]bool)
-	// Add both current board owners and candidate owners into the set.
-	for _, currentBoardOwner := range currentBoardOwners {
-		// If not in the candidate list, will be removed.
-		set[currentBoardOwner] = false
-	}
-	for _, candidateBoardOwner := range candidateBoardOwners {
-		// Everything in the candidate list will be added by default, hence true.
-		set[candidateBoardOwner] = true
-	}
-	return set
+	return sqlstrs
 }
 
 // enforceNoEmptyIdentityFields enforces that nothing will enter the database without having proper identity columns. For most objects this is Fingerprint(s), for some, like address, it's a combination of multiple fields.
@@ -772,10 +741,16 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 	// TODO: This needs to be able to also defend against unicode replacement char or unicode rune error characters, as well as fields that are somehow only composed of spaces. There have been occurrences in the past where people tried to get past this by editing their own local database. The local machine assumes zero trust, everything that is coming in needs to be fully checked for sanity.
 	switch obj := object.(type) {
 	case BoardPack:
-		if obj.Board.Name == "" || obj.Board.Creation == 0 || obj.Board.ProofOfWork == "" {
+		if obj.Board.Name == "" ||
+			obj.Board.Creation == 0 ||
+			obj.Board.EntityVersion == 0 ||
+			obj.Board.Language == "" ||
+			obj.Board.ProofOfWork == "" ||
+			((len(obj.Board.Owner) > 0 && len(obj.Board.OwnerPublicKey) == 0) ||
+				(len(obj.Board.Owner) == 0 && len(obj.Board.OwnerPublicKey) > 0)) {
 			return errors.New(
 				fmt.Sprintf(
-					"This board has some required fields empty (One or more of: Name, Creation, PoW). BoardPack: %#v\n", obj))
+					"This board has some required fields empty (One or more of: Name, Creation, PoW, EntityVersion, Language), or Owner is empty when OwnerPublicKey is not, or vice versa. BoardPack: %#v\n", obj))
 		}
 		for _, bo := range obj.BoardOwners {
 			if bo.Level == 0 {
@@ -785,22 +760,46 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 			}
 		}
 	case DbThread:
-		if obj.Board == "" || obj.Name == "" || obj.Creation == 0 || obj.ProofOfWork == "" {
+		if obj.Board == "" ||
+			obj.Name == "" ||
+			obj.Creation == 0 ||
+			obj.EntityVersion == 0 ||
+			obj.ProofOfWork == "" ||
+			((len(obj.Owner) > 0 && len(obj.OwnerPublicKey) == 0) ||
+				(len(obj.Owner) == 0 && len(obj.OwnerPublicKey) > 0)) {
 			return errors.New(
 				fmt.Sprintf(
-					"This thread has some required fields empty (One or more of: Board, Name, Creation, PoW). Thread: %#v\n", obj))
+					"This thread has some required fields empty (One or more of: Board, Name, Creation, PoW, EntityVersion), or Owner is empty when OwnerPublicKey is not, or vice versa. Thread: %#v\n", obj))
 		}
 	case DbPost:
-		if obj.Board == "" || obj.Thread == "" || obj.Parent == "" || string(obj.Body) == "" || obj.Creation == 0 || obj.ProofOfWork == "" {
+		if obj.Board == "" ||
+			obj.Thread == "" ||
+			obj.Parent == "" ||
+			string(obj.Body) == "" ||
+			obj.Creation == 0 ||
+			obj.EntityVersion == 0 ||
+			obj.ProofOfWork == "" ||
+			((len(obj.Owner) > 0 && len(obj.OwnerPublicKey) == 0) ||
+				(len(obj.Owner) == 0 && len(obj.OwnerPublicKey) > 0)) {
 			return errors.New(
 				fmt.Sprintf(
-					"This post has some required fields empty (One or more of: Board, Thread, Parent, Body, Creation, PoW). Post: %#v\n", obj))
+					"This post has some required fields empty (One or more of: Board, Thread, Parent, Body, Creation, PoW, EntityVersion), or Owner is empty when OwnerPublicKey is not, or vice versa. Post: %#v\n", obj))
 		}
 	case DbVote:
-		if obj.Board == "" || obj.Thread == "" || obj.Target == "" || obj.Owner == "" || obj.Type == 0 || obj.Creation == 0 || obj.Signature == "" || obj.ProofOfWork == "" {
+		if obj.Board == "" ||
+			obj.Thread == "" ||
+			obj.Target == "" ||
+			obj.Owner == "" ||
+			obj.Type == 0 ||
+			obj.Creation == 0 ||
+			obj.EntityVersion == 0 ||
+			obj.Signature == "" ||
+			obj.ProofOfWork == "" ||
+			((len(obj.Owner) > 0 && len(obj.OwnerPublicKey) == 0) ||
+				(len(obj.Owner) == 0 && len(obj.OwnerPublicKey) > 0)) {
 			return errors.New(
 				fmt.Sprintf(
-					"This vote has some required fields empty (One or more of: Board, Thread, Target, Owner, Type, Creation, Signature, PoW). Vote: %#v\n", obj))
+					"This vote has some required fields empty (One or more of: Board, Thread, Target, Owner, Type, Creation, Signature, PoW, EntityVersion), or Owner is empty when OwnerPublicKey is not, or vice versa. Vote: %#v\n", obj))
 		}
 	case AddressPack:
 		/*
@@ -808,24 +807,61 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 			The only address entry that is trustable is gained first-person, that is, this node connects to the node on the address, and that direct connection can update this address entity with real, first-party data.
 		*/
 
-		if obj.Address.Location == "" || obj.Address.Port == 0 {
+		if obj.Address.Location == "" || obj.Address.Port == 0 || obj.Address.EntityVersion == 0 {
 			return errors.New(
 				fmt.Sprintf(
-					"This address has some required fields empty (One or more of: Location, Port. Address: %#v", obj))
+					"This address has some required fields empty (One or more of: Location, Port, EntityVersion. Address: %#v", obj))
 		}
 
 	case DbKey:
-		if obj.Type == "" || obj.PublicKey == "" || obj.Creation == 0 || obj.ProofOfWork == "" || obj.Signature == "" {
+		if obj.Type == "" ||
+			obj.PublicKey == "" ||
+			obj.Creation == 0 ||
+			obj.EntityVersion == 0 ||
+			obj.ProofOfWork == "" ||
+			obj.Signature == "" ||
+			((len(obj.PublicKey) > 0 && len(obj.PublicKeyFingerprint) == 0) ||
+				(len(obj.PublicKey) == 0 && len(obj.PublicKeyFingerprint) > 0)) ||
+			obj.Expiry == 0 {
 			return errors.New(
 				fmt.Sprintf(
-					"This key has some required fields empty (One or more of: Type, PublicKey, Creation, PoW, Signature). Key: %#v\n", obj))
+					"This key has some required fields empty (One or more of: Type, PublicKey, Creation, PoW, Signature, Expiry, EntityVersion), or PublicKey is empty when PublicKeyFingerprint is not, or vice versa. Key: %#v\n", obj))
 		}
 	case DbTruststate:
-		if obj.Target == "" || obj.Owner == "" || obj.Type == 0 || obj.Creation == 0 || obj.ProofOfWork == "" || obj.Signature == "" {
+		if obj.Target == "" ||
+			obj.Owner == "" ||
+			obj.Type == 0 ||
+			obj.Creation == 0 ||
+			obj.EntityVersion == 0 ||
+			obj.ProofOfWork == "" ||
+			obj.Signature == "" ||
+			((len(obj.Owner) > 0 && len(obj.OwnerPublicKey) == 0) ||
+				(len(obj.Owner) == 0 && len(obj.OwnerPublicKey) > 0)) {
 			return errors.New(
 				fmt.Sprintf(
-					"This trust state has some required fields empty (One or more of: Target, Owner, Type, Creation, PoW, Signature). Truststate: %#v\n", obj))
+					"This trust state has some required fields empty (One or more of: Target, Owner, Type, Creation, PoW, Signature, EntityVersion), or Owner is empty when OwnerPublicKey is not, or vice versa. Truststate: %#v\n", obj))
 		}
+	}
+	return nil
+}
+
+// enforceFieldLengths enforces the lengths of the fields of the objects. Violation of these lengths should result in a ban, because the app enforces the lengths in creation, and if there is a too long field , that must have been constructed out of the app for malicious purposes.
+func enforceFieldLengths(object interface{}) error {
+	// TODO: This is where ban PKs if they don't respect field lengths. The gate before this is the size for each page, we already have gates for that.
+	// Language field si defined as ISO 639-1, which is LOWERCASE. We won't deny uppercase, we'll convert to lowercase and use that.
+	switch obj := object.(type) {
+	case BoardPack:
+		if len(obj.Board.Language) >= 3 {
+			return errors.New(
+				fmt.Sprintf(
+					"This board has some fields longer than allowed. (One or more of: Language) BoardPack: %#v\n", obj))
+		}
+	case DbThread:
+	case DbPost:
+	case DbVote:
+	case DbKey:
+	case DbTruststate:
+	case AddressPack:
 	}
 	return nil
 }

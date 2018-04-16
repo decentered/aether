@@ -32,6 +32,6 @@ func DumpStack() string {
 	_, file3, line3, _ := runtime.Caller(3)
 	_, file4, line4, _ := runtime.Caller(4)
 	_, file5, line5, _ := runtime.Caller(5)
-	return fmt.Sprintf("STACK TRACE\n%s:%d\n%s:%d\n%s:%d \n%s:%d \n%s:%d\n",
+	return fmt.Sprintf("\nSTACK TRACE\n%s:%d\n%s:%d\n%s:%d \n%s:%d \n%s:%d\n",
 		file, line, file2, line2, file3, line3, file4, line4, file5, line5)
 }

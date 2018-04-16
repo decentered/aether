@@ -4,7 +4,10 @@ import (
 	"aether-core/backend/cmd"
 	"aether-core/io/api"
 	"aether-core/io/persistence"
+	"aether-core/services/globals"
 	"fmt"
+	// "github.com/davecgh/go-spew/spew"
+	"github.com/jmoiron/sqlx"
 	"log"
 	"os"
 	"strings"
@@ -26,12 +29,17 @@ func setup() {
 	cmd.EstablishConfigs(nil)
 	persistence.CreateDatabase()
 	persistence.CheckDatabaseReady()
+	globals.BackendTransientConfig.FingerprintCheckEnabled = false
+	globals.BackendTransientConfig.SignatureCheckEnabled = false
+	globals.BackendTransientConfig.ProofOfWorkCheckEnabled = false
+	globals.BackendTransientConfig.PageSignatureCheckEnabled = false
 	// Insert some basic data.
 	createNodeData()
 }
 
 func teardown() {
-	persistence.DeleteDatabase()
+	// The tests assume a nonexistent database. If this is disabled, your tests will fail!
+	// persistence.DeleteDatabase()
 	// Mind that this isn't as optional as you think. There are some tests, especially those related to updates below that need the database to be clean. Because we automatically switch to update when something is there, it breaks the creation tests (they end up being updates.)
 }
 
@@ -39,6 +47,32 @@ func ValidateTest(expected interface{}, actual interface{}, t *testing.T) {
 	if actual != expected {
 		t.Errorf("Test failed, expected: '%s', got:  '%s'", expected, actual)
 	}
+}
+
+// read db x methods are here and not in the main body of the app because these return raw db entities that we don't have a use for. Ah shit that is not true because the deletion logic will need it.
+func readDbKey(fingerprints []api.Fingerprint) ([]persistence.DbKey, error) {
+	var dbArr []persistence.DbKey
+	if len(fingerprints) > 0 { // Fingerprints array search.
+		query, args, err := sqlx.In("SELECT * FROM PublicKeys WHERE Fingerprint IN (?);", fingerprints)
+		if err != nil {
+			return dbArr, err
+		}
+		rows, err := globals.DbInstance.Queryx(query, args...)
+		defer rows.Close() // In case of premature exit.
+		if err != nil {
+			return dbArr, err
+		}
+		for rows.Next() {
+			var entity persistence.DbKey
+			err = rows.StructScan(&entity)
+			if err != nil {
+				return dbArr, err
+			}
+			dbArr = append(dbArr, entity)
+		}
+		rows.Close()
+	}
+	return dbArr, nil
 }
 
 func createNodeData() {
@@ -56,21 +90,31 @@ func createNodeData() {
 	var ts api.Truststate
 	// Insert the data for board. Only the bare minimum of data required.
 	k.Fingerprint = "2389749283fasdf"
-	k2.Fingerprint = "asdfasfdfa9023423"
 	k.Key = "public key"
 	k.Creation = 1
 	k.ProofOfWork = "pow"
 	k.Signature = "sig"
 	k.Type = "key type"
+	k.Expiry = 1
+
+	k2.Fingerprint = "123asdfasfdfa9023424"
+	k2.Key = "public key2"
+	k2.Creation = 2
+	k2.ProofOfWork = "pow2"
+	k2.Signature = "sig2"
+	k2.Type = "key type2"
+	k2.Expiry = 1
 
 	b.Fingerprint = "my board fingerprint"
 	b.Name = "alice"
 	b.Creation = 1
 	b.ProofOfWork = "pow"
 	b.Owner = k.Fingerprint
+	b.OwnerPublicKey = k.Key
 	bo.KeyFingerprint = k.Fingerprint
 	bo.Level = 255
 	b.BoardOwners = append(b.BoardOwners, bo)
+	b.Language = "en"
 
 	b2.Fingerprint = "my board fingerprint_second"
 	b2.Name = "alice"
@@ -88,8 +132,8 @@ func createNodeData() {
 
 	p.Fingerprint = "my post fingerprint"
 	p.Board = b.Fingerprint
-	p.Thread = p.Fingerprint
-	p.Parent = p.Fingerprint
+	p.Thread = t.Fingerprint
+	p.Parent = t.Fingerprint
 	p.Body = "a"
 	p.Creation = 1
 	p.ProofOfWork = "pow"
@@ -99,6 +143,7 @@ func createNodeData() {
 	v.Thread = t.Fingerprint
 	v.Target = t.Fingerprint
 	v.Owner = k2.Fingerprint
+	v.OwnerPublicKey = k2.Key
 	v.Type = 1
 	v.Creation = 1
 	v.Signature = "sig"
@@ -117,16 +162,35 @@ func createNodeData() {
 	a.Protocol.Subprotocols = []api.Subprotocol{s}
 	a.Client.VersionMajor = 1
 	a.Client.ClientName = "client name"
+	a.EntityVersion = 1
 
 	ts.Fingerprint = "my truststate fingerprint"
 	ts.Target = k.Fingerprint
 	ts.Owner = k2.Fingerprint
+	ts.OwnerPublicKey = k2.Key
 	ts.Type = 1
 	ts.Creation = 1
 	ts.Signature = "sig"
 	ts.ProofOfWork = "pow"
 	// Create the container and insert the items into
 	var batch []interface{}
+	b.SetVerified(true)
+	b2.SetVerified(true)
+	t.SetVerified(true)
+	p.SetVerified(true)
+	v.SetVerified(true)
+	k.SetVerified(true)
+	ts.SetVerified(true)
+
+	b.EntityVersion = 1
+	b2.EntityVersion = 1
+	b.Language = "en"
+	b2.Language = "en"
+	t.EntityVersion = 1
+	p.EntityVersion = 1
+	v.EntityVersion = 1
+	k.EntityVersion = 1
+	ts.EntityVersion = 1
 	batch = append(batch, b)
 	batch = append(batch, b2)
 	batch = append(batch, t)
@@ -135,8 +199,8 @@ func createNodeData() {
 	batch = append(batch, a)
 	batch = append(batch, k)
 	batch = append(batch, ts)
-	err := persistence.BatchInsert(batch)
-	if err != nil {
+	_, err := persistence.BatchInsert(batch)
+	if err != nil && !strings.Contains(err.Error(), "This post's parent is its own fingerprint") {
 		log.Fatal(err)
 	}
 
@@ -178,9 +242,18 @@ func TestRead_MultiEmbed_Success(t *testing.T) {
 
 	// 1 board, 1 thread, 2 keys
 	var bOne api.Board
+	bOne.SetVerified(true)
+	bOne.Language = "en"
+	bOne.EntityVersion = 1
 	var tOne api.Thread
+	tOne.SetVerified(true)
+	tOne.EntityVersion = 1
 	var kOne api.Key
+	kOne.SetVerified(true)
+	kOne.EntityVersion = 1
 	var kTwo api.Key
+	kTwo.EntityVersion = 1
+	kTwo.SetVerified(true)
 
 	kOne.Fingerprint = "first key fingerprint"
 	kOne.Key = "public key"
@@ -188,19 +261,22 @@ func TestRead_MultiEmbed_Success(t *testing.T) {
 	kOne.ProofOfWork = "pow"
 	kOne.Signature = "sig"
 	kOne.Type = "key type"
+	kOne.Expiry = 1
 
 	kTwo.Fingerprint = "second key fingerprint"
-	kTwo.Key = "public key"
+	kTwo.Key = "public key2"
 	kTwo.Creation = 1
 	kTwo.ProofOfWork = "pow"
 	kTwo.Signature = "sig"
 	kTwo.Type = "key type"
+	kTwo.Expiry = 1
 
 	bOne.Fingerprint = "my board fingerprint multi entity batch test"
 	bOne.Name = "alice"
 	bOne.Creation = 1
 	bOne.ProofOfWork = "pow"
 	bOne.Owner = kOne.Fingerprint
+	bOne.OwnerPublicKey = kOne.Key
 
 	tOne.Fingerprint = "my thread fingerprint multi entity batch test"
 	tOne.Board = bOne.Fingerprint
@@ -208,13 +284,15 @@ func TestRead_MultiEmbed_Success(t *testing.T) {
 	tOne.Creation = 1
 	tOne.ProofOfWork = "pow"
 	tOne.Owner = kTwo.Fingerprint
+	tOne.OwnerPublicKey = kTwo.Key
 
 	var batch []interface{}
+
 	batch = append(batch, bOne)
 	batch = append(batch, tOne)
 	batch = append(batch, kOne)
 	batch = append(batch, kTwo)
-	err := persistence.BatchInsert(batch)
+	_, err := persistence.BatchInsert(batch)
 
 	fp := api.Fingerprint("my board fingerprint multi entity batch test")
 	resp, err := persistence.Read("boards", []api.Fingerprint{api.Fingerprint(fp)}, []string{"threads", "keys"}, 0, 0)
@@ -231,7 +309,11 @@ func TestRead_MultiEmbed_Success(t *testing.T) {
 func TestRead_PostEmbedVote_Success(t *testing.T) {
 
 	var p api.Post
+	p.SetVerified(true)
+	p.EntityVersion = 1
 	var v api.Vote
+	v.SetVerified(true)
+	v.EntityVersion = 1
 
 	p.Fingerprint = "my post fingerprint99"
 	p.Board = "board fingerprint"
@@ -246,6 +328,7 @@ func TestRead_PostEmbedVote_Success(t *testing.T) {
 	v.Thread = "thread fingerprint"
 	v.Target = p.Fingerprint
 	v.Owner = "key fingerprint"
+	v.OwnerPublicKey = "owner pk"
 	v.Type = 1
 	v.Creation = 1
 	v.Signature = "sig"
@@ -254,7 +337,7 @@ func TestRead_PostEmbedVote_Success(t *testing.T) {
 	var batch []interface{}
 	batch = append(batch, p)
 	batch = append(batch, v)
-	err := persistence.BatchInsert(batch)
+	_, err := persistence.BatchInsert(batch)
 
 	fp := api.Fingerprint("my post fingerprint99")
 	resp, err := persistence.Read("posts", []api.Fingerprint{api.Fingerprint(fp)}, []string{"votes"}, 0, 0)
@@ -269,7 +352,11 @@ func TestRead_PostEmbedVote_Success(t *testing.T) {
 func TestRead_ThreadEmbedPost_Success(t *testing.T) {
 
 	var p api.Post
+	p.SetVerified(true)
+	p.EntityVersion = 1
 	var t2 api.Thread
+	t2.EntityVersion = 1
+	t2.SetVerified(true)
 
 	p.Fingerprint = "my post fingerprint991"
 	p.Board = "board fingerprint"
@@ -288,7 +375,7 @@ func TestRead_ThreadEmbedPost_Success(t *testing.T) {
 	var batch []interface{}
 	batch = append(batch, p)
 	batch = append(batch, t2)
-	err := persistence.BatchInsert(batch)
+	_, err := persistence.BatchInsert(batch)
 
 	fp := api.Fingerprint("my thread fingerprint99")
 	resp, err := persistence.Read("threads", []api.Fingerprint{api.Fingerprint(fp)}, []string{"posts"}, 0, 0)
@@ -303,7 +390,12 @@ func TestRead_ThreadEmbedPost_Success(t *testing.T) {
 func TestRead_TruststateEmbedKey_Success(t *testing.T) {
 
 	var ts4 api.Truststate
+	ts4.SetVerified(true)
+	ts4.EntityVersion = 1
 	var k4 api.Key
+	k4.SetVerified(true)
+	k4.EntityVersion = 1
+	k4.Expiry = 1
 	k4.Fingerprint = "2389749283fasdf"
 	k4.Key = "public key"
 	k4.Creation = 1
@@ -313,6 +405,7 @@ func TestRead_TruststateEmbedKey_Success(t *testing.T) {
 	ts4.Fingerprint = "my truststate fingerprint99"
 	ts4.Target = "an awesome user's key"
 	ts4.Owner = k4.Fingerprint
+	ts4.OwnerPublicKey = k4.Key
 	ts4.Type = 1
 	ts4.Creation = 1
 	ts4.Signature = "sig"
@@ -321,7 +414,7 @@ func TestRead_TruststateEmbedKey_Success(t *testing.T) {
 	var batch []interface{}
 	batch = append(batch, ts4)
 	batch = append(batch, k4)
-	err := persistence.BatchInsert(batch)
+	_, err := persistence.BatchInsert(batch)
 
 	fp := api.Fingerprint("my truststate fingerprint99")
 	resp, err := persistence.Read("truststates", []api.Fingerprint{api.Fingerprint(fp)}, []string{"keys"}, 0, 0)
@@ -544,6 +637,7 @@ func TestFirstPartyInsertReadAddress_Success(t *testing.T) {
 	a2.Protocol.Subprotocols = []api.Subprotocol{s1, s2}
 	a2.Client.VersionMajor = 1
 	a2.Client.ClientName = "client name"
+	a2.EntityVersion = 1
 	addressSet := []api.Address{a2}
 	persistence.InsertOrUpdateAddresses(&addressSet)
 
@@ -770,16 +864,19 @@ func TestApiToDb_ItemLengthLongerThanAllowed(t *testing.T) {
 func TestSingleInsert_Success(t *testing.T) {
 	fp := api.Fingerprint("my awesome vote fingerprint")
 	var vote api.Vote
+	vote.SetVerified(true)
+	vote.EntityVersion = 1
 	vote.Fingerprint = fp
 	vote.Board = "board fingerprint"
 	vote.Thread = "thread fingerprint"
 	vote.Target = "target fingerprint"
 	vote.Owner = "owner fingerprint"
+	vote.OwnerPublicKey = "owner public key"
 	vote.Type = 1
 	vote.Creation = 1
 	vote.Signature = "sig"
 	vote.ProofOfWork = "pow"
-	err := persistence.BatchInsert([]interface{}{vote})
+	_, err := persistence.BatchInsert([]interface{}{vote})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -796,26 +893,32 @@ func TestSingleInsert_Success(t *testing.T) {
 func TestSingleInsert_Duplicate(t *testing.T) {
 	fp := api.Fingerprint("my awesome vote fingerprint2")
 	var vote api.Vote
+	vote.SetVerified(true)
+	vote.EntityVersion = 1
 	vote.Fingerprint = fp
 	vote.Board = "board fingerprint"
 	vote.Thread = "thread fingerprint"
 	vote.Target = "target fingerprint"
 	vote.Owner = "owner fingerprint"
+	vote.OwnerPublicKey = "owner public key"
 	vote.Type = 1
 	vote.Creation = 1
 	vote.Signature = "sig"
 	vote.ProofOfWork = "pow"
 	var vote2 api.Vote
+	vote2.EntityVersion = 1
+	vote2.SetVerified(true)
 	vote2.Fingerprint = fp
 	vote2.Board = "board fingerprint"
 	vote2.Thread = "thread fingerprint"
 	vote2.Target = "target fingerprint"
 	vote2.Owner = "owner fingerprint"
+	vote2.OwnerPublicKey = "owner public key"
 	vote2.Type = 1
 	vote2.Creation = 1
 	vote2.Signature = "sig"
 	vote2.ProofOfWork = "pow"
-	err := persistence.BatchInsert([]interface{}{vote, vote2})
+	_, err := persistence.BatchInsert([]interface{}{vote, vote2})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -834,27 +937,33 @@ func TestBatchInsert_Success(t *testing.T) {
 	fp2 := api.Fingerprint("my awesome vote fingerprint4")
 
 	var vote api.Vote
+	vote.SetVerified(true)
+	vote.EntityVersion = 1
 	vote.Fingerprint = fp
 	vote.Board = "board fingerprint"
 	vote.Thread = "thread fingerprint"
 	vote.Target = "target fingerprint"
 	vote.Owner = "owner fingerprint"
+	vote.OwnerPublicKey = "owner pk"
 	vote.Type = 1
 	vote.Creation = 1
 	vote.Signature = "sig"
 	vote.ProofOfWork = "pow"
 	var vote2 api.Vote
+	vote2.SetVerified(true)
+	vote2.EntityVersion = 1
 	vote2.Fingerprint = fp2
 	vote2.Board = "board fingerprint"
 	vote2.Thread = "thread fingerprint"
 	vote2.Target = "target fingerprint"
 	vote2.Owner = "owner fingerprint"
+	vote2.OwnerPublicKey = "owner pk"
 	vote2.Type = 1
 	vote2.Creation = 1
 	vote2.Signature = "sig"
 	vote2.ProofOfWork = "pow"
 
-	err := persistence.BatchInsert([]interface{}{vote, vote2})
+	_, err := persistence.BatchInsert([]interface{}{vote, vote2})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -884,10 +993,13 @@ func TestInsert_MultipleTypes_Success(t *testing.T) {
 	addressSubloc := api.Location("subloc")
 	addressPort := uint16(9080)
 	var ts api.Truststate
+	ts.SetVerified(true)
+	ts.EntityVersion = 1
 	var a api.Address
 	ts.Fingerprint = tfp
 	ts.Target = "ts target"
 	ts.Owner = "ts owner"
+	ts.OwnerPublicKey = "ts owner pk"
 	ts.Type = 1
 	ts.Creation = 1
 	ts.Signature = "sig"
@@ -908,8 +1020,9 @@ func TestInsert_MultipleTypes_Success(t *testing.T) {
 	a.Protocol.Subprotocols = []api.Subprotocol{s, s}
 	a.Client.VersionMajor = 1
 	a.Client.ClientName = "client name"
+	a.EntityVersion = 1
 
-	err := persistence.BatchInsert([]interface{}{ts, a})
+	_, err := persistence.BatchInsert([]interface{}{ts, a})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -936,17 +1049,23 @@ func TestInsert_MultipleTypes_Success(t *testing.T) {
 func TestInsert_ItemsWithUpdates_Board_SimpleField_Success(t *testing.T) {
 	// Insert a board.
 	var b api.Board
+	b.SetVerified(true)
+	b.Language = "en"
+	b.EntityVersion = 1
 	fp := api.Fingerprint("my cool board fingerprint")
 	b.Fingerprint = fp
+	b.Description = "this should not change"
 	b.Creation = 2
 	b.Name = "alice"
 	b.ProofOfWork = "pow"
+	b.Owner = " board owner"
+	b.OwnerPublicKey = " board owner pk"
 	// var bo api.BoardOwner
 	// bo.KeyFingerprint = "key fingerprint"
 	// bo.Level = 1
 	// b.BoardOwners = append(b.BoardOwners, bo)
 
-	err := persistence.BatchInsert([]interface{}{b})
+	_, err := persistence.BatchInsert([]interface{}{b})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -964,7 +1083,7 @@ func TestInsert_ItemsWithUpdates_Board_SimpleField_Success(t *testing.T) {
 	// Change a board, but make last update earlier than creation. This means it won't enter the database.
 	b.Description = "hello there!"
 	b.LastUpdate = 1
-	err9 := persistence.BatchInsert([]interface{}{b})
+	_, err9 := persistence.BatchInsert([]interface{}{b})
 	if err9 != nil {
 		t.Errorf("Test failed, err: '%s'", err9)
 	}
@@ -973,7 +1092,7 @@ func TestInsert_ItemsWithUpdates_Board_SimpleField_Success(t *testing.T) {
 	if err10 != nil {
 		t.Errorf("Test failed, err: '%s'", err10)
 	}
-	if len(resp3[0].Description) != 0 {
+	if resp3[0].Description != "this should not change" {
 		t.Errorf("The description shouldn't have gotten in because it's from an update that is earlier than creation. Board: '%#v\n'", resp3[0])
 		t.Fatal()
 	}
@@ -981,7 +1100,7 @@ func TestInsert_ItemsWithUpdates_Board_SimpleField_Success(t *testing.T) {
 	// Change a board, but make last update same as creation. This means it won't enter the database.
 	b.Description = "hello there!2"
 	b.LastUpdate = 2
-	err11 := persistence.BatchInsert([]interface{}{b})
+	_, err11 := persistence.BatchInsert([]interface{}{b})
 	if err11 != nil {
 		t.Errorf("Test failed, err: '%s'", err11)
 	}
@@ -990,7 +1109,7 @@ func TestInsert_ItemsWithUpdates_Board_SimpleField_Success(t *testing.T) {
 	if err12 != nil {
 		t.Errorf("Test failed, err: '%s'", err12)
 	}
-	if len(resp4[0].Description) != 0 {
+	if resp4[0].Description != "this should not change" {
 		t.Errorf("The description shouldn't have gotten in because it's from an update that has the same timestamp as creation. Board: '%#v\n'", resp4[0])
 		t.Fatal()
 	}
@@ -998,7 +1117,7 @@ func TestInsert_ItemsWithUpdates_Board_SimpleField_Success(t *testing.T) {
 	// Change a board, but make last update after creation. This means it should enter the database.
 	b.Description = "hello there!3"
 	b.LastUpdate = 3
-	err13 := persistence.BatchInsert([]interface{}{b})
+	_, err13 := persistence.BatchInsert([]interface{}{b})
 	if err13 != nil {
 		t.Errorf("Test failed, err: '%s'", err13)
 	}
@@ -1007,7 +1126,7 @@ func TestInsert_ItemsWithUpdates_Board_SimpleField_Success(t *testing.T) {
 	if err14 != nil {
 		t.Errorf("Test failed, err: '%s'", err14)
 	}
-	if len(resp5[0].Description) == 0 {
+	if resp5[0].Description != "hello there!3" {
 		t.Errorf("The description should have gotten in because it's from an update that has a later timestamp than creation. Board: '%#v\n'", resp5[0])
 		t.Fatal()
 	}
@@ -1016,9 +1135,12 @@ func TestInsert_ItemsWithUpdates_Board_SimpleField_Success(t *testing.T) {
 func TestInsert_ItemsWithUpdates_Board_SubObject_Success(t *testing.T) {
 	// Insert a board.
 	var b api.Board
+	b.SetVerified(true)
+	b.Language = "en"
+	b.EntityVersion = 1
 	b.Fingerprint = "my board fingerprint"
 	b.Name = "alice"
-	b.Creation = 1
+	// b.Creation = 1
 	b.ProofOfWork = "pow"
 	var bo1 api.BoardOwner
 	bo1.KeyFingerprint = "key fingerprint1"
@@ -1033,7 +1155,7 @@ func TestInsert_ItemsWithUpdates_Board_SubObject_Success(t *testing.T) {
 	b.Fingerprint = fp
 	b.BoardOwners = []api.BoardOwner{bo1, bo2}
 	b.Creation = 2
-	err := persistence.BatchInsert([]interface{}{b})
+	_, err := persistence.BatchInsert([]interface{}{b})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -1051,7 +1173,7 @@ func TestInsert_ItemsWithUpdates_Board_SubObject_Success(t *testing.T) {
 	// Change a board, but make last update earlier than creation. This means it won't enter the database.
 	b.BoardOwners = []api.BoardOwner{bo1, bo2, bo3}
 	b.LastUpdate = 1
-	err3 := persistence.BatchInsert([]interface{}{b})
+	_, err3 := persistence.BatchInsert([]interface{}{b})
 	if err3 != nil {
 		t.Errorf("Test failed, err: '%s'", err3)
 	}
@@ -1066,7 +1188,7 @@ func TestInsert_ItemsWithUpdates_Board_SubObject_Success(t *testing.T) {
 	}
 	// Now change the last update to be the same as creation. This also should not go in.
 	b.LastUpdate = 2
-	err5 := persistence.BatchInsert([]interface{}{b})
+	_, err5 := persistence.BatchInsert([]interface{}{b})
 	if err5 != nil {
 		t.Errorf("Test failed, err: '%s'", err5)
 	}
@@ -1081,7 +1203,7 @@ func TestInsert_ItemsWithUpdates_Board_SubObject_Success(t *testing.T) {
 	}
 	// Now change the last update to be after creation. This should go in.
 	b.LastUpdate = 3
-	err7 := persistence.BatchInsert([]interface{}{b})
+	_, err7 := persistence.BatchInsert([]interface{}{b})
 	if err7 != nil {
 		t.Errorf("Test failed, err: '%s'", err7)
 	}
@@ -1092,7 +1214,7 @@ func TestInsert_ItemsWithUpdates_Board_SubObject_Success(t *testing.T) {
 	}
 	if len(resp4[0].BoardOwners) < 3 {
 		fmt.Println(resp4[0].BoardOwners)
-		t.Errorf("The board owner should have gotten in (but did not) because it's from an update that is later than creation. Current Board: '%#v\n', Attempted board: '%#v\n'", resp4[0], b)
+		t.Errorf("The board owner should have gotten in (but did not) because it's from an update that is later than creation. Current Board: '%#v\n', Attempted board: '%#v\n'", resp3[0], b)
 		t.Fatal()
 	}
 }
@@ -1100,6 +1222,9 @@ func TestInsert_ItemsWithUpdates_Board_SubObject_Success(t *testing.T) {
 func TestInsert_ItemsWithUpdates_Key_SimpleField_Success(t *testing.T) {
 	// Insert a key.
 	var k api.Key
+	k.SetVerified(true)
+	k.Expiry = 1
+	k.EntityVersion = 1
 	fp := api.Fingerprint("my cool key fingerprint5")
 	k.Fingerprint = fp
 	k.Creation = 2
@@ -1107,7 +1232,7 @@ func TestInsert_ItemsWithUpdates_Key_SimpleField_Success(t *testing.T) {
 	k.ProofOfWork = "pow"
 	k.Signature = "sig"
 	k.Type = "key type"
-	err := persistence.BatchInsert([]interface{}{k})
+	_, err := persistence.BatchInsert([]interface{}{k})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -1124,7 +1249,7 @@ func TestInsert_ItemsWithUpdates_Key_SimpleField_Success(t *testing.T) {
 	// Change a board, but make last update earlier than creation. This means it won't enter the database.
 	k.Name = "hola!"
 	k.LastUpdate = 1
-	err9 := persistence.BatchInsert([]interface{}{k})
+	_, err9 := persistence.BatchInsert([]interface{}{k})
 	if err9 != nil {
 		t.Errorf("Test failed, err: '%s'", err9)
 	}
@@ -1140,7 +1265,7 @@ func TestInsert_ItemsWithUpdates_Key_SimpleField_Success(t *testing.T) {
 	// Change a board, but make last update same as creation. This means it won't enter the database.
 	k.Name = "hola!2"
 	k.LastUpdate = 2
-	err11 := persistence.BatchInsert([]interface{}{k})
+	_, err11 := persistence.BatchInsert([]interface{}{k})
 	if err11 != nil {
 		t.Errorf("Test failed, err: '%s'", err11)
 	}
@@ -1156,7 +1281,7 @@ func TestInsert_ItemsWithUpdates_Key_SimpleField_Success(t *testing.T) {
 	// Change a board, but make last update after creation. This means it should enter the database.
 	k.Name = "hola!3"
 	k.LastUpdate = 3
-	err13 := persistence.BatchInsert([]interface{}{k})
+	_, err13 := persistence.BatchInsert([]interface{}{k})
 	if err13 != nil {
 		t.Errorf("Test failed, err: '%s'", err13)
 	}
@@ -1173,6 +1298,9 @@ func TestInsert_ItemsWithUpdates_Key_SimpleField_Success(t *testing.T) {
 func TestInsert_ItemsWithUpdates_Key_SubObject_Success(t *testing.T) {
 	// Insert a board.
 	var k api.Key
+	k.SetVerified(true)
+	k.Expiry = 1
+	k.EntityVersion = 1
 	fp := api.Fingerprint("my cool key fingerprint subobject test")
 	k.Fingerprint = fp
 	k.Creation = 2
@@ -1181,7 +1309,7 @@ func TestInsert_ItemsWithUpdates_Key_SubObject_Success(t *testing.T) {
 	k.Signature = "sig"
 	k.Type = "key type"
 
-	err := persistence.BatchInsert([]interface{}{k})
+	_, err := persistence.BatchInsert([]interface{}{k})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -1239,11 +1367,11 @@ func TestInsert_ItemsWithUpdates_Key_SubObject_Success(t *testing.T) {
 	// }
 }
 
-func TestInsert_NonsensicalItem_Success(t *testing.T) {
+func TestInsert_NonsensicalItem(t *testing.T) {
 	// Try to insert a DB item via Batch insert (which takes API items)
 	var thr persistence.DbThread
 	thr.Fingerprint = "my cool thread fingerprint"
-	err := persistence.BatchInsert([]interface{}{thr})
+	_, err := persistence.BatchInsert([]interface{}{thr})
 	errMessage := "APItoDB only takes API (not DB) objects."
 	if err == nil {
 		t.Errorf("Expected an error to be raised from this test.")
@@ -1254,7 +1382,10 @@ func TestInsert_NonsensicalItem_Success(t *testing.T) {
 
 func TestInsert_AddRemoveBoardOwner(t *testing.T) {
 	var b api.Board
-	fp := api.Fingerprint("hello this is a board")
+	b.SetVerified(true)
+	b.EntityVersion = 1
+	b.Language = "en"
+	fp := api.Fingerprint("hello this is a board bo insert remove test")
 	b.Fingerprint = fp
 	b.Name = "alice"
 	b.Creation = 1
@@ -1272,13 +1403,13 @@ func TestInsert_AddRemoveBoardOwner(t *testing.T) {
 	bo4.KeyFingerprint = "hello4"
 	bo4.Level = 1
 	b.BoardOwners = []api.BoardOwner{bo1, bo2, bo3}
-	err := persistence.BatchInsert([]interface{}{b})
+	_, err := persistence.BatchInsert([]interface{}{b})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
 	b.BoardOwners = []api.BoardOwner{bo1, bo2, bo4}
 	b.LastUpdate = 1 // Remember, we need to do this otherwise it won't go in.
-	err2 := persistence.BatchInsert([]interface{}{b})
+	_, err2 := persistence.BatchInsert([]interface{}{b})
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
 	}
@@ -1294,7 +1425,10 @@ func TestInsert_AddRemoveBoardOwner(t *testing.T) {
 
 func TestInsert_AddRemoveAndEditBoardOwner(t *testing.T) {
 	var b api.Board
-	fp := api.Fingerprint("hello this is a board3")
+	b.SetVerified(true)
+	b.EntityVersion = 1
+	b.Language = "en"
+	fp := api.Fingerprint("hello this is a board3 add remove edit board owner test")
 	b.Fingerprint = fp
 	b.Name = "alice"
 	b.Creation = 1
@@ -1312,7 +1446,7 @@ func TestInsert_AddRemoveAndEditBoardOwner(t *testing.T) {
 	bo4.KeyFingerprint = "hello4"
 	bo4.Level = 1
 	b.BoardOwners = []api.BoardOwner{bo1, bo2, bo3}
-	err := persistence.BatchInsert([]interface{}{b})
+	_, err := persistence.BatchInsert([]interface{}{b})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -1320,7 +1454,7 @@ func TestInsert_AddRemoveAndEditBoardOwner(t *testing.T) {
 	bo2.Level = 2
 	b.BoardOwners = []api.BoardOwner{bo1, bo2, bo4}
 	b.LastUpdate = 2 // Remember, we need to do this otherwise it won't go in.
-	err2 := persistence.BatchInsert([]interface{}{b})
+	_, err2 := persistence.BatchInsert([]interface{}{b})
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
 	}
@@ -1345,6 +1479,9 @@ func TestInsert_AddRemoveAndEditBoardOwner(t *testing.T) {
 
 func TestInsert_DuplicateBoardOwner(t *testing.T) {
 	var b api.Board
+	b.SetVerified(true)
+	b.EntityVersion = 1
+	b.Language = "en"
 	fp := api.Fingerprint("hello this is a boardie")
 	b.Fingerprint = fp
 	b.Name = "alice"
@@ -1360,7 +1497,7 @@ func TestInsert_DuplicateBoardOwner(t *testing.T) {
 	bo3.KeyFingerprint = "hello6"
 	bo3.Level = 1
 	b.BoardOwners = []api.BoardOwner{bo1, bo2, bo3}
-	err := persistence.BatchInsert([]interface{}{b})
+	_, err := persistence.BatchInsert([]interface{}{b})
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -1370,5 +1507,491 @@ func TestInsert_DuplicateBoardOwner(t *testing.T) {
 		t.Errorf("Test failed, err: '%s'", err3)
 	} else if len(resp[0].BoardOwners) > 2 {
 		t.Errorf("This should have returned 2 board owners. Error: '%#v\n' Current Board: '%#v\n', Board owners: '%#v\n'", err3, resp[0], resp[0].BoardOwners)
+	}
+}
+
+func TestSingleInsert_CircularPost(t *testing.T) {
+	fp := api.Fingerprint("my awesome circular post fingerprint")
+	p := api.Post{}
+	p.SetVerified(true)
+	p.EntityVersion = 1
+	p.Fingerprint = fp
+	p.Board = "board fingerprint"
+	p.Thread = p.Fingerprint
+	p.Parent = p.Fingerprint // This post's parent is itself.
+	p.Body = "a"
+	p.Creation = 1
+	p.ProofOfWork = "pow"
+
+	_, err := persistence.BatchInsert([]interface{}{p})
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	}
+	resp, err2 := persistence.ReadPosts([]api.Fingerprint{fp}, 0, 0)
+	if err2 != nil {
+		t.Errorf("Test failed, err: '%s'", err2)
+	} else if len(resp) > 0 {
+		t.Errorf("Test failed, the response should have been empty.")
+	}
+}
+
+func TestBoardInsertNonrecursiveLastReferenced_Success(t *testing.T) {
+	kfp := api.Fingerprint("RECURSION TEST my key fingerprint")
+	k := api.Key{}
+	k.SetVerified(true)
+	k.EntityVersion = 1
+	k.Expiry = 1
+	k.Fingerprint = kfp
+	k.Key = "RECURSION TEST my awesome board key"
+	k.Creation = 1
+	k.ProofOfWork = "pow"
+	k.Signature = "sig"
+	k.Type = "key type"
+
+	b := api.Board{}
+	b.SetVerified(true)
+	b.EntityVersion = 1
+	b.Language = "en"
+	b.Fingerprint = "RECURSION TEST my board fingerprint"
+	b.Name = "alice"
+	b.Creation = 2
+	b.ProofOfWork = "pow"
+	b.Owner = k.Fingerprint
+	b.OwnerPublicKey = k.Key
+	// insert key
+	// fmt.Printf("Time at first DB Key Insert: %d\n", time.Now().Unix())
+	_, err := persistence.BatchInsert([]interface{}{k})
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	}
+	// read back and save last referenced
+	// fmt.Printf("Time at first DB Key Read: %d\n", time.Now().Unix())
+	resp, err2 := persistence.ReadDbKeys([]api.Fingerprint{kfp}, 0, 0)
+	if err2 != nil {
+		t.Errorf("Test failed, err: '%s'", err2)
+	}
+	lastReferencedOld := resp[0].LastReferenced
+	time.Sleep(time.Duration(1) * time.Second)
+	// insert board
+	// fmt.Printf("Time at first DB Board Insert: %d\n", time.Now().Unix())
+	_, err3 := persistence.BatchInsert([]interface{}{b})
+	if err3 != nil {
+		t.Errorf("Test failed, err: '%s'", err3)
+	}
+	// get the key again and save its new last referenced
+	// fmt.Printf("Time at second DB Key Read: %d\n", time.Now().Unix())
+	resp2, err4 := persistence.ReadDbKeys([]api.Fingerprint{kfp}, 0, 0)
+	if err4 != nil {
+		t.Errorf("Test failed, err: '%s'", err4)
+	}
+	lastReferencedNew := resp2[0].LastReferenced
+	if lastReferencedNew <= lastReferencedOld {
+
+		t.Errorf("Test failed. The last referenced for the key did not update when board was inserted. LastReferencedOld: %d, LastReferencedNew: %d", lastReferencedOld, lastReferencedNew)
+	}
+}
+
+// This test checks whether the inserts that update the lastreferenced updates in the linked tables triggers ONLY when the main insert actually goes through.
+func TestBoardInsertLastReferencedGating_MainObjectDidNotInsert(t *testing.T) {
+	kfp := api.Fingerprint("kgatingtestfp")
+	k := api.Key{}
+	k.SetVerified(true)
+	k.EntityVersion = 1
+	k.Expiry = 1
+	k.Fingerprint = kfp
+	k.Key = "RECURSION TEST my awesome board key"
+	k.Creation = 1
+	k.ProofOfWork = "pow"
+	k.Signature = "sig"
+	k.Type = "key type"
+
+	b := api.Board{}
+	b.SetVerified(true)
+	b.EntityVersion = 1
+	b.Language = "en"
+	b.Fingerprint = "bgatingtestfp"
+	b.Name = "alice"
+	b.Creation = 2
+	b.ProofOfWork = "pow"
+	b.Owner = k.Fingerprint
+	b.OwnerPublicKey = k.Key
+	// insert key
+	// fmt.Printf("Time at first DB Key Insert: %d\n", time.Now().Unix())
+	_, err := persistence.BatchInsert([]interface{}{k})
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	}
+	// read back and save last referenced
+	// fmt.Printf("Time at first DB Key Read: %d\n", time.Now().Unix())
+	resp, err2 := persistence.ReadDbKeys([]api.Fingerprint{kfp}, 0, 0)
+	if err2 != nil {
+		t.Errorf("Test failed, err: '%s'", err2)
+	}
+	lastReferencedOld := resp[0].LastReferenced
+	time.Sleep(time.Duration(1) * time.Second)
+	// insert board
+	// fmt.Printf("Time at first DB Board Insert: %d\n", time.Now().Unix())
+	_, err3 := persistence.BatchInsert([]interface{}{b})
+	if err3 != nil {
+		t.Errorf("Test failed, err: '%s'", err3)
+	}
+	// get the key again and save its new last referenced
+	// fmt.Printf("Time at second DB Key Read: %d\n", time.Now().Unix())
+	resp2, err4 := persistence.ReadDbKeys([]api.Fingerprint{kfp}, 0, 0)
+	if err4 != nil {
+		t.Errorf("Test failed, err: '%s'", err4)
+	}
+	lastReferencedNew := resp2[0].LastReferenced
+	if lastReferencedNew <= lastReferencedOld {
+		t.Errorf("Test failed. The last referenced for the key did not update when board was inserted the first time. LastReferencedOld: %d, LastReferencedNew: %d", lastReferencedOld, lastReferencedNew)
+	}
+	time.Sleep(time.Duration(1) * time.Second)
+	// Now we change the board to be invalid and then reinsert.
+	b.LastUpdate = 2
+	b.Name = "bob"
+	_, err5 := persistence.BatchInsert([]interface{}{b})
+	if err5 != nil {
+		t.Errorf("Test failed, err: '%s'", err5)
+	}
+
+	resp3, err6 := persistence.ReadDbKeys([]api.Fingerprint{kfp}, 0, 0)
+	if err6 != nil {
+		t.Errorf("Test failed, err: '%s'", err6)
+	}
+	lastReferencedNewest := resp3[0].LastReferenced
+	if lastReferencedNew != lastReferencedNewest {
+		t.Errorf("Test failed. The last referenced for the key should not have updated when the board object was attempted to reinsert while invalid. LastReferencedNew: %d, LastReferencedNewest: %d", lastReferencedNew, lastReferencedNewest)
+	}
+}
+
+func TestPostInsertRecursiveLastReferenced_Success(t *testing.T) {
+	kfp := api.Fingerprint("k1")
+	k := api.Key{}
+	k.SetVerified(true)
+	k.EntityVersion = 1
+	k.Expiry = 1
+	k.Fingerprint = kfp
+	k.Key = "k1 key"
+	k.Creation = 1
+	k.ProofOfWork = "pow"
+	k.Signature = "sig"
+	k.Type = "key type"
+
+	k2fp := api.Fingerprint("k2")
+	k2 := api.Key{}
+	k2.SetVerified(true)
+	k2.EntityVersion = 1
+	k2.Expiry = 1
+	k2.Fingerprint = kfp
+	k2.Key = "k2 key"
+	k2.Creation = 1
+	k2.ProofOfWork = "pow"
+	k2.Signature = "sig"
+	k2.Type = "key type"
+
+	bfp := api.Fingerprint("b1")
+	b := api.Board{}
+	b.SetVerified(true)
+	b.EntityVersion = 1
+	b.Language = "en"
+	b.Fingerprint = "b1"
+	b.Name = "alice"
+	b.Creation = 2
+	b.ProofOfWork = "pow"
+	b.Owner = kfp
+	b.OwnerPublicKey = k.Key
+
+	tfp := api.Fingerprint("t1")
+	var th api.Thread
+	th.SetVerified(true)
+	th.Fingerprint = tfp
+	th.EntityVersion = 1
+	th.Board = bfp
+	th.Name = "thread name"
+	th.Owner = kfp
+	th.OwnerPublicKey = k.Key
+	th.Creation = 3
+	th.Signature = "sig"
+	th.ProofOfWork = "pow"
+	th.LastUpdate = 5
+	th.UpdateProofOfWork = "updatepow"
+	th.UpdateSignature = "updatesig"
+
+	p1fp := api.Fingerprint("p1")
+	var p api.Post
+	p.SetVerified(true)
+	p.Fingerprint = p1fp
+	p.EntityVersion = 1
+	p.Board = bfp
+	p.Thread = tfp
+	p.Parent = tfp
+	p.Body = "post body"
+	p.Owner = kfp
+	p.OwnerPublicKey = k.Key
+	p.Creation = 3
+	p.Signature = "sig"
+	p.ProofOfWork = "pow"
+	p.LastUpdate = 4
+	p.UpdateProofOfWork = "updatepow"
+	p.UpdateSignature = "updatesig"
+
+	p2fp := api.Fingerprint("p2")
+	var p2 api.Post
+	p2.SetVerified(true)
+	p2.Fingerprint = p2fp
+	p2.EntityVersion = 1
+	p2.Board = bfp
+	p2.Thread = tfp
+	p2.Parent = p1fp
+	p2.Body = "post body"
+	p2.Owner = k2fp
+	p2.OwnerPublicKey = k2.Key
+	p2.Creation = 4
+	p2.Signature = "sig"
+	p2.ProofOfWork = "pow"
+	p2.LastUpdate = 6
+	p2.UpdateProofOfWork = "updatepow"
+	p2.UpdateSignature = "updatesig"
+
+	// insert board, thread, post1
+	_, err := persistence.BatchInsert([]interface{}{b, th, p})
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	}
+	// read back and save last referenced
+	resp, err2 := persistence.ReadDbPosts([]api.Fingerprint{p.Fingerprint}, 0, 0)
+	if err2 != nil {
+		t.Errorf("Test failed, err: '%s'", err2)
+	}
+	lastReferencedOld := resp[0].LastReferenced
+	time.Sleep(time.Duration(1) * time.Second)
+	// insert post2, so board, thread, post1, key lastreferenceds will be updated
+	_, err3 := persistence.BatchInsert([]interface{}{p2})
+	if err3 != nil {
+		t.Errorf("Test failed, err: '%s'", err3)
+	}
+	// get the key again and save its new last referenced
+	resp2, err4 := persistence.ReadDbPosts([]api.Fingerprint{p.Fingerprint}, 0, 0)
+	if err4 != nil {
+		t.Errorf("Test failed, err: '%s'", err4)
+	}
+	lastReferencedNew := resp2[0].LastReferenced
+	if lastReferencedNew <= lastReferencedOld {
+		t.Errorf("Test failed. The last referenced for the post did not update when a post underlying was inserted. LastReferencedOld: %d, LastReferencedNew: %d", lastReferencedOld, lastReferencedNew)
+	}
+}
+
+func TestSingleInsert_Board_LangValid_Success(t *testing.T) {
+	fp := api.Fingerprint("my awesome board fingerprint with acceptable language field")
+	var b api.Board
+	b.SetVerified(true)
+	b.EntityVersion = 1
+	b.Language = "en"
+	b.Fingerprint = fp
+	b.Name = "yo"
+	b.Description = "yo2"
+	b.Owner = "owner fingerprint"
+	b.OwnerPublicKey = "owner public key"
+	b.Creation = 1
+	b.Signature = "sig"
+	b.ProofOfWork = "pow"
+	b.Language = "en"
+	_, err := persistence.BatchInsert([]interface{}{b})
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	}
+	resp, err2 := persistence.ReadBoards([]api.Fingerprint{fp}, 0, 0)
+	if err2 != nil {
+		t.Errorf("Test failed, err: '%s'", err2)
+	} else if len(resp) == 0 {
+		t.Errorf("Test failed, the response is empty.")
+	} else if resp[0].Fingerprint != fp {
+		t.Errorf("The response received isn't the expected one. Fingerprint: '%s'", resp[0].Fingerprint)
+	}
+}
+
+func TestSingleInsert_Board_LangTooLong(t *testing.T) {
+	fp := api.Fingerprint("my awesome board fingerprint with too long a language")
+	var b api.Board
+	b.SetVerified(true)
+	b.EntityVersion = 1
+	b.Fingerprint = fp
+	b.Name = "yo"
+	b.Description = "yo2"
+	b.Owner = "owner fingerprint"
+	b.OwnerPublicKey = "owner public key"
+	b.Creation = 1
+	b.Signature = "sig"
+	b.ProofOfWork = "pow"
+	b.Language = "this language is way too long, this field accepts lang codes like ENG, not lang names"
+	_, err := persistence.BatchInsert([]interface{}{b})
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	}
+	resp, err2 := persistence.ReadBoards([]api.Fingerprint{fp}, 0, 0)
+	if err2 != nil {
+		t.Errorf("Test failed, err: '%s'", err2)
+	} else if len(resp) > 0 {
+		t.Errorf("This test's result should have been empty.")
+	}
+}
+
+func TestSingleInsert_Vote_UpdateEarlierThanCreationInsertedAtTheSameTime(t *testing.T) {
+	fp := api.Fingerprint("vote fingerprint update earlier than creation")
+	var v api.Vote
+	v.SetVerified(true)
+	v.Fingerprint = fp
+	v.EntityVersion = 1
+	v.Board = "this is the board of this vote"
+	v.Thread = "this is the thread of this vote"
+	v.Target = "target"
+	v.Owner = "keykey"
+	v.OwnerPublicKey = "ownerpk"
+	v.Type = 100
+	v.Creation = 3
+	v.Signature = "sig"
+	v.ProofOfWork = "pow"
+	v.LastUpdate = 2
+	v.UpdateProofOfWork = "updatepow"
+	v.UpdateSignature = "updatesig"
+
+	_, err := persistence.BatchInsert([]interface{}{v})
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	}
+	resp, err2 := persistence.ReadVotes([]api.Fingerprint{fp}, 0, 0)
+	if err2 != nil {
+		t.Errorf("Test failed, err: '%s'", err2)
+	} else if len(resp) > 0 {
+		t.Errorf("This test's result should have been empty.")
+	}
+}
+
+func TestSingleInsert_Thread_Update_InsertedAtTheSameTime(t *testing.T) {
+	fp := api.Fingerprint("thread fingerprint creation and update insert together")
+	var th api.Thread
+	th.SetVerified(true)
+	th.Fingerprint = fp
+	th.EntityVersion = 1
+	th.Board = "this is the board of this thread"
+	th.Name = "thread name"
+	th.Owner = "keykey"
+	th.OwnerPublicKey = "ownerpk"
+	th.Creation = 3
+	th.Signature = "sig"
+	th.ProofOfWork = "pow"
+	th.LastUpdate = 5
+	th.UpdateProofOfWork = "updatepow"
+	th.UpdateSignature = "updatesig"
+
+	_, err := persistence.BatchInsert([]interface{}{th})
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	}
+	resp, err2 := persistence.ReadThreads([]api.Fingerprint{fp}, 0, 0)
+	if err2 != nil {
+		t.Errorf("Test failed, err: '%s'", err2)
+	} else if resp[0].GetUpdateSignature() == "" {
+		t.Errorf("This thread's update didn't go in.")
+	}
+}
+
+func TestSingleInsert_Post_UpdateEarlierThanCreationInsertedAtTheSameTime(t *testing.T) {
+	fp := api.Fingerprint("post fingerprint creation and update insert together")
+	var p api.Post
+	p.SetVerified(true)
+	p.Fingerprint = fp
+	p.EntityVersion = 1
+	p.Board = "this is the board of this post"
+	p.Thread = "this is the thread of this post"
+	p.Parent = "this is the parent of this post"
+	p.Body = "post body"
+	p.Owner = "keykey"
+	p.OwnerPublicKey = "ownerpk"
+	p.Creation = 3
+	p.Signature = "sig"
+	p.ProofOfWork = "pow"
+	p.LastUpdate = 2
+	p.UpdateProofOfWork = "updatepow"
+	p.UpdateSignature = "updatesig"
+
+	_, err := persistence.BatchInsert([]interface{}{p})
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	}
+	resp, err2 := persistence.ReadPosts([]api.Fingerprint{fp}, 0, 0)
+	if err2 != nil {
+		t.Errorf("Test failed, err: '%s'", err2)
+	} else if len(resp) > 0 {
+		t.Errorf("This post should not have gone in.")
+	}
+}
+
+func generatePost(fp api.Fingerprint, parentfp api.Fingerprint) api.Post {
+	var p api.Post
+	p.SetVerified(true)
+	p.Fingerprint = fp
+	p.Body = "body"
+	p.EntityVersion = 1
+	p.Owner = "owner"
+	p.OwnerPublicKey = "ownerpk"
+	p.Creation = 1
+	p.Signature = "sig"
+	p.ProofOfWork = "pow"
+	p.LastUpdate = 2
+	p.UpdateProofOfWork = "updatepow"
+	p.UpdateSignature = "updatesig"
+	p.Board = "boardpk"
+	p.Thread = "threadpk"
+	p.Parent = parentfp
+	return p
+}
+
+func TestPostInsertRecursiveDeepInsert_Success(t *testing.T) {
+	p1 := generatePost("post1", "threadpk")
+	p2 := generatePost("post2", "post1")
+	p3 := generatePost("post3", "post2")
+	p4 := generatePost("post4", "post3")
+	p5 := generatePost("post5", "post4")
+	p6 := generatePost("post6", "post5")
+	p7 := generatePost("post7", "post6")
+	p8 := generatePost("post8", "post7")
+	p9 := generatePost("post9", "post8")
+	p10 := generatePost("post10", "post9")
+	p11 := generatePost("post11", "post10")
+	p12 := generatePost("post12", "post11")
+	p13 := generatePost("post13", "post12")
+	p14 := generatePost("post14", "post13")
+	p15 := generatePost("post15", "post14")
+	p16 := generatePost("post16", "post15")
+	p17 := generatePost("post17", "post16")
+	p18 := generatePost("post18", "post17")
+
+	// insert board, thread, post1
+	_, err := persistence.BatchInsert([]interface{}{p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16, p17, p18})
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	}
+	// read back and save last referenced
+	resp, err2 := persistence.ReadDbPosts([]api.Fingerprint{p1.Fingerprint}, 0, 0)
+	if err2 != nil {
+		t.Errorf("Test failed, err: '%s'", err2)
+	}
+	lastReferencedOld := resp[0].LastReferenced
+	time.Sleep(time.Duration(1) * time.Second)
+	// insert new post so whole chain lights up.
+	p19 := generatePost("post19", "post18")
+	_, err3 := persistence.BatchInsert([]interface{}{p19})
+	if err3 != nil {
+		t.Errorf("Test failed, err: '%s'", err3)
+	}
+	// get the key again and save its new last referenced
+	resp2, err4 := persistence.ReadDbPosts([]api.Fingerprint{p1.Fingerprint}, 0, 0)
+	if err4 != nil {
+		t.Errorf("Test failed, err: '%s'", err4)
+	}
+	lastReferencedNew := resp2[0].LastReferenced
+	if lastReferencedNew <= lastReferencedOld {
+		t.Errorf("Test failed. The last referenced for the post did not update when a post underlying was inserted. LastReferencedOld: %d, LastReferencedNew: %d", lastReferencedOld, lastReferencedNew)
 	}
 }

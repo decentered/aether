@@ -9,6 +9,7 @@ import (
 	"aether-core/io/persistence"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
+	// "aether-core/services/verify"
 	"errors"
 	"fmt"
 	// "github.com/davecgh/go-spew/spew"
@@ -148,10 +149,10 @@ func Sync(a api.Address) error {
 	// - Check if there is a record of this node in the nodes table. If not so, create and commit.
 	var n persistence.DbNode
 	var err4 error
-	n, err4 = persistence.ReadNode(apiResp.NodeId)
+	n, err4 = persistence.ReadNode(api.Fingerprint(apiResp.NodeId))
 	if err4 != nil && strings.Contains(err4.Error(), "The node you have asked for could not be found") {
 		// Node does not exist in the DB. Create it and commit it to DB.
-		n.Fingerprint = apiResp.NodeId
+		n.Fingerprint = api.Fingerprint(apiResp.NodeId)
 		err5 := persistence.InsertNode(n)
 		if err5 != nil {
 			// DB commit error, or node was using the same id as ours.
@@ -176,19 +177,23 @@ func Sync(a api.Address) error {
 	logging.Log(2, fmt.Sprintf("SYNC:PULL STARTED with data from node: %s:%d", a.Location, a.Port))
 	logging.Log(2, fmt.Sprintf("Endpoints: %#v", endpoints))
 	ims := []persistence.InsertMetrics{}
-	for key, val := range endpoints {
+	// callOrder := []string{"boards", "threads", "posts", "votes", "addresses", "keys", "truststates"}
+	callOrder := []string{"addresses", "votes", "truststates", "posts", "threads", "boards", "keys"}
+	// callOrder := []string{"boards"}
+	for _, endpointName := range callOrder {
+		fmt.Println(endpointName)
 		start := time.Now()
 		// // GET
 		// Do an endpoint GET with the timestamp. (Mind that the timestamp is being provided into the GetEndpoint, it will only fetch stuff after that timestamp.)
-		logging.Log(2, fmt.Sprintf("Asking for entity type: %s", key))
-		resp, err6 := api.GetEndpoint(string(a.Location), string(a.Sublocation), a.Port, key, val)
+		logging.Log(2, fmt.Sprintf("Asking for entity type: %s", endpointName))
+		resp, err6 := api.GetEndpoint(string(a.Location), string(a.Sublocation), a.Port, endpointName, endpoints[endpointName])
 		if err6 != nil {
-			logging.Log(2, fmt.Sprintf("Getting GET Endpoint for the entity type '%s' failed. Error: %s, Address: %#v", key, err6, a))
+			logging.Log(2, fmt.Sprintf("Getting GET Endpoint for the entity type '%s' failed. Error: %s, Address: %#v", endpointName, err6, a))
 		}
 		logging.Log(2, fmt.Sprintf("Response to be moved to the interface pack: %#v", resp))
 		elapsed := time.Since(start) // We end this counter before DB insert starts, because this is the network-time counter.
 		// Move the objects into an interface to prepare them to be committed.
-		iface := moveEntitiesToInterfacePack(&resp)
+		iface := prepareForBatchInsert(&resp)
 		// Save the response to the database.
 		im, err := persistence.BatchInsert(*iface)
 		if err != nil {
@@ -198,23 +203,23 @@ func Sync(a api.Address) error {
 		// Set the last checkin timestamp for each entity type to the beginning of this process. (We will update this later before committing the node checkin set based on the POST response receipts, if any)
 		// Check if the apiResp.Timestamp is newer or older than the timestamp we have. It might actually be older,because we might have received a POST response from this node, and that might have been a later Timestamp than that of the last cache's.
 
-		if endpoints[key] < resp.MostRecentSourceTimestamp {
-			endpoints[key] = resp.MostRecentSourceTimestamp
+		if endpoints[endpointName] < resp.MostRecentSourceTimestamp {
+			endpoints[endpointName] = resp.MostRecentSourceTimestamp
 		}
 		// Insert the metrics into the container.
-		if key == "boards" {
+		if endpointName == "boards" {
 			c.BoardsGETNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
-		} else if key == "threads" {
+		} else if endpointName == "threads" {
 			c.ThreadsGETNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
-		} else if key == "posts" {
+		} else if endpointName == "posts" {
 			c.PostsGETNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
-		} else if key == "votes" {
+		} else if endpointName == "votes" {
 			c.VotesGETNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
-		} else if key == "keys" {
+		} else if endpointName == "keys" {
 			c.KeysGETNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
-		} else if key == "truststates" {
+		} else if endpointName == "truststates" {
 			c.TruststatesGETNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
-		} else if key == "addresses" {
+		} else if endpointName == "addresses" {
 			c.AddressesGETNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
 		}
 		// GET portion of this sync is done. Now on to POST requests.
@@ -277,25 +282,29 @@ func Sync(a api.Address) error {
 			// Here, we need to insert the last sync timestamp into the post request, so that it will be gated appropriately.
 			f := api.Filter{}
 			f.Type = "timestamp"
-			f.Values = []string{strconv.Itoa(int(endpoints[key])), strconv.Itoa(0)}
+			f.Values = []string{strconv.Itoa(int(endpoints[endpointName])), strconv.Itoa(0)}
 			apiReq.Filters = []api.Filter{f}
+			signingErr := apiReq.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+			if signingErr != nil {
+				return signingErr
+			}
 			reqAsJson, jsonErr := responsegenerator.ConvertApiResponseToJson(apiReq)
 			if jsonErr != nil {
 				return jsonErr
 			}
-			postResp, respDuration, err7 := api.GetPage(string(a.Location), string(a.Sublocation), a.Port, endpointsMap[key], "POST", reqAsJson)
+			postResp, respDuration, err7 := api.GetPage(string(a.Location), string(a.Sublocation), a.Port, endpointsMap[endpointName], "POST", reqAsJson)
 			if err7 != nil {
-				return errors.New(fmt.Sprintf("Getting POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", key, err7))
+				return errors.New(fmt.Sprintf("Getting POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", endpointName, err7))
 			}
 			// // Now, check if this is an one-page response, or links to another location for a cache hit.
 			if len(postResp.CacheLinks) > 0 { // This response needed more than one page, so the remote split it into multiple pages, and saved it to a cache.
 				postResultResp, err8 := api.CollectMultipartPOSTResponse(string(a.Location), string(a.Sublocation), a.Port, fmt.Sprintf("responses/%s", postResp.CacheLinks[0].ResponseUrl))
 				// We're adding /responses/ because that's where the singular responses will be.
 				if err8 != nil {
-					return errors.New(fmt.Sprintf("Getting Multi page POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", key, err8))
+					return errors.New(fmt.Sprintf("Getting Multi page POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", endpointName, err8))
 				}
 				elapsed = time.Since(start) // Ends here, since we don't want to capture DB time.
-				postresultIface := moveEntitiesToInterfacePack(&postResultResp)
+				postresultIface := prepareForBatchInsert(&postResultResp)
 				im, err := persistence.BatchInsert(*postresultIface)
 				if err != nil {
 					logging.LogCrash(err)
@@ -305,46 +314,46 @@ func Sync(a api.Address) error {
 				// This response is one page, so the result is embedded into the POST response itself. Simple.
 				singlePage = true
 				elapsed = time.Since(start) // Ends here, since we don't want to capture DB time.
-				postIface := moveEntitiesToInterfacePack(&postResp)
+				postIface := prepareForBatchInsert(&postResp)
 				im, err := persistence.BatchInsert(*postIface)
 				if err != nil {
 					logging.LogCrash(err)
 				}
 				ims = append(ims, im)
 			}
-			endpoints[key] = postResp.MostRecentSourceTimestamp
+			endpoints[endpointName] = postResp.MostRecentSourceTimestamp
 			// Insert the metrics into the container.
-			if key == "boards" {
+			if endpointName == "boards" {
 				c.BoardsPOSTNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
 				c.BoardsPOSTTimeToFirstResponse = globals.Round(respDuration.Seconds(), 0.1)
 				c.TotalNetworkRemoteWait = c.TotalNetworkRemoteWait + c.BoardsPOSTTimeToFirstResponse
 				c.BoardsSinglePage = singlePage
-			} else if key == "threads" {
+			} else if endpointName == "threads" {
 				c.ThreadsPOSTNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
 				c.ThreadsPOSTTimeToFirstResponse = globals.Round(respDuration.Seconds(), 0.1)
 				c.TotalNetworkRemoteWait = c.TotalNetworkRemoteWait + c.ThreadsPOSTTimeToFirstResponse
 				c.ThreadsSinglePage = singlePage
-			} else if key == "posts" {
+			} else if endpointName == "posts" {
 				c.PostsPOSTNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
 				c.PostsPOSTTimeToFirstResponse = globals.Round(respDuration.Seconds(), 0.1)
 				c.TotalNetworkRemoteWait = c.TotalNetworkRemoteWait + c.PostsPOSTTimeToFirstResponse
 				c.PostsSinglePage = singlePage
-			} else if key == "votes" {
+			} else if endpointName == "votes" {
 				c.VotesPOSTNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
 				c.VotesPOSTTimeToFirstResponse = globals.Round(respDuration.Seconds(), 0.1)
 				c.TotalNetworkRemoteWait = c.TotalNetworkRemoteWait + c.VotesPOSTTimeToFirstResponse
 				c.VotesSinglePage = singlePage
-			} else if key == "keys" {
+			} else if endpointName == "keys" {
 				c.KeysPOSTNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
 				c.KeysPOSTTimeToFirstResponse = globals.Round(respDuration.Seconds(), 0.1)
 				c.TotalNetworkRemoteWait = c.TotalNetworkRemoteWait + c.KeysPOSTTimeToFirstResponse
 				c.KeysSinglePage = singlePage
-			} else if key == "truststates" {
+			} else if endpointName == "truststates" {
 				c.TruststatesPOSTNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
 				c.TruststatesPOSTTimeToFirstResponse = globals.Round(respDuration.Seconds(), 0.1)
 				c.TotalNetworkRemoteWait = c.TotalNetworkRemoteWait + c.TruststatesPOSTTimeToFirstResponse
 				c.TruststatesSinglePage = singlePage
-			} else if key == "addresses" {
+			} else if endpointName == "addresses" {
 				c.AddressesPOSTNetworkTime = globals.Round(elapsed.Seconds(), 0.1)
 				c.AddressesPOSTTimeToFirstResponse = globals.Round(respDuration.Seconds(), 0.1)
 				c.TotalNetworkRemoteWait = c.TotalNetworkRemoteWait + c.AddressesPOSTTimeToFirstResponse
@@ -367,7 +376,7 @@ func Sync(a api.Address) error {
 	}
 	logging.Log(2, fmt.Sprintf("SYNC COMPLETE with node: %s:%d. It took %d seconds", a.Location, a.Port, int(time.Since(start).Seconds())))
 	closeClr := color.New(color.FgBlack, color.BgWhite)
-	logging.Log(1, generateCloseMessage(c, closeClr, &ims, int(time.Since(start).Seconds()), false))
+	logging.Log(1, generateCloseMessage(c, closeClr, &ims, int(time.Since(start).Seconds()), true))
 	return nil
 }
 
@@ -430,8 +439,8 @@ func generateCloseMessage(c *CurrentOutboundSyncMetrics, clr *color.Color, ims *
 			c.TruststatesGETNetworkTime, c.TruststatesPOSTNetworkTime, c.TruststatesPOSTTimeToFirstResponse,
 			c.AddressesGETNetworkTime, c.AddressesPOSTNetworkTime, c.AddressesPOSTTimeToFirstResponse,
 		)
-		longTimeDetailString = fmt.Sprintf("\n  DB: %ds %s \n  Network: %ds %s", c.DbInsertDurationSeconds, dbTimeDetailString, c.TotalDurationSeconds-c.DbInsertDurationSeconds, networkTimeDetailString)
-		shortTimeDetailString = fmt.Sprintf("\n    DB: %ds   Network: %ds (Wait for remote: %.1fs)", c.DbInsertDurationSeconds, c.TotalDurationSeconds-c.DbInsertDurationSeconds, c.TotalNetworkRemoteWait)
+		longTimeDetailString = fmt.Sprintf("\n  DB: %ds (%s) %s \n  Network: %ds %s", c.DbInsertDurationSeconds, globals.BackendConfig.GetDbEngine(), dbTimeDetailString, c.TotalDurationSeconds-c.DbInsertDurationSeconds, networkTimeDetailString)
+		shortTimeDetailString = fmt.Sprintf("\n    DB: %ds (%s)  Network: %ds (Wait for remote: %.1fs)", c.DbInsertDurationSeconds, globals.BackendConfig.GetDbEngine(), c.TotalDurationSeconds-c.DbInsertDurationSeconds, c.TotalNetworkRemoteWait)
 		if extended {
 			timeDetailString = longTimeDetailString
 		} else {
@@ -462,7 +471,11 @@ func singlePageSprinter(c *CurrentOutboundSyncMetrics, entityType string) string
 	}
 }
 
-func moveEntitiesToInterfacePack(r *api.Response) *[]interface{} {
+// prepareForBatchInsert verifies the items in this response container, and converts it to the correct form BatchInsert accepts.
+func prepareForBatchInsert(r *api.Response) *[]interface{} {
+	// // cleanedResp := verify.VerifyEntitiesInResponse(r)
+	// cleanedResp := verify.BatchVerify(r)
+	// resp := *cleanedResp
 	resp := *r
 	var carrier []interface{}
 	for i, _ := range resp.Boards {
@@ -513,7 +526,6 @@ func Check(a api.Address) (api.Address, bool, api.ApiResponse, error) {
 	if err2 != nil {
 		return api.Address{}, NODE_STATIC, apiResp, err2
 	}
-
 	if apiResp.NodeId == api.Fingerprint(globals.BackendConfig.GetNodeId()) {
 		/*
 			This node is using the same NodeId as we do. This is, in most cases, a node connecting to itself over a loopback interface. Most router will not allow their own address to be pinged from within network, but in testing and in other rare occasions this can happen.
@@ -529,6 +541,10 @@ func Check(a api.Address) (api.Address, bool, api.ApiResponse, error) {
 	var postApiResp api.ApiResponse
 	if !NODE_STATIC {
 		apiReq := responsegenerator.GeneratePrefilledApiResponse()
+		signingErr := apiReq.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+		if signingErr != nil {
+			return api.Address{}, NODE_STATIC, apiResp, signingErr
+		}
 		reqAsJson, jsonErr := responsegenerator.ConvertApiResponseToJson(apiReq)
 		if jsonErr != nil {
 			return api.Address{}, NODE_STATIC, apiResp, jsonErr
@@ -536,6 +552,7 @@ func Check(a api.Address) (api.Address, bool, api.ApiResponse, error) {
 		var err3 error
 		postApiResp, err3 = api.GetPageRaw(string(a.Location), string(a.Sublocation), a.Port, "node", "POST", reqAsJson) // Raw call instead of regular one because we need access to the inbound remote timestamp.
 		if err3 != nil {
+			// Mind that this can fail for verification failure also (if 4 entities in a page fails verification, the page fails verification. This is a page that actually has entities.)
 			return api.Address{}, NODE_STATIC, apiResp, errors.New(fmt.Sprintf("Getting POST Endpoint in Check() routine for this entity type failed. Endpoint type: %s, Error: %s", "node", err3))
 		}
 	}
@@ -555,6 +572,7 @@ func Check(a api.Address) (api.Address, bool, api.ApiResponse, error) {
 	return addr, NODE_STATIC, apiResp, nil
 }
 
+// insertFirstPartyAddressData inserts the first-party data we know about this address.
 func insertFirstPartyAddressData(inboundAddrPtr *api.Address, localAddrPtr *api.Address, lastOnline api.Timestamp) *api.Address {
 	addr := *inboundAddrPtr
 	addr.Location = localAddrPtr.Location // We know this to be true, because we just connected to it through a.Location. If the remote says it's a different IP, it's lying.
@@ -570,5 +588,6 @@ func insertFirstPartyAddressData(inboundAddrPtr *api.Address, localAddrPtr *api.
 	}
 	addr.Port = localAddrPtr.Port // Because we just connected to this port and it worked. If the remote says it's a different port, it's lying.
 	addr.LastOnline = lastOnline
+	addr.EntityVersion = globals.BackendTransientConfig.EntityVersions.Address
 	return &addr
 }

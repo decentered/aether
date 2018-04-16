@@ -4,7 +4,8 @@
 package configstore
 
 import (
-	"aether-core/services/randomhashgen"
+	"aether-core/services/fingerprinting"
+	// "aether-core/services/randomhashgen"
 	"aether-core/services/signaturing"
 	"crypto/ecdsa"
 	// "crypto/elliptic"
@@ -16,6 +17,8 @@ import (
 	"fmt"
 	// "github.com/davecgh/go-spew/spew"
 	// "github.com/fatih/color"
+	"crypto/elliptic"
+	"encoding/hex"
 	cdir "github.com/shibukawa/configdir"
 	"log"
 	"runtime"
@@ -210,9 +213,6 @@ Days of data to be kept before deletion.
 ## LastCacheGenerationTimestamp
 The last time a new cache was generated locally.
 
-## VerificationEnabled
-Currently unused.
-
 ## EntityPageSizes
 How many entities will be put in a response page in POST responses and caches.
 
@@ -325,9 +325,20 @@ DbUsername is the username of the account that has read/write access to the "aet
 ## DbPassword
 The password of the DB user, if not SQLite3. By default it's "exventoveritas". It's highly recommended that you change this.
 
+## MetricsLevel
+## MetricsToken
+
+## BackendKeyPair
+Backend key pair is the key for this specific backend by which it signs the pages it creates. This is a combination of both private and public keys.
+
+## AllowUnsignedEntities
+If this is set to true, the node accepts posts that are anonymous. (But still with PoW and Fingerprint). This is disabled by default.
+
 */
 
 // Every time you add a new item here, please add getters, setters and to blankcheck method
+
+// And before you think "hm, these would be better if they were private with lowercase letters.. that means you can't export them with JSON. Been there."
 
 // Backend config base
 type BackendConfig struct {
@@ -335,7 +346,6 @@ type BackendConfig struct {
 	NetworkMemoryDays                       uint                // 180
 	LocalMemoryDays                         uint                // 180
 	LastCacheGenerationTimestamp            uint64              //
-	VerificationEnabled                     bool                //
 	EntityPageSizes                         EntityPageSizes     //
 	MinimumPoWStrengths                     MinimumPoWStrengths //
 	PoWBailoutTimeSeconds                   uint                // 30
@@ -374,6 +384,9 @@ type BackendConfig struct {
 	DbPassword                              string // Only applies to non-sqlite
 	MetricsLevel                            uint8  // 0: no metrics transmitted
 	MetricsToken                            string // If metrics level is not zero, metrics token is the anonymous identifier for the metrics server. Resetting this to 0 makes this node behave like a new node as far as metrics go, but if you don't want metrics to be collected, you can set it through the application or set the metrics level to zero in the JSON settings file.
+	BackendKeyPair                          []byte
+	MarshaledBackendPublicKey               string
+	AllowUnsignedEntities                   bool
 }
 
 // GETTERS AND SETTERS
@@ -429,9 +442,6 @@ func (config *BackendConfig) GetLastCacheGenerationTimestamp() int64 {
 	}
 	log.Fatal("This should never happen." + trace())
 	return 0
-}
-func (config *BackendConfig) GetVerificationEnabled() bool {
-	return config.VerificationEnabled
 }
 func (config *BackendConfig) GetEntityPageSizes() EntityPageSizes {
 	if config.EntityPageSizes.Boards < maxAbsolutePageSize &&
@@ -835,6 +845,22 @@ func (config *BackendConfig) GetMetricsToken() string {
 	return ""
 }
 
+func (config *BackendConfig) GetBackendKeyPair() *ecdsa.PrivateKey {
+	keyPair, err := x509.ParseECPrivateKey(config.BackendKeyPair)
+	if err != nil {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v, Error: %#v ", config.BackendKeyPair, err) + " Trace: " + trace()))
+	}
+	return keyPair
+}
+
+func (config *BackendConfig) GetMarshaledBackendPublicKey() string {
+	return config.MarshaledBackendPublicKey
+}
+
+func (config *BackendConfig) GetAllowUnsignedEntities() bool {
+	return config.AllowUnsignedEntities
+}
+
 /*****************************************************************************/
 
 // Setters
@@ -893,14 +919,6 @@ func (config *BackendConfig) SetLastCacheGenerationTimestamp(val int64) error {
 		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + trace())
 	}
 	log.Fatal("This should never happen." + trace())
-	return nil
-}
-func (config *BackendConfig) SetVerificationEnabled(val bool) error {
-	config.VerificationEnabled = val
-	commitErr := config.Commit()
-	if commitErr != nil {
-		return commitErr
-	}
 	return nil
 }
 func (config *BackendConfig) SetEntityPageSizes(val EntityPageSizes) error {
@@ -1470,6 +1488,39 @@ func (config *BackendConfig) SetMetricsToken(val string) error {
 	return nil
 }
 
+func (config *BackendConfig) SetBackendKeyPair(val *ecdsa.PrivateKey) error {
+	derEncodedKeyPair, err := x509.MarshalECPrivateKey(val)
+	if err != nil {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + trace())
+	}
+	config.BackendKeyPair = derEncodedKeyPair
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
+// The only way to set this is to set backend key pair first.
+func (config *BackendConfig) SetMarshaledBackendPublicKey(val *ecdsa.PrivateKey) error {
+	config.MarshaledBackendPublicKey = hex.EncodeToString(elliptic.Marshal(
+		elliptic.P521(), val.X, val.Y))
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
+func (config *BackendConfig) SetAllowUnsignedEntities(val bool) error {
+	config.AllowUnsignedEntities = val
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
 /*****************************************************************************/
 
 // BlankCheck looks at all variables and if it finds they're at their zero value, sets the default value for it. This is a guard against a new item being added to the config store as a result of a version update, but it being zero value. If a zero'd value is found, we change it to its default before anything else happens. This also effectively runs at the first pass to set the defaults.
@@ -1485,7 +1536,6 @@ func (config *BackendConfig) BlankCheck() {
 		config.SetLocalMemoryDays(defaultLocalMemoryDays)
 	}
 	// ::LastCacheGenerationTimestamp: can be zero, no need to blank check.
-	// ::VerificationEnabled: can be false, no need to blank check.
 	if config.MinimumPoWStrengths.Board == 0 ||
 		config.MinimumPoWStrengths.BoardUpdate == 0 ||
 		config.MinimumPoWStrengths.Thread == 0 ||
@@ -1571,6 +1621,9 @@ func (config *BackendConfig) BlankCheck() {
 		config.SetDispatchExclusionExpiryForStaticAddress(defaultDispatchExclusionExpiryForStaticAddress)
 	}
 	// ::LoggingLevel: can be zero, no need to blank check.
+	// if config.LoggingLevel == 0 {
+	// 	config.SetLoggingLevel(2)
+	// }
 	if config.ExternalIp == "" {
 		config.SetExternalIp(defaultExternalIp)
 	}
@@ -1596,13 +1649,6 @@ func (config *BackendConfig) BlankCheck() {
 		c0 := SubprotocolShim{Name: "c0", VersionMajor: 1, VersionMinor: 0, SupportedEntities: []string{"board", "thread", "post", "vote", "key", "truststate"}}
 		dweb := SubprotocolShim{Name: "dweb", VersionMajor: 1, VersionMinor: 0, SupportedEntities: []string{"page"}}
 		config.SetServingSubprotocols([]interface{}{c0, dweb})
-	}
-	if config.NodeId == "" {
-		rndHash, err := randomhashgen.GenerateRandomHash()
-		if err != nil {
-			log.Fatal(errors.New(fmt.Sprintf("Error: %#v \n Trace: %#v", err, trace())))
-		}
-		config.SetNodeId(rndHash)
 	}
 	if len(config.UserDirectory) == 0 {
 		config.SetUserDirectory(cdir.New(Btc.OrgIdentifier, Btc.AppIdentifier).QueryFolders(cdir.Global)[0].Path)
@@ -1630,7 +1676,20 @@ func (config *BackendConfig) BlankCheck() {
 	}
 	// ::MetricsLevel: can be zero, no need to blank check.
 	// ::MetricsToken: can be zero, no need to blank check.
-
+	if len(config.BackendKeyPair) == 0 {
+		privKey, _ := signaturing.CreateKeyPair()
+		config.SetBackendKeyPair(privKey)
+	}
+	// This needs to be after Backend key pair generation.
+	if len(config.MarshaledBackendPublicKey) == 0 {
+		config.SetMarshaledBackendPublicKey(config.GetBackendKeyPair())
+	}
+	// This needs to be after key pair generation, because it uses the key pair. Node Id is the Fingerprint of the public key of the backend.
+	if config.NodeId == "" {
+		nodeid := fingerprinting.Create(config.GetMarshaledBackendPublicKey())
+		config.SetNodeId(nodeid)
+	}
+	// ::AllowUnsignedEntities: can be false, no need to blank check.
 }
 
 /*
@@ -1645,7 +1704,6 @@ func (config *BackendConfig) SanityCheck() {
 		config.GetNetworkMemoryDays()
 		config.GetNetworkHeadDays()
 		config.GetLastCacheGenerationTimestamp()
-		config.GetVerificationEnabled()
 		config.GetEntityPageSizes()
 		config.GetMinimumPoWStrengths()
 		config.GetPoWBailoutTimeSeconds()
@@ -1671,13 +1729,16 @@ func (config *BackendConfig) SanityCheck() {
 		config.GetLastStaticAddressConnectionTimestamp()
 		config.GetLastLiveAddressConnectionTimestamp()
 		config.GetServingSubprotocols()
-		config.GetNodeId()
 		config.GetDbEngine()
 		config.GetDbIp()
 		config.GetDbPort()
 		config.GetDbPassword()
 		config.GetMetricsLevel()
 		config.GetMetricsToken()
+		config.GetBackendKeyPair()
+		// Below are location sensitive. Needs to happen after Backend Key Pair generation (above).
+		config.GetMarshaledBackendPublicKey()
+		config.GetNodeId()
 	}
 }
 
@@ -1950,6 +2011,28 @@ var Ftc FrontendTransientConfig
 
 // Backend
 
+// Default entity versions for this version of the app. This is not user adjustable.
+
+const (
+	defaultBoardEntityVersion      = 1
+	defaultThreadEntityVersion     = 1
+	defaultPostEntityVersion       = 1
+	defaultVoteEntityVersion       = 1
+	defaultKeyEntityVersion        = 1
+	defaultTruststateEntityVersion = 1
+	defaultAddressEntityVersion    = 1
+)
+
+type EntityVersions struct {
+	Board      int
+	Thread     int
+	Post       int
+	Vote       int
+	Key        int
+	Truststate int
+	Address    int
+}
+
 /*
 #### NONCOMMITTED ITEMS
 
@@ -2007,6 +2090,17 @@ This is the current metrics struct that we are building to send to the metrics s
 ## ConfigMutex
 This is the mutex that prevents configuration from being written from multiple places.
 
+## FingerprintCheckEnabled
+Determines whether the entities coming over from the wire are fingerprint-checked for integrity.
+
+## SignatureCheckEnabled
+Determines whether the entities coming over from the wire are signature-checked for ownership.
+
+## ProofOfWorkCheckEnabled
+Determines whether the entities coming over from the wire are PoW-checked for anti-spam.
+
+## PageSignatureCheckEnabled
+Determines whether the pages (entity containers) coming over from the wire are signature-checked for integrity.
 */
 
 type BackendTransientConfig struct {
@@ -2030,6 +2124,11 @@ type BackendTransientConfig struct {
 	StaticDispatchRunning     bool
 	CurrentMetricsPage        pb.Metrics
 	ConfigMutex               *sync.Mutex
+	FingerprintCheckEnabled   bool
+	SignatureCheckEnabled     bool
+	ProofOfWorkCheckEnabled   bool
+	PageSignatureCheckEnabled bool
+	EntityVersions            EntityVersions
 }
 
 // Set transient backend config defaults. Only need to set defaults that are not the type default.
@@ -2038,7 +2137,20 @@ func (config *BackendTransientConfig) SetDefaults() {
 	config.AppIdentifier = "Aether"
 	config.OrgIdentifier = "Air Labs"
 	config.ConfigMutex = &sync.Mutex{}
-
+	config.FingerprintCheckEnabled = true
+	config.SignatureCheckEnabled = true
+	config.ProofOfWorkCheckEnabled = true
+	config.PageSignatureCheckEnabled = true
+	ev := EntityVersions{
+		Board:      defaultBoardEntityVersion,
+		Thread:     defaultThreadEntityVersion,
+		Post:       defaultPostEntityVersion,
+		Vote:       defaultVoteEntityVersion,
+		Key:        defaultKeyEntityVersion,
+		Truststate: defaultTruststateEntityVersion,
+		Address:    defaultAddressEntityVersion,
+	}
+	config.EntityVersions = ev
 }
 
 // Frontend

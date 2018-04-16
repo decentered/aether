@@ -35,6 +35,10 @@ func init() {
 	var swarmPlan string
 	var killTimeout int
 	var swarmNodeId int
+	var fpCheckEnabled bool
+	var sigCheckEnabled bool
+	var powCheckEnabled bool
+	var pageSigCheckEnabled bool
 	cmdOrchestrate.Flags().StringVarP(&orgName, "orgname", "", "Air Labs", "Global transient org name for the app.")
 	cmdOrchestrate.Flags().StringVarP(&appName, "appname", "", "Aether", "Global transient app name for the app.")
 	cmdOrchestrate.Flags().IntVarP(&loggingLevel, "logginglevel", "", 0, "Global logging level of the app.")
@@ -49,6 +53,10 @@ func init() {
 	cmdOrchestrate.Flags().StringVarP(&swarmPlan, "swarmplan", "", "", "This flag allows you to load a swarm plan to your swarm nodes. This swarm plan does have a list of TO-FROM node connections with certain delays, so that you can schedule connections to happen in a fashion that is pre-mediated. This allows you to kickstart a few node connections and see how network behaves based on new data, for example.")
 	cmdOrchestrate.Flags().IntVarP(&killTimeout, "killtimeout", "", 120, "If given, this sets up a maximum lifetime in seconds for the node. This is useful in swarm tests in which all swarm nodes have to exit so that the test can move on to the data analysis stage. ")
 	cmdOrchestrate.Flags().IntVarP(&swarmNodeId, "swarmnodeid", "", 0, "This flag allows you to set the terminal output colour for the orchestrator. This is useful, mostly because you might be running a swarm test in a single machine, outputting into the same terminal, and you want to be able to discern which messages are coming from one node or the other.")
+	cmdOrchestrate.Flags().BoolVarP(&fpCheckEnabled, "fpcheckenabled", "", true, "Setting this to false will disable fingerprint checks on entities. True by default.")
+	cmdOrchestrate.Flags().BoolVarP(&sigCheckEnabled, "sigcheckenabled", "", true, "Setting this to false will disable signature checks on entities. True by default.")
+	cmdOrchestrate.Flags().BoolVarP(&powCheckEnabled, "powcheckenabled", "", true, "Setting this to false will disable signature checks on entities. True by default.")
+	cmdOrchestrate.Flags().BoolVarP(&pageSigCheckEnabled, "pagesigcheckenabled", "", true, "Setting this to false will disable page signature checks on pages. True by default.")
 	cmdRoot.AddCommand(cmdOrchestrate)
 }
 

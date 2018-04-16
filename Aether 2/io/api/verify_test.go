@@ -1,4 +1,4 @@
-package verify_test
+package api_test
 
 import (
 	"aether-core/io/api"

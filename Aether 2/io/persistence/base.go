@@ -53,8 +53,9 @@ func createDatabase() error {
 	var schemaPrep1 string
 	var schemaPrep2 string
 	var schemaPrep3 string
+	var schemaPrep4 string
 	var schema1 string
-	var schema2 string
+	// var schema2 string
 	var schema3 string
 	var schema4 string
 	var schema5 string
@@ -69,15 +70,18 @@ func createDatabase() error {
 	var schema14 string
 	var schema15 string
 	var schema16 string
+	var schema17 string
+	var schema18 string
 
 	if globals.BackendConfig.DbEngine == "mysql" {
 		schemaPrep1 = `
       CREATE DATABASE IF NOT EXISTS AetherDB
-      DEFAULT CHARACTER SET utf8
-      DEFAULT COLLATE utf8_general_ci;
+      DEFAULT CHARACTER SET utf8mb4
+      DEFAULT COLLATE utf8mb4_general_ci;
     `
 		schemaPrep2 = `USE AetherDB;`
-		schemaPrep3 = `SET sql_mode = 'STRICT_TRANS_TABLES';`
+		schemaPrep3 = `SET sql_mode = 'TRADITIONAL'; `      // strictest
+		schemaPrep4 = `SET GLOBAL innodb_file_per_table=1;` // required to enable compression for mysql
 		schema1 = `
         CREATE TABLE IF NOT EXISTS BoardOwners (
           BoardFingerprint VARCHAR(64) NOT NULL,
@@ -85,16 +89,15 @@ func createDatabase() error {
           Expiry BIGINT NOT NULL,
           Level SMALLINT NOT NULL,
           PRIMARY KEY(BoardFingerprint, KeyFingerprint)
-        );
+        )ROW_FORMAT=COMPRESSED;
         `
-		schema2 = ``
 		schema3 = `
         CREATE TABLE IF NOT EXISTS Boards (
           Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
           Name VARCHAR(255) NOT NULL,
           Owner VARCHAR(64) NOT NULL,
-          -- BoardOwners field will have to be constructed on the fly.
-          Description LONGBLOB NOT NULL,  -- Converted from varchar(65535) to text, because it doesn't fit into a MYSQL table. Enforce max 65535 chars on the application layer.
+          OwnerPublicKey VARCHAR(1024) NOT NULL,
+          Description MEDIUMTEXT NOT NULL,  -- Converted from varchar(65535) to text, because it doesn't fit into a MYSQL table. Enforce max 65535 chars on the application layer.
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
           Signature VARCHAR(512) NOT NULL,
@@ -102,18 +105,22 @@ func createDatabase() error {
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
-          Meta JSON NOT NULL,
+          LastReferenced BIGINT NOT NULL,
+          EntityVersion SMALLINT NOT NULL,
+          Language VARCHAR(3) NOT NULL,
+          Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
-          EncrConcent LONGBLOB NOT NULL
-        );`
+          EncrConcent MEDIUMTEXT NOT NULL
+        )ROW_FORMAT=COMPRESSED;`
 		schema4 = `
         CREATE TABLE IF NOT EXISTS Threads (
           Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
           Board VARCHAR(64) NOT NULL,
           Name VARCHAR(255) NOT NULL,
-          Body LONGBLOB NOT NULL,
+          Body MEDIUMTEXT NOT NULL,
           Link VARCHAR(5000) NOT NULL,
           Owner VARCHAR(64) NOT NULL,
+          OwnerPublicKey VARCHAR(1024) NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
           Signature VARCHAR(512) NOT NULL,
@@ -121,19 +128,22 @@ func createDatabase() error {
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
-          Meta JSON NOT NULL,
+          LastReferenced BIGINT NOT NULL,
+          EntityVersion SMALLINT NOT NULL,
+          Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
-          EncrConcent LONGBLOB NOT NULL,
+          EncrConcent MEDIUMTEXT NOT NULL,
           INDEX (Board)
-        );`
+        )ROW_FORMAT=COMPRESSED;`
 		schema5 = `
         CREATE TABLE IF NOT EXISTS Posts (
           Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
           Board VARCHAR(64) NOT NULL,
           Thread VARCHAR(64) NOT NULL,
           Parent VARCHAR(64) NOT NULL,
-          Body LONGBLOB NOT NULL,
+          Body MEDIUMTEXT NOT NULL,
           Owner VARCHAR(64) NOT NULL,
+          OwnerPublicKey VARCHAR(1024) NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
           Signature VARCHAR(512) NOT NULL,
@@ -141,11 +151,13 @@ func createDatabase() error {
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
-          Meta JSON NOT NULL,
+          LastReferenced BIGINT NOT NULL,
+          EntityVersion SMALLINT NOT NULL,
+          Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
-          EncrConcent LONGBLOB NOT NULL,
-          INDEX (Thread)
-        );`
+          EncrConcent MEDIUMTEXT NOT NULL,
+          INDEX (Thread, Parent)
+        )ROW_FORMAT=COMPRESSED;`
 		schema6 = `
         CREATE TABLE IF NOT EXISTS Votes (
           Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
@@ -153,6 +165,7 @@ func createDatabase() error {
           Thread VARCHAR(64) NOT NULL,
           Target VARCHAR(64) NOT NULL,
           Owner VARCHAR(64) NOT NULL,
+          OwnerPublicKey VARCHAR(1024) NOT NULL,
           Type SMALLINT NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
@@ -161,11 +174,13 @@ func createDatabase() error {
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
-          Meta JSON NOT NULL,
+          LastReferenced BIGINT NOT NULL,
+          EntityVersion SMALLINT NOT NULL,
+          Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
-          EncrConcent LONGBLOB NOT NULL,
+          EncrConcent MEDIUMTEXT NOT NULL,
           INDEX (Target)
-        );`
+        )ROW_FORMAT=COMPRESSED;`
 		schema7 = `
         CREATE TABLE IF NOT EXISTS Addresses (
           Location VARCHAR(256) NOT NULL, -- From 2500
@@ -181,16 +196,20 @@ func createDatabase() error {
           ClientVersionPatch INTEGER NOT NULL,
           ClientName VARCHAR(255) NOT NULL,
           LocalArrival BIGINT NOT NULL,
+          LastReferenced BIGINT NOT NULL,
+          EntityVersion SMALLINT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
           PRIMARY KEY(Location, Sublocation, Port)
-        );`
+        )ROW_FORMAT=COMPRESSED;`
 		schema8 = `
         CREATE TABLE IF NOT EXISTS PublicKeys (
           Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
           Type VARCHAR(64) NOT NULL,
           PublicKey TEXT NOT NULL,
+          PublicKeyFingerprint VARCHAR(64) NOT NULL,
+          Expiry BIGINT NOT NULL,
           Name VARCHAR(64) NOT NULL,
-          Info LONGBLOB NOT NULL,
+          Info MEDIUMTEXT NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
           Signature VARCHAR(512) NOT NULL,
@@ -198,15 +217,19 @@ func createDatabase() error {
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
-          Meta JSON NOT NULL,
+          LastReferenced BIGINT NOT NULL,
+          EntityVersion SMALLINT NOT NULL,
+          Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
-          EncrConcent LONGBLOB NOT NULL
-        );`
+          EncrConcent MEDIUMTEXT NOT NULL,
+          INDEX (PublicKeyFingerprint)
+        )ROW_FORMAT=COMPRESSED;`
 		schema9 = `
         CREATE TABLE IF NOT EXISTS Truststates (
           Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
           Target VARCHAR(64) NOT NULL,
           Owner VARCHAR(64) NOT NULL,
+          OwnerPublicKey VARCHAR(1024) NOT NULL,
           Type SMALLINT NOT NULL,
           Domains VARCHAR(7000) NOT NULL,
           Expiry BIGINT NOT NULL,
@@ -217,10 +240,12 @@ func createDatabase() error {
           UpdateProofOfWork VARCHAR(1024) NOT NULL,
           UpdateSignature VARCHAR(512) NOT NULL,
           LocalArrival BIGINT NOT NULL,
-          Meta JSON NOT NULL,
+          LastReferenced BIGINT NOT NULL,
+          EntityVersion SMALLINT NOT NULL,
+          Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
-          EncrConcent LONGBLOB NOT NULL
-        );
+          EncrConcent MEDIUMTEXT NOT NULL
+        )ROW_FORMAT=COMPRESSED;
       `
 		schema10 = `
           CREATE TABLE IF NOT EXISTS Nodes (
@@ -232,7 +257,7 @@ func createDatabase() error {
             AddressesLastCheckin BIGINT NOT NULL,
             KeysLastCheckin BIGINT NOT NULL,
             TruststatesLastCheckin BIGINT NOT NULL
-          );
+          )ROW_FORMAT=COMPRESSED;
         `
 		schema11 = `
           CREATE TABLE IF NOT EXISTS Subprotocols (
@@ -241,7 +266,7 @@ func createDatabase() error {
             VersionMajor SMALLINT NOT NULL,
             VersionMinor INTEGER NOT NULL,
             SupportedEntities VARCHAR(5000) NOT NULL
-          );`
+          )ROW_FORMAT=COMPRESSED;`
 
 		schema12 = `
           CREATE TABLE IF NOT EXISTS AddressesSubprotocols (
@@ -250,15 +275,12 @@ func createDatabase() error {
             AddressPort INTEGER NOT NULL,
             SubprotocolFingerprint VARCHAR(64) NOT NULL,
             PRIMARY KEY(AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint)
-          );`
+          )ROW_FORMAT=COMPRESSED;`
 		schema16 = `
           CREATE TABLE IF NOT EXISTS Diagnostics (
             DbRoundtripTestField BIGINT PRIMARY KEY NOT NULL
-          );`
+          )ROW_FORMAT=COMPRESSED;`
 	} else if globals.BackendConfig.DbEngine == "sqlite" {
-		schemaPrep1 = ``
-		schemaPrep2 = ``
-		schemaPrep3 = ``
 		schema1 = `
         CREATE TABLE IF NOT EXISTS "BoardOwners" (
           "BoardFingerprint" varchar(64) NOT NULL
@@ -267,13 +289,13 @@ func createDatabase() error {
         ,  "Level" integer NOT NULL
         ,  PRIMARY KEY ("BoardFingerprint","KeyFingerprint")
         );`
-		schema2 = ``
 		schema3 = `
         CREATE TABLE IF NOT EXISTS "Boards" (
           "Fingerprint" varchar(64) NOT NULL
         ,  "Name" varchar(255) NOT NULL
         ,  "Owner" varchar(64) NOT NULL
-        ,  "Description" blob NOT NULL
+        ,  "OwnerPublicKey" varchar(1024) NOT NULL
+        ,  "Description" text NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
         ,  "Signature" varchar(512) NOT NULL
@@ -281,9 +303,12 @@ func createDatabase() error {
         ,  "UpdateProofOfWork" varchar(1024) NOT NULL
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "LastReferenced" integer NOT NULL
+        ,  "EntityVersion" integer NOT NULL
+        ,  "Language" varchar(3) NOT NULL
         ,  "Meta" text NOT NULL
         ,  "RealmId" varchar(64) NOT NULL
-        ,  "EncrContent" blob NOT NULL
+        ,  "EncrContent" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema4 = `
@@ -291,9 +316,10 @@ func createDatabase() error {
           "Fingerprint" varchar(64) NOT NULL
         ,  "Board" varchar(64) NOT NULL
         ,  "Name" varchar(255) NOT NULL
-        ,  "Body" blob NOT NULL
+        ,  "Body" text NOT NULL
         ,  "Link" varchar(5000) NOT NULL
         ,  "Owner" varchar(64) NOT NULL
+        ,  "OwnerPublicKey" varchar(1024) NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
         ,  "Signature" varchar(512) NOT NULL
@@ -301,9 +327,11 @@ func createDatabase() error {
         ,  "UpdateProofOfWork" varchar(1024) NOT NULL
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "LastReferenced" integer NOT NULL
+        ,  "EntityVersion" integer NOT NULL
         ,  "Meta" text NOT NULL
         ,  "RealmId" varchar(64) NOT NULL
-        ,  "EncrContent" blob NOT NULL
+        ,  "EncrContent" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema5 = `
@@ -312,8 +340,9 @@ func createDatabase() error {
         ,  "Board" varchar(64) NOT NULL
         ,  "Thread" varchar(64) NOT NULL
         ,  "Parent" varchar(64) NOT NULL
-        ,  "Body" blob NOT NULL
+        ,  "Body" text NOT NULL
         ,  "Owner" varchar(64) NOT NULL
+        ,  "OwnerPublicKey" varchar(1024) NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
         ,  "Signature" varchar(512) NOT NULL
@@ -321,9 +350,11 @@ func createDatabase() error {
         ,  "UpdateProofOfWork" varchar(1024) NOT NULL
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "LastReferenced" integer NOT NULL
+        ,  "EntityVersion" integer NOT NULL
         ,  "Meta" text NOT NULL
         ,  "RealmId" varchar(64) NOT NULL
-        ,  "EncrContent" blob NOT NULL
+        ,  "EncrContent" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema6 = `
@@ -333,6 +364,7 @@ func createDatabase() error {
         ,  "Thread" varchar(64) NOT NULL
         ,  "Target" varchar(64) NOT NULL
         ,  "Owner" varchar(64) NOT NULL
+        ,  "OwnerPublicKey" varchar(1024) NOT NULL
         ,  "Type" integer NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
@@ -341,9 +373,11 @@ func createDatabase() error {
         ,  "UpdateProofOfWork" varchar(1024) NOT NULL
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "LastReferenced" integer NOT NULL
+        ,  "EntityVersion" integer NOT NULL
         ,  "Meta" text NOT NULL
         ,  "RealmId" varchar(64) NOT NULL
-        ,  "EncrContent" blob NOT NULL
+        ,  "EncrContent" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema7 = `
@@ -361,6 +395,8 @@ func createDatabase() error {
         ,  "ClientVersionPatch" integer NOT NULL
         ,  "ClientName" varchar(255) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "LastReferenced" integer NOT NULL
+        ,  "EntityVersion" integer NOT NULL
         ,  "RealmId" varchar(64) NOT NULL
         ,  PRIMARY KEY ("Location","Sublocation","Port")
         );`
@@ -369,8 +405,10 @@ func createDatabase() error {
           "Fingerprint" varchar(64) NOT NULL
         ,  "Type" varchar(64) NOT NULL
         ,  "PublicKey" text NOT NULL
+        ,  "PublicKeyFingerprint" varchar(64) NOT NULL
+        ,  "Expiry" integer NOT NULL
         ,  "Name" varchar(64) NOT NULL
-        ,  "Info" blob NOT NULL
+        ,  "Info" text NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
         ,  "Signature" varchar(512) NOT NULL
@@ -378,9 +416,11 @@ func createDatabase() error {
         ,  "UpdateProofOfWork" varchar(1024) NOT NULL
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "LastReferenced" integer NOT NULL
+        ,  "EntityVersion" integer NOT NULL
         ,  "Meta" text NOT NULL
         ,  "RealmId" varchar(64) NOT NULL
-        ,  "EncrContent" blob NOT NULL
+        ,  "EncrContent" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema9 = `
@@ -388,6 +428,7 @@ func createDatabase() error {
           "Fingerprint" varchar(64) NOT NULL
         ,  "Target" varchar(64) NOT NULL
         ,  "Owner" varchar(64) NOT NULL
+        ,  "OwnerPublicKey" varchar(1024) NOT NULL
         ,  "Type" integer NOT NULL
         ,  "Domains" varchar(7000) NOT NULL
         ,  "Expiry" integer NOT NULL
@@ -398,9 +439,11 @@ func createDatabase() error {
         ,  "UpdateProofOfWork" varchar(1024) NOT NULL
         ,  "UpdateSignature" varchar(512) NOT NULL
         ,  "LocalArrival" integer NOT NULL
+        ,  "LastReferenced" integer NOT NULL
+        ,  "EntityVersion" integer NOT NULL
         ,  "Meta" text NOT NULL
         ,  "RealmId" varchar(64) NOT NULL
-        ,  "EncrContent" blob NOT NULL
+        ,  "EncrContent" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
 		schema10 = `
@@ -445,37 +488,54 @@ func createDatabase() error {
             CREATE TABLE IF NOT EXISTS "Diagnostics" (
               "DbRoundtripTestField" integer NOT NULL
             ,  PRIMARY KEY ("DbRoundtripTestField")
-            );`
+          );`
+		schema17 = `
+          CREATE INDEX IF NOT EXISTS "idx_PublicKeys_PublicKeyFingerprint" ON "PublicKeys" ("PublicKeyFingerprint");
+          `
+		schema18 = `
+          CREATE INDEX IF NOT EXISTS "idx_Posts_Parent" ON "Posts" ("Parent");
+          `
 	} else {
 		logging.LogCrash(fmt.Sprintf("Storage engine you've inputted is not supported. Please change it from the backend user config into something that is supported. You've provided: %s", globals.BackendConfig.GetDbEngine()))
 	}
 
 	var creationSchemas []string
-	if len(schemaPrep1) > 0 {
-		// MySQL specific DB creation schema.
-		creationSchemas = append(creationSchemas, schemaPrep1)
-		creationSchemas = append(creationSchemas, schemaPrep2)
-		creationSchemas = append(creationSchemas, schemaPrep3)
-	}
-	creationSchemas = append(creationSchemas, schema1)
-	creationSchemas = append(creationSchemas, schema2)
-	creationSchemas = append(creationSchemas, schema3)
-	creationSchemas = append(creationSchemas, schema4)
-	creationSchemas = append(creationSchemas, schema5)
-	creationSchemas = append(creationSchemas, schema6)
-	creationSchemas = append(creationSchemas, schema7)
-	creationSchemas = append(creationSchemas, schema8)
-	creationSchemas = append(creationSchemas, schema9)
-	creationSchemas = append(creationSchemas, schema10)
-	creationSchemas = append(creationSchemas, schema11)
-	creationSchemas = append(creationSchemas, schema12)
-	// Indexes in SQLite require separate statements
-	if len(schema13) > 0 && len(schema14) > 0 && len(schema15) > 0 {
+	if globals.BackendConfig.GetDbEngine() == "sqlite" {
+		creationSchemas = append(creationSchemas, schema1)
+		creationSchemas = append(creationSchemas, schema3)
+		creationSchemas = append(creationSchemas, schema4)
+		creationSchemas = append(creationSchemas, schema5)
+		creationSchemas = append(creationSchemas, schema6)
+		creationSchemas = append(creationSchemas, schema7)
+		creationSchemas = append(creationSchemas, schema8)
+		creationSchemas = append(creationSchemas, schema9)
+		creationSchemas = append(creationSchemas, schema10)
+		creationSchemas = append(creationSchemas, schema11)
+		creationSchemas = append(creationSchemas, schema12)
 		creationSchemas = append(creationSchemas, schema13)
 		creationSchemas = append(creationSchemas, schema14)
 		creationSchemas = append(creationSchemas, schema15)
+		creationSchemas = append(creationSchemas, schema16)
+		creationSchemas = append(creationSchemas, schema17)
+		creationSchemas = append(creationSchemas, schema18)
+	} else if globals.BackendConfig.GetDbEngine() == "mysql" {
+		creationSchemas = append(creationSchemas, schemaPrep1)
+		creationSchemas = append(creationSchemas, schemaPrep2)
+		creationSchemas = append(creationSchemas, schemaPrep3)
+		creationSchemas = append(creationSchemas, schemaPrep4)
+		creationSchemas = append(creationSchemas, schema1)
+		creationSchemas = append(creationSchemas, schema3)
+		creationSchemas = append(creationSchemas, schema4)
+		creationSchemas = append(creationSchemas, schema5)
+		creationSchemas = append(creationSchemas, schema6)
+		creationSchemas = append(creationSchemas, schema7)
+		creationSchemas = append(creationSchemas, schema8)
+		creationSchemas = append(creationSchemas, schema9)
+		creationSchemas = append(creationSchemas, schema10)
+		creationSchemas = append(creationSchemas, schema11)
+		creationSchemas = append(creationSchemas, schema12)
+		creationSchemas = append(creationSchemas, schema16)
 	}
-	creationSchemas = append(creationSchemas, schema16)
 
 	tx, err := globals.DbInstance.Beginx()
 	if err != nil {
@@ -552,32 +612,226 @@ var nodeInsert = `REPLACE INTO Nodes
   :TruststatesLastCheckin
 )`
 
-// Board insert does insert or replace without checking because we're handling the logic that decides whether we should update or not in the database layer.
-var boardInsert = `REPLACE INTO Boards
-  (
-    Fingerprint, Name, Owner, Description, LocalArrival,
-    Meta, RealmId, EncrContent,
-    Creation, ProofOfWork, Signature,
-    LastUpdate, UpdateProofOfWork, UpdateSignature
-  ) VALUES (
-    :Fingerprint, :Name, :Owner, :Description, :LocalArrival,
-    :Meta, :RealmId, :EncrContent,
-    :Creation, :ProofOfWork, :Signature,
-    :LastUpdate, :UpdateProofOfWork, :UpdateSignature
-  )`
+/*
+In the SQL statements below, the path of the execution is explained.
+(Y): LastReferenced insert
+BOARD > KEY(Y): Update board's key's lastreferenced timestamp.
+*/
+
+// ok, this is an attempted board insert
+
+/*
+  whats our exec model?
+
+  attempt to select existing board
+  if exists, use case to determine whether it validates
+  if it does, insert board, remove board owners, and add new board owners.
+
+*/
+
+/*
+   Important - If the board that is being inserted was not in the database before, we do not delete anything from BoardOwners. That is why the null cases are missing from this one.
+
+   THE ORDER OF THE STATEMENTS DO MATTER - The main insert needs to happen the LAST, because after the insert succeeds, all of these IS NULL constraints that we rely on will start to fail, since at that point the candidate is already in, and now the candidate comparison becomes a comparison with itself - which candidate will fail.
+*/
+
+// Board insert does insert or replace without checking because we're handling the logic that decides whether we should update or not in the database layer (above), not SQL layer here. TODO / TOTHINK: Should we ALSO do it here, just in case?
+var boardInsert_BoardsBoardOwners_DeletePriors = `
+WITH ExtantE(Creation, LastUpdate) AS (
+  SELECT Creation, LastUpdate
+  FROM Boards WHERE Fingerprint = :Fingerprint
+)
+DELETE FROM BoardOwners
+WHERE (
+  :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+  :LastUpdate > (SELECT Creation FROM ExtantE) AND
+  :LastUpdate > :Creation AND
+  BoardFingerprint = :Fingerprint
+);
+`
+var boardInsert_BoardsKey_LastReferencedUpdate = `
+/* Update ORIGINBOARD > KEY(Y) */
+WITH ExtantE(Fingerprint, Creation, LastUpdate) AS (
+SELECT Fingerprint, Creation, LastUpdate
+FROM Boards WHERE Fingerprint = :Fingerprint
+)
+UPDATE PublicKeys
+SET LastReferenced = :LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Owner
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Owner
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Fingerprint = :Owner
+);
+`
+var boardInsert = `
+REPLACE INTO Boards
+SELECT Candidate.* FROM
+(SELECT :Fingerprint AS Fingerprint,
+       :Name AS Name,
+       :Owner AS Owner,
+       :OwnerPublicKey AS OwnerPublicKey,
+       :Description AS Description,
+       :Creation AS Creation,
+       :ProofOfWork AS ProofOfWork,
+       :Signature AS Signature,
+       :LastUpdate AS LastUpdate,
+       :UpdateProofOfWork AS UpdateProofOfWork,
+       :UpdateSignature AS UpdateSignature,
+       :LocalArrival AS LocalArrival,
+       :LastReferenced AS LastReferenced,
+       :EntityVersion AS EntityVersion,
+       :Language AS Language,
+       :Meta AS Meta,
+       :RealmId AS RealmId,
+       :EncrContent AS EncrContent
+       ) AS Candidate
+LEFT JOIN Boards ON Candidate.Fingerprint = Boards.Fingerprint
+WHERE (
+    Candidate.LastUpdate > Boards.LastUpdate AND
+    Candidate.LastUpdate > Boards.Creation AND
+    Candidate.LastUpdate > Candidate.Creation
+  OR
+    Boards.Fingerprint IS NULL AND
+    Candidate.LastUpdate > Candidate.Creation
+  OR
+    Boards.Fingerprint IS NULL AND
+    Candidate.LastUpdate = 0
+);
+`
 
 // BoardOwners are mutable, but the condition of mutation is handled in the application layer. The only place the REPLACE could trigger is change of Expiry and level. The BoardFingerprint and KeyFingerprint are identity columns, so anything with different data on those will be committed as a new item.
-var boardOwnerInsert = `REPLACE INTO BoardOwners
-(
-  BoardFingerprint, KeyFingerprint, Expiry, Level
-) VALUES (
-  :BoardFingerprint, :KeyFingerprint, :Expiry, :Level
-)`
+/* This looks a little complex, but effectively, this is what is happening:
+INSERT IF
+    a) the board owner's board's candidate last update is newer than extant board's last update AND
+    b) the board owner's board's candidate last update is newer than extant board's creation AND
+    c) the board owner's board's candidate last update is newer than the candidate board's creation.
+  OR
+    a) This boardowner does not exist in DB (checking both primary keys) AND
+    b) the board owner's board's candidate last update is newer than the candidate board's creation.
+  OR
+    a) This boardowner does not exist in DB (checking both primary keys) AND
+    b) the board owner's board's candidate last update is zero, which means this object has never been updated.
+*/
+var boardOwnerInsert = `
+REPLACE INTO BoardOwners
+  WITH ExtantParent(Creation, LastUpdate) AS (
+    SELECT Creation, LastUpdate
+    FROM Boards WHERE Fingerprint = :BoardFingerprint
+  )
+  SELECT Candidate.* FROM
+  (SELECT :BoardFingerprint AS BoardFingerprint,
+          :KeyFingerprint AS KeyFingerprint,
+          :Expiry AS Expiry,
+          :Level AS Level
+          ) AS Candidate
+LEFT JOIN BoardOwners ON (
+  (Candidate.BoardFingerprint = BoardOwners.BoardFingerprint)
+  AND
+  (Candidate.KeyFingerprint = BoardOwners.KeyFingerprint)
+)
+WHERE (
+    :ParentBoardLastUpdate > (SELECT LastUpdate FROM ExtantParent) AND
+    :ParentBoardLastUpdate > (SELECT Creation FROM ExtantParent) AND
+    :ParentBoardLastUpdate > :ParentBoardCreation
+  OR
+    BoardOwners.BoardFingerprint IS NULL AND
+    BoardOwners.KeyFingerprint IS NULL AND
+    :ParentBoardLastUpdate > :ParentBoardCreation
+  OR
+    BoardOwners.BoardFingerprint IS NULL AND
+    BoardOwners.KeyFingerprint IS NULL AND
+    :ParentBoardLastUpdate = 0
+);
+`
 
 // Deletion for BoardOwner. This triggers when a person is no longer a moderator, etc. This is the only deletion here because nothing else really gets deleted.
-var boardOwnerDelete = `DELETE FROM BoardOwners WHERE BoardFingerprint = :BoardFingerprint AND KeyFingerprint = :KeyFingerprint`
 
-var threadInsert = `REPLACE INTO Threads
+// Deletion for board owner has moved into the board insert. A successful board insertion (both update and creation) will delete all board owners for that board and will reinsert.
+
+var threadInsert_ThreadsBoard_LastReferencedUpdate = `
+/* Update ORIGINTHREAD > BOARD(Y) */
+WITH ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Threads WHERE Fingerprint = :Fingerprint
+)
+UPDATE Boards
+SET LastReferenced = :LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Board
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Board
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Fingerprint = :Board
+);
+`
+var threadInsert_ThreadsKey_LastReferencedUpdate = `
+/* Update ORIGINTHREAD > KEY(Y) */
+WITH ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Threads WHERE Fingerprint = :Fingerprint
+)
+UPDATE PublicKeys
+SET LastReferenced = :LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Owner
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Owner
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Fingerprint = :Owner
+);
+`
+var threadInsert_ThreadsBoardsKey_LastReferencedUpdate = `
+/* Update ORIGINTHREAD > BOARD > KEY(Y) */
+WITH ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Threads WHERE Fingerprint = :Fingerprint
+),
+ParentBoard AS (
+  SELECT Owner FROM Boards
+  WHERE Fingerprint = :Board
+)
+UPDATE PublicKeys
+SET LastReferenced = :LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Fingerprint = (SELECT Owner FROM ParentBoard)
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Fingerprint = (SELECT Owner FROM ParentBoard)
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Fingerprint = (SELECT Owner FROM ParentBoard)
+);
+`
+var threadInsert = `
+REPLACE INTO Threads
   SELECT Candidate.* FROM
   (SELECT :Fingerprint AS Fingerprint,
           :Board AS Board,
@@ -585,6 +839,7 @@ var threadInsert = `REPLACE INTO Threads
           :Body AS Body,
           :Link AS Link,
           :Owner AS Owner,
+          :OwnerPublicKey AS OwnerPublicKey,
           :Creation AS Creation,
           :ProofOfWork AS ProofOfWork,
           :Signature AS Signature,
@@ -592,166 +847,622 @@ var threadInsert = `REPLACE INTO Threads
           :UpdateProofOfWork AS UpdateProofOfWork,
           :UpdateSignature AS UpdateSignature,
           :LocalArrival AS LocalArrival,
+          :LastReferenced AS LastReferenced,
+          :EntityVersion AS EntityVersion,
           :Meta AS Meta,
           :RealmId AS RealmId,
           :EncrContent AS EncrContent
           ) AS Candidate
-    LEFT JOIN Threads ON Candidate.Fingerprint = Threads.Fingerprint
-    WHERE (Candidate.LastUpdate > Threads.LastUpdate AND Candidate.LastUpdate > Threads.Creation)
-    OR Threads.Fingerprint IS NULL`
+LEFT JOIN Threads ON Candidate.Fingerprint = Threads.Fingerprint
+WHERE (
+    Candidate.LastUpdate > Threads.LastUpdate AND
+    Candidate.LastUpdate > Threads.Creation
+  OR
+    Threads.Fingerprint IS NULL AND
+    Candidate.LastUpdate > Candidate.Creation
+  OR
+    Threads.Fingerprint IS NULL AND
+    Candidate.LastUpdate = 0
+);
+`
 
-var postInsert = `REPLACE INTO Posts
-  SELECT Candidate.* FROM
-  (SELECT :Fingerprint AS Fingerprint,
-          :Board AS Board,
-          :Thread AS Thread,
-          :Parent AS Parent,
-          :Body AS Body,
-          :Owner AS Owner,
-          :Creation AS Creation,
-          :ProofOfWork AS ProofOfWork,
-          :Signature AS Signature,
-          :LastUpdate AS LastUpdate,
-          :UpdateProofOfWork AS UpdateProofOfWork,
-          :UpdateSignature AS UpdateSignature,
-          :LocalArrival AS LocalArrival,
-          :Meta AS Meta,
-          :RealmId AS RealmId,
-          :EncrContent AS EncrContent
-          ) AS Candidate
-    LEFT JOIN Posts ON Candidate.Fingerprint = Posts.Fingerprint
-    WHERE (Candidate.LastUpdate > Posts.LastUpdate AND Candidate.LastUpdate > Posts.Creation)
-    OR Posts.Fingerprint IS NULL`
+var postInsert_PostsBoard_LastReferencedUpdate = `
+/* Update ORIGINPOST > BOARD(Y) */
+WITH ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Posts WHERE Fingerprint = :Fingerprint
+)
+UPDATE Boards
+SET LastReferenced = :LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Board
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Board
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Fingerprint = :Board
+);
+`
+var postInsert_PostsBoardsKey_LastReferencedUpdate = `
+/* Update ORIGINPOST > BOARD > KEY(Y) */
+WITH ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Posts WHERE Fingerprint = :Fingerprint
+),
+ParentBoard AS (
+  SELECT Owner FROM Boards
+  WHERE Fingerprint = :Board
+)
+UPDATE PublicKeys
+SET LastReferenced = :LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Fingerprint = (SELECT Owner FROM ParentBoard)
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Fingerprint = (SELECT Owner FROM ParentBoard)
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Fingerprint = (SELECT Owner FROM ParentBoard)
+);
+`
+var postInsert_PostsThread_LastReferencedUpdate = `
+/* Update ORIGINPOST > THREAD(Y) */
+WITH ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Posts WHERE Fingerprint = :Fingerprint
+)
+UPDATE Threads
+SET LastReferenced = :LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Thread
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Thread
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Fingerprint = :Thread
+);
+`
+var postInsert_PostsThreadsKey_LastReferencedUpdate = `
+/* Update ORIGINPOST > THREAD > KEY(Y) */
+WITH ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Posts WHERE Fingerprint = :Fingerprint
+),
+ParentThread AS (
+  SELECT Owner FROM Boards
+  WHERE Fingerprint = :Thread
+)
+UPDATE PublicKeys
+SET LastReferenced = :LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Fingerprint = (SELECT Owner FROM ParentThread)
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Fingerprint = (SELECT Owner FROM ParentThread)
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Fingerprint = (SELECT Owner FROM ParentThread)
+);
+`
+var postInsert_PostsKey_LastReferencedUpdate = `
+/* Update ORIGINPOST > KEY(Y) */
+WITH ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Posts WHERE Fingerprint = :Fingerprint
+)
+UPDATE PublicKeys
+SET LastReferenced = :LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Owner
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Owner
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Fingerprint = :Owner
+);
+`
+var postInsert_PostsPosts_Recursive_LastReferencedUpdate = `
+/*
+Update ORIGINPOST > POST (Y) > ...(Y) > POST(Y)
+(post's parent post chain, if any)
+*/
 
-var voteInsert = `REPLACE INTO Votes
-  SELECT Candidate.* FROM
-  (SELECT :Fingerprint AS Fingerprint,
-          :Board AS Board,
-          :Thread AS Thread,
-          :Target AS Target,
-          :Owner AS Owner,
-          :Type AS Type,
-          :Creation AS Creation,
-          :ProofOfWork AS ProofOfWork,
-          :Signature AS Signature,
-          :LastUpdate AS LastUpdate,
-          :UpdateProofOfWork AS UpdateProofOfWork,
-          :UpdateSignature AS UpdateSignature,
-          :LocalArrival AS LocalArrival,
-          :Meta AS Meta,
-          :RealmId AS RealmId,
-          :EncrContent AS EncrContent
-          ) AS Candidate
-  LEFT JOIN Votes ON Candidate.Fingerprint = Votes.Fingerprint
-  WHERE (Candidate.LastUpdate > Votes.LastUpdate AND Candidate.LastUpdate > Votes.Creation)
-  OR Votes.Fingerprint IS NULL`
+WITH RECURSIVE ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Posts WHERE Fingerprint = :Fingerprint
+),
+ParentOf(Fingerprint, ParentPostFingerprint) AS (
+  SELECT Fingerprint, Parent FROM Posts
+),
+AncestorOf(Fingerprint) AS (
+  SELECT CASE
+  WHEN (SELECT ParentPostFingerprint FROM ParentOf WHERE Fingerprint = :Fingerprint) IS NULL
+  THEN (SELECT :Parent)
+  ELSE (SELECT ParentPostFingerprint FROM ParentOf WHERE Fingerprint = :Fingerprint)
+  END AS ParentPostFingerprint
+  UNION ALL
+  SELECT ParentPostFingerprint FROM ParentOf
+  JOIN AncestorOf
+  ON AncestorOf.Fingerprint=ParentOf.Fingerprint
+),
+FinalTable(Fingerprint) AS (
+  SELECT Posts.Fingerprint FROM AncestorOf, Posts
+  WHERE
+  AncestorOf.Fingerprint=Posts.Fingerprint
+)
+UPDATE Posts
+SET LastReferenced=:LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Posts.Fingerprint IN (SELECT Fingerprint FROM FinalTable)
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Posts.Fingerprint IN (SELECT Fingerprint FROM FinalTable)
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Posts.Fingerprint IN (SELECT Fingerprint FROM FinalTable)
+);
+`
+var postInsert_PostsPostsKeys_Recursive_LastReferencedUpdate = `
+/*
+Update ORIGINPOST > POST > KEY(Y)
+                  > POST > KEY(Y)
+                  > ...
+                  > POST > KEY(Y)
+(post's parent post chain's keys, if any)
+*/
 
-var keyInsert = `REPLACE INTO PublicKeys
-    SELECT Candidate.* FROM
-    (SELECT :Fingerprint AS Fingerprint,
-            :Type AS Type,
-            :PublicKey AS PublicKey,
-            :Name AS Name,
-            :Info AS Info,
-            :Creation AS Creation,
-            :ProofOfWork AS ProofOfWork,
-            :Signature AS Signature,
-            :LastUpdate AS LastUpdate,
-            :UpdateProofOfWork AS UpdateProofOfWork,
-            :UpdateSignature AS UpdateSignature,
-            :LocalArrival AS LocalArrival,
-            :Meta AS Meta,
-            :RealmId AS RealmId,
-            :EncrContent AS EncrContent
-            ) AS Candidate
-    LEFT JOIN PublicKeys ON Candidate.Fingerprint = PublicKeys.Fingerprint
-    WHERE (Candidate.LastUpdate > PublicKeys.LastUpdate AND Candidate.LastUpdate > PublicKeys.Creation)
-    OR PublicKeys.Fingerprint IS NULL`
+WITH RECURSIVE ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Posts WHERE Fingerprint = :Fingerprint
+),
+ParentOf(Fingerprint, ParentPostFingerprint, Owner) AS (
+  SELECT Fingerprint, Parent, Owner FROM Posts
+),
+AncestorOf(Fingerprint) AS (
+  SELECT CASE
+  WHEN (SELECT ParentPostFingerprint FROM ParentOf WHERE Fingerprint = :Fingerprint) IS NULL
+  THEN (SELECT :Parent)
+  ELSE (SELECT ParentPostFingerprint FROM ParentOf WHERE Fingerprint = :Fingerprint)
+  END AS ParentPostFingerprint
+  UNION ALL
+  SELECT ParentPostFingerprint FROM ParentOf
+  JOIN AncestorOf
+  ON AncestorOf.Fingerprint=ParentOf.Fingerprint
+),
+FinalTable(Fingerprint, Owner) AS (
+  SELECT Posts.Fingerprint, Posts.Owner FROM AncestorOf, Posts
+  WHERE
+  AncestorOf.Fingerprint=Posts.Fingerprint
+)
+UPDATE PublicKeys
+SET LastReferenced=:LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    PublicKeys.Fingerprint IN (SELECT Owner FROM FinalTable)
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    PublicKeys.Fingerprint IN (SELECT Owner FROM FinalTable)
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    PublicKeys.Fingerprint IN (SELECT Owner FROM FinalTable)
+);
+`
+var postInsert = `
+REPLACE INTO Posts
+SELECT Candidate.* FROM
+(SELECT :Fingerprint AS Fingerprint,
+        :Board AS Board,
+        :Thread AS Thread,
+        :Parent AS Parent,
+        :Body AS Body,
+        :Owner AS Owner,
+        :OwnerPublicKey AS OwnerPublicKey,
+        :Creation AS Creation,
+        :ProofOfWork AS ProofOfWork,
+        :Signature AS Signature,
+        :LastUpdate AS LastUpdate,
+        :UpdateProofOfWork AS UpdateProofOfWork,
+        :UpdateSignature AS UpdateSignature,
+        :LocalArrival AS LocalArrival,
+        :LastReferenced AS LastReferenced,
+        :EntityVersion AS EntityVersion,
+        :Meta AS Meta,
+        :RealmId AS RealmId,
+        :EncrContent AS EncrContent
+        ) AS Candidate
+LEFT JOIN Posts ON Candidate.Fingerprint = Posts.Fingerprint
+WHERE (
+    Candidate.LastUpdate > Posts.LastUpdate AND
+    Candidate.LastUpdate > Posts.Creation
+  OR
+    Posts.Fingerprint IS NULL AND
+    Candidate.LastUpdate > Candidate.Creation
+  OR
+    Posts.Fingerprint IS NULL AND
+    Candidate.LastUpdate = 0
+);
+`
+var voteInsert_VotesKey_LastReferencedUpdate = `
+/* Update ORIGINVOTE > KEY(Y) */
+WITH ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Votes WHERE Fingerprint = :Fingerprint
+)
+UPDATE PublicKeys
+SET LastReferenced = :LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Owner
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Owner
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Fingerprint = :Owner
+);
+`
+var voteInsert = `
+REPLACE INTO Votes
+SELECT Candidate.* FROM
+(SELECT :Fingerprint AS Fingerprint,
+        :Board AS Board,
+        :Thread AS Thread,
+        :Target AS Target,
+        :Owner AS Owner,
+        :OwnerPublicKey AS OwnerPublicKey,
+        :Type AS Type,
+        :Creation AS Creation,
+        :ProofOfWork AS ProofOfWork,
+        :Signature AS Signature,
+        :LastUpdate AS LastUpdate,
+        :UpdateProofOfWork AS UpdateProofOfWork,
+        :UpdateSignature AS UpdateSignature,
+        :LocalArrival AS LocalArrival,
+        :LastReferenced AS LastReferenced,
+        :EntityVersion AS EntityVersion,
+        :Meta AS Meta,
+        :RealmId AS RealmId,
+        :EncrContent AS EncrContent
+        ) AS Candidate
+LEFT JOIN Votes ON Candidate.Fingerprint = Votes.Fingerprint
+WHERE (
+    Candidate.LastUpdate > Votes.LastUpdate AND
+    Candidate.LastUpdate > Votes.Creation AND
+    Candidate.LastUpdate > Candidate.Creation
+  OR
+    Votes.Fingerprint IS NULL AND
+    Candidate.LastUpdate > Candidate.Creation
+  OR
+    Votes.Fingerprint IS NULL AND Candidate.LastUpdate = 0
+);
+`
 
-var truststateInsert = `REPLACE INTO Truststates
-  SELECT Candidate.* FROM
-  (SELECT :Fingerprint AS Fingerprint,
-          :Target AS Target,
-          :Owner AS Owner,
-          :Type AS Type,
-          :Domains AS Domains,
-          :Expiry AS Expiry,
-          :Creation AS Creation,
-          :ProofOfWork AS ProofOfWork,
-          :Signature AS Signature,
-          :LastUpdate AS LastUpdate,
-          :UpdateProofOfWork AS UpdateProofOfWork,
-          :UpdateSignature AS UpdateSignature,
-          :LocalArrival AS LocalArrival,
-          :Meta AS Meta,
-          :RealmId AS RealmId,
-          :EncrContent AS EncrContent
-          ) AS Candidate
-  LEFT JOIN Truststates ON Candidate.Fingerprint = Truststates.Fingerprint
-  WHERE (Candidate.LastUpdate > Truststates.LastUpdate AND Candidate.LastUpdate > Truststates.Creation)
-  OR Truststates.Fingerprint IS NULL`
+// above, you nede to basically do everything that a post does, update board, thread, key, target, board key, thread key, target key (target being a post or a thread, attempt both.)
+
+// actually scratch that. voting on something should only light up the key that created the vote, nothing else.
+
+var keyInsert = `
+REPLACE INTO PublicKeys
+SELECT Candidate.* FROM
+(SELECT :Fingerprint AS Fingerprint,
+        :Type AS Type,
+        :PublicKey AS PublicKey,
+        :PublicKeyFingerprint AS PublicKeyFingerprint,
+        :Expiry AS Expiry,
+        :Name AS Name,
+        :Info AS Info,
+        :Creation AS Creation,
+        :ProofOfWork AS ProofOfWork,
+        :Signature AS Signature,
+        :LastUpdate AS LastUpdate,
+        :UpdateProofOfWork AS UpdateProofOfWork,
+        :UpdateSignature AS UpdateSignature,
+        :LocalArrival AS LocalArrival,
+        :LastReferenced AS LastReferenced,
+        :EntityVersion AS EntityVersion,
+        :Meta AS Meta,
+        :RealmId AS RealmId,
+        :EncrContent AS EncrContent
+        ) AS Candidate
+LEFT JOIN PublicKeys ON Candidate.Fingerprint = PublicKeys.Fingerprint
+WHERE (
+    Candidate.LastUpdate > PublicKeys.LastUpdate AND
+      Candidate.LastUpdate > PublicKeys.Creation
+  OR
+    PublicKeys.Fingerprint IS NULL AND
+    Candidate.LastUpdate > Candidate.Creation
+  OR
+    PublicKeys.Fingerprint IS NULL AND
+    Candidate.LastUpdate = 0
+);
+`
+var truststateInsert_TruststatesKey_LastReferencedUpdate = `
+/* Update ORIGINTS > KEY(Y) */
+WITH ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Truststates WHERE Fingerprint = :Fingerprint
+)
+UPDATE PublicKeys
+SET LastReferenced = :LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Owner
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Owner
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Fingerprint = :Owner
+);
+`
+var truststateInsert_TruststatesTargetKey_LastReferencedUpdate = `
+/* Update ORIGINTS > TARGET(KEY)(Y) */
+WITH ExtantE(Fingerprint, Creation, LastUpdate) AS (
+  SELECT Fingerprint, Creation, LastUpdate
+  FROM Truststates WHERE Fingerprint = :Fingerprint
+)
+UPDATE PublicKeys
+SET LastReferenced = :LastReferenced
+WHERE (
+    :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
+    :LastUpdate > (SELECT Creation FROM ExtantE) AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Target
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate > :Creation AND
+    Fingerprint = :Target
+  OR
+    (SELECT Fingerprint FROM ExtantE) IS NULL AND
+    :LastUpdate = 0 AND
+    Fingerprint = :Target
+);
+`
+var truststateInsert = `
+REPLACE INTO Truststates
+SELECT Candidate.* FROM
+(SELECT :Fingerprint AS Fingerprint,
+        :Target AS Target,
+        :Owner AS Owner,
+        :OwnerPublicKey AS OwnerPublicKey,
+        :Type AS Type,
+        :Domains AS Domains,
+        :Expiry AS Expiry,
+        :Creation AS Creation,
+        :ProofOfWork AS ProofOfWork,
+        :Signature AS Signature,
+        :LastUpdate AS LastUpdate,
+        :UpdateProofOfWork AS UpdateProofOfWork,
+        :UpdateSignature AS UpdateSignature,
+        :LocalArrival AS LocalArrival,
+        :LastReferenced AS LastReferenced,
+        :EntityVersion AS EntityVersion,
+        :Meta AS Meta,
+        :RealmId AS RealmId,
+        :EncrContent AS EncrContent
+        ) AS Candidate
+LEFT JOIN Truststates ON Candidate.Fingerprint = Truststates.Fingerprint
+WHERE (
+    Candidate.LastUpdate > Truststates.LastUpdate AND
+    Candidate.LastUpdate > Truststates.Creation
+  OR
+    Truststates.Fingerprint IS NULL AND
+    Candidate.LastUpdate > Candidate.Creation
+  OR
+    Truststates.Fingerprint IS NULL AND
+    Candidate.LastUpdate = 0
+);
+`
 
 // Address insert is immutable. This is used for when a node receives data from an address from a node that is not at the aforementioned address. In other words, an address object coming from a third party node not at that address cannot change an existing address saved in the database.
-var addressInsertMySQL = `INSERT IGNORE INTO Addresses
-  (
-    Location, Sublocation, Port, IPType, AddressType, LastOnline,
-    ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
-    ClientVersionMinor, ClientVersionPatch, ClientName, RealmId,
-    LocalArrival
-  ) VALUES (
-    :Location, :Sublocation, :Port,:IPType, :AddressType, :LastOnline,
-    :ProtocolVersionMajor, :ProtocolVersionMinor, :ClientVersionMajor,
-    :ClientVersionMinor, :ClientVersionPatch, :ClientName, :RealmId,
-    :LocalArrival
-  )`
+var addressInsertMySQL = `
+INSERT IGNORE INTO Addresses
+(
+  Location,
+  Sublocation,
+  Port, IPType,
+  AddressType,
+  LastOnline,
+  ProtocolVersionMajor,
+  ProtocolVersionMinor,
+  ClientVersionMajor,
+  ClientVersionMinor,
+  ClientVersionPatch,
+  ClientName,
+  EntityVersion,
+  RealmId,
+  LocalArrival,
+  LastReferenced
+) VALUES (
+  :Location,
+  :Sublocation,
+  :Port,
+  :IPType,
+  :AddressType,
+  :LastOnline,
+  :ProtocolVersionMajor,
+  :ProtocolVersionMinor,
+  :ClientVersionMajor,
+  :ClientVersionMinor,
+  :ClientVersionPatch,
+  :ClientName,
+  :EntityVersion,
+  :RealmId,
+  :LocalArrival,
+  :LastReferenced
+)
+  `
 
-var addressInsertSQLite = `INSERT OR IGNORE INTO Addresses
-  (
-    Location, Sublocation, Port, IPType, AddressType, LastOnline,
-    ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
-    ClientVersionMinor, ClientVersionPatch, ClientName, RealmId,
-    LocalArrival
-  ) VALUES (
-    :Location, :Sublocation, :Port,:IPType, :AddressType, :LastOnline,
-    :ProtocolVersionMajor, :ProtocolVersionMinor, :ClientVersionMajor,
-    :ClientVersionMinor, :ClientVersionPatch, :ClientName, :RealmId,
-    :LocalArrival
-  )`
+var addressInsertSQLite = `
+INSERT OR IGNORE INTO Addresses
+(
+  Location,
+  Sublocation,
+  Port,
+  IPType,
+  AddressType,
+  LastOnline,
+  ProtocolVersionMajor,
+  ProtocolVersionMinor,
+  ClientVersionMajor,
+  ClientVersionMinor,
+  ClientVersionPatch,
+  ClientName,
+  EntityVersion,
+  RealmId,
+  LocalArrival,
+  LastReferenced
+) VALUES (
+  :Location,
+  :Sublocation,
+  :Port,
+  :IPType,
+  :AddressType,
+  :LastOnline,
+  :ProtocolVersionMajor,
+  :ProtocolVersionMinor,
+  :ClientVersionMajor,
+  :ClientVersionMinor,
+  :ClientVersionPatch,
+  :ClientName,
+  :EntityVersion,
+  :RealmId,
+  :LocalArrival,
+  :LastReferenced
+)
+  `
 
 // Address update insert is mutable. This is used when the node connects to the address itself. Example: When a node connects to 256.253.231.123:8080, it will update the entry for that address with the data coming from the remote node. This is the only way to mutate an address object.
-var addressUpdateInsert = `REPLACE INTO Addresses
-  (
-    Location, Sublocation, Port, IPType, AddressType, LastOnline,
-    ProtocolVersionMajor, ProtocolVersionMinor, ClientVersionMajor,
-    ClientVersionMinor, ClientVersionPatch, ClientName, RealmId,
-    LocalArrival
-  ) VALUES (
-    :Location, :Sublocation, :Port,:IPType, :AddressType, :LastOnline,
-    :ProtocolVersionMajor, :ProtocolVersionMinor, :ClientVersionMajor,
-    :ClientVersionMinor, :ClientVersionPatch, :ClientName, :RealmId,
-    :LocalArrival
-  )`
+var addressUpdateInsert = `
+REPLACE INTO Addresses
+(
+  Location,
+  Sublocation,
+  Port,
+  IPType,
+  AddressType,
+  LastOnline,
+  ProtocolVersionMajor,
+  ProtocolVersionMinor,
+  ClientVersionMajor,
+  ClientVersionMinor,
+  ClientVersionPatch,
+  ClientName,
+  EntityVersion,
+  RealmId,
+  LocalArrival,
+  LastReferenced
+) VALUES (
+  :Location,
+  :Sublocation,
+  :Port,
+  :IPType,
+  :AddressType,
+  :LastOnline,
+  :ProtocolVersionMajor,
+  :ProtocolVersionMinor,
+  :ClientVersionMajor,
+  :ClientVersionMinor,
+  :ClientVersionPatch,
+  :ClientName,
+  :EntityVersion,
+  :RealmId,
+  :LocalArrival,
+  :LastReferenced
+)
+  `
 
 // Subprotocol insert is the part of address insertion series. This makes it so that we have a list of all subprotocols flying around.
-var subprotocolInsert = `REPLACE INTO Subprotocols
-  (
-    Fingerprint, Name, VersionMajor, VersionMinor, SupportedEntities
-  ) VALUES (
-    :Fingerprint, :Name, :VersionMajor, :VersionMinor, :SupportedEntities
-  )`
+var subprotocolInsert = `
+REPLACE INTO Subprotocols
+(
+  Fingerprint,
+  Name,
+  VersionMajor,
+  VersionMinor,
+  SupportedEntities
+) VALUES (
+  :Fingerprint,
+  :Name,
+  :VersionMajor,
+  :VersionMinor,
+  :SupportedEntities
+)
+  `
 
 // AddressSubprotocolInsert inserts into the many to many junction table so that we can keep track of the subprotocols an address uses.
 
-var addressSubprotocolInsertMySQL = `INSERT IGNORE INTO AddressesSubprotocols
-   (
-     AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint
-   ) VALUES (
-     :AddressLocation, :AddressSublocation, :AddressPort, :SubprotocolFingerprint
-   )`
+var addressSubprotocolInsertMySQL = `
+INSERT IGNORE INTO AddressesSubprotocols
+(
+ AddressLocation,
+ AddressSublocation,
+ AddressPort,
+ SubprotocolFingerprint
+) VALUES (
+ :AddressLocation,
+ :AddressSublocation,
+ :AddressPort,
+ :SubprotocolFingerprint
+)
+`
 
-var addressSubprotocolInsertSQLite = `INSERT OR IGNORE INTO AddressesSubprotocols
-    (
-      AddressLocation, AddressSublocation, AddressPort, SubprotocolFingerprint
-    ) VALUES (
-      :AddressLocation, :AddressSublocation, :AddressPort, :SubprotocolFingerprint
-    )`
+var addressSubprotocolInsertSQLite = `
+INSERT OR IGNORE INTO AddressesSubprotocols
+(
+  AddressLocation,
+  AddressSublocation,
+  AddressPort,
+  SubprotocolFingerprint
+) VALUES (
+  :AddressLocation,
+  :AddressSublocation,
+  :AddressPort,
+  :SubprotocolFingerprint
+)
+`

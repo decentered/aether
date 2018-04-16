@@ -47,6 +47,7 @@ type settingsStruct struct {
 	testdurationsec int // how many seconds the main test will run for. This does not include the time it takes to prime the swarm nodes from the donor nodes.
 	staticnodeloc   string
 	swarmplanloc    string
+	dbsize          string
 }
 
 type node struct {
@@ -62,6 +63,8 @@ func setDefaults() {
 	createPath("Runtime-Generated-Files")
 	settings.swarmsize = 2
 	settings.testdurationsec = 1200
+	// xs (20k obj per node), s (0.5m obj/n), m
+	settings.dbsize = "xs"
 	settings.staticnodeloc = "Runtime-Generated-Files/temp_generated_data"
 	spl, err := filepath.Abs("Runtime-Generated-Files/swarm-plan.json")
 	if err != nil {
@@ -84,6 +87,19 @@ func generateSwarmNames() []node {
 	return nodes
 }
 
+func getDbSize() string {
+	if settings.dbsize == "xs" {
+		return "--xsmall"
+	} else if settings.dbsize == "s" {
+		return "--small"
+	} else if settings.dbsize == "m" {
+		return "--medium"
+	} else {
+		log.Fatal(fmt.Sprintf("Unknown database size requested. Size requested: %s", settings.dbsize))
+		return ""
+	}
+}
+
 // generateNodeData generates the random data that every swarm node will be seeded with. Every node will have its own set of data.
 func generateNodeData(n *node) {
 	log.Printf("Generating the required random database for %s.", n.appname)
@@ -98,7 +114,7 @@ func generateNodeData(n *node) {
 	n.generatedDataPath = abspath
 	// Check if there is anything that exists in the folder. If so, skip this.
 	if _, err := os.Stat(abspath); os.IsNotExist(err) {
-		cmd := exec.Command("node", "main.js", "--small", "--nosign", abspath)
+		cmd := exec.Command("node", "main.js", getDbSize(), "--nosign", abspath)
 		cmd.Dir = "../../../Documentation/database-generator/"
 		cmd.Run()
 		log.Printf("Random database generation for %s is complete.", n.appname)
@@ -147,7 +163,12 @@ func insertDataIntoBackendNodeInstance(n node) {
 		fmt.Sprintf("--port=%d", n.externalPort),
 		"--metricsdebugmode",
 		fmt.Sprintf("--swarmplan=%s", settings.swarmplanloc),
-		"--syncandquit")
+		"--pagesigcheckenabled=false",
+		"--fpcheckenabled=false",
+		"--powcheckenabled=false",
+		"--sigcheckenabled=false",
+		"--syncandquit",
+	)
 	cmd.Stdout = os.Stdout
 	cmd.Dir = "../../../aether-core/backend/"
 	cmd.Run()
@@ -322,6 +343,10 @@ func startSwarmNode(appname string, externalPort int, killTimeout int, wg *sync.
 		"--printtostdout",
 		fmt.Sprintf("--port=%d", externalPort),
 		"--metricsdebugmode",
+		"--pagesigcheckenabled=false",
+		"--fpcheckenabled=false",
+		"--powcheckenabled=false",
+		"--sigcheckenabled=false",
 		fmt.Sprintf("--killtimeout=%d", killTimeout),
 		fmt.Sprintf("--swarmplan=%s", settings.swarmplanloc),
 		fmt.Sprintf("--swarmnodeid=%d", swarmNodeId))

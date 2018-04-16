@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"aether-core/backend/responsegenerator"
 	"aether-core/io/api"
 	"aether-core/services/configstore"
 	"aether-core/services/globals"
@@ -39,6 +40,7 @@ func TestMain(m *testing.M) {
 	globals.BackendTransientConfig.SetDefaults()
 	globals.FrontendTransientConfig = &configstore.Ftc
 	globals.FrontendTransientConfig.SetDefaults()
+	globals.BackendTransientConfig.PageSignatureCheckEnabled = false
 	// Establish permanent configs.
 	becfg, err := configstore.EstablishBackendConfig()
 	if err != nil {
@@ -1181,10 +1183,33 @@ func TestTruststateCreateUpdateSignature_Success(t *testing.T) {
 	}
 }
 
-// Dispatch tests
+func TestApiResponseCreateSignature_Success(t *testing.T) {
+	globals.BackendTransientConfig.PageSignatureCheckEnabled = true
+	apiResp := responsegenerator.GeneratePrefilledApiResponse()
+	err := apiResp.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	} else {
+		result, err2 := apiResp.VerifySignature()
+		if err2 != nil {
+			t.Errorf("Test failed, err: '%s'", err2)
+		} else if result != true {
+			t.Errorf("Test failed, this Signature should be valid but it is not.")
+		}
+	}
+}
 
-// TODO
-
-// Server tests
-
-// TODO
+func TestApiResponseCreateSignature_Fail(t *testing.T) {
+	globals.BackendTransientConfig.PageSignatureCheckEnabled = true
+	apiResp := responsegenerator.GeneratePrefilledApiResponse()
+	err := apiResp.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+	apiResp.Entity = "changing the page after it was signed"
+	if err != nil {
+		t.Errorf("Test failed, err: '%s'", err)
+	} else {
+		result, _ := apiResp.VerifySignature()
+		if result != false {
+			t.Errorf("Test failed, this Signature should not be valid but it was successfully verified.")
+		}
+	}
+}

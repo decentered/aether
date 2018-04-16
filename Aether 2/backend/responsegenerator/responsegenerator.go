@@ -30,7 +30,7 @@ func GeneratePrefilledApiResponse() *api.ApiResponse {
 		subprotsSupported = append(subprotsSupported, api.Subprotocol(val))
 	}
 	var resp api.ApiResponse
-	resp.NodeId = api.Fingerprint(globals.BackendConfig.GetNodeId())
+	resp.NodePublicKey = globals.BackendConfig.GetMarshaledBackendPublicKey()
 	resp.Address.LocationType = globals.BackendConfig.GetExternalIpType()
 	resp.Address.Type = 2 // This is a live node.
 	resp.Address.Port = uint16(globals.BackendConfig.GetExternalPort())
@@ -44,6 +44,7 @@ func GeneratePrefilledApiResponse() *api.ApiResponse {
 	return &resp
 }
 
+// ConvertApiResponseToJson is the last step before a page is sent or saved. This is where we sign and seal the page.
 func ConvertApiResponseToJson(resp *api.ApiResponse) ([]byte, error) {
 	result, err := json.Marshal(resp)
 	var jsonErr error
@@ -712,6 +713,10 @@ func bakeFinalPOSTApiResponse(resultPages *[]api.ApiResponse, indexPages *[]api.
 			createPath(indexdir)
 			for key, val := range indexpg {
 				filename := fmt.Sprint(key, ".json")
+				signingErr := val.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+				if signingErr != nil {
+					logging.Log(1, fmt.Sprintf("This page of the index of a multiple-page post response failed to be page-signed. Error: %#v Page: %#v\n", signingErr, val))
+				}
 				indexJsonResp, err := ConvertApiResponseToJson(&val)
 				if err != nil {
 					logging.Log(1, fmt.Sprintf("This page of the index of a multiple-page post response failed to convert to JSON. Error: %#v\n", err))
@@ -733,6 +738,10 @@ func bakeFinalPOSTApiResponse(resultPages *[]api.ApiResponse, indexPages *[]api.
 			resultPage.Timestamp = api.Timestamp(time.Now().Unix())
 			resultPage.Entity = entityType
 			resultPage.Endpoint = fmt.Sprint(entityType, "_post")
+			signingErr := resultPage.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+			if signingErr != nil {
+				logging.Log(1, fmt.Sprintf("This result page of a multiple-page post response failed to be page-signed. Error: %#v Page: %#v\n", signingErr, resultPage))
+			}
 			jsonResp, err := ConvertApiResponseToJson(&resultPage)
 			if err != nil {
 				logging.Log(1, fmt.Sprintf("This page of a multiple-page post response failed to convert to JSON. Error: %#v\n, Request Body: %#v\n", err, resultPage))
@@ -830,6 +839,10 @@ func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) 
 	// Build the response itself
 	resp.Entity = respType
 	resp.Timestamp = api.Timestamp(time.Now().Unix())
+	signingErr := resp.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+	if signingErr != nil {
+		return []byte{}, errors.New(fmt.Sprintf("The response that was prepared to respond to this query failed to be page-signed. Error: %#v Response Body: %#v\n", signingErr, resp))
+	}
 	// Construct the query, and run an index to determine how many entries we have for the filter.
 	jsonResp, err := ConvertApiResponseToJson(&resp)
 	if err != nil {
@@ -1168,6 +1181,10 @@ func saveCacheToDisk(entityCacheDir string, cacheData *CacheResponse, respType s
 		indexPages[i].Caching.ServedFromCache = true
 		indexPages[i].Caching.CurrentCacheUrl = cacheData.cacheName
 		// For each index, look at the page number and save the result as that.
+		signingErr := indexPages[i].CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+		if signingErr != nil {
+			logging.Log(1, fmt.Sprintf("This cache page failed to be page-signed. Error: %#v Page: %#v\n", signingErr, indexPages[i]))
+		}
 		json, _ := ConvertApiResponseToJson(&indexPages[i])
 		saveFileToDisk(json, indexDir, fmt.Sprint(indexPages[i].Pagination.CurrentPage, ".json"))
 	}
@@ -1178,6 +1195,10 @@ func saveCacheToDisk(entityCacheDir string, cacheData *CacheResponse, respType s
 		entityPages[i].Caching.ServedFromCache = true
 		entityPages[i].Caching.CurrentCacheUrl = cacheData.cacheName
 		// For each index, look at the page number and save the result as that.
+		signingErr := entityPages[i].CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+		if signingErr != nil {
+			logging.Log(1, fmt.Sprintf("This cache page failed to be page-signed. Error: %#v Page: %#v\n", signingErr, entityPages[i]))
+		}
 		json, _ := ConvertApiResponseToJson(&entityPages[i])
 		saveFileToDisk(json, cacheDir, fmt.Sprint(entityPages[i].Pagination.CurrentPage, ".json"))
 	}
@@ -1231,6 +1252,10 @@ func CreateCache(respType string, start api.Timestamp, end api.Timestamp) error 
 	// If the file exists, go through with regular processing.
 	updateCacheIndex(&apiResp, &cacheData)
 	deleteTooOldCaches(respType, &apiResp, entityCacheDir)
+	signingErr := apiResp.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+	if signingErr != nil {
+		return errors.New(fmt.Sprintf("This cache page failed to be page-signed. Error: %#v Page: %#v\n", signingErr, apiResp))
+	}
 	json, err4 := ConvertApiResponseToJson(&apiResp)
 	if err4 != nil {
 		return err

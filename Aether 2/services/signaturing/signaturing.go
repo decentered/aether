@@ -58,12 +58,7 @@ func Sign(input string, privKey *ecdsa.PrivateKey) (string, error) {
 func Verify(input string, signature string, pubKey string) bool {
 	// This verifies the input provided by a given signature and public key.
 	// Mind that signatures are generated on hashes of items, not the item itself. So the first step in either signing or verifying is to hash the input provided.
-	// First of all, let's make sure that this is not an anonymous post. If anonymous, the signature and pubKey will be empty, and this should pass.
-	if signature == "" && pubKey == "" {
-		return true
-	} else if signature == "" && pubKey != "" {
-		return false
-	} else if signature != "" && pubKey == "" {
+	if !(len(signature) > 0 && len(pubKey) > 0) {
 		return false
 	}
 	inputByte := []byte(input)

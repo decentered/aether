@@ -56,6 +56,10 @@ func Serve() {
 				resp.Endpoint = "node"
 				resp.Entity = "node"
 				resp.Timestamp = api.Timestamp(time.Now().Unix())
+				signingErr := resp.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+				if signingErr != nil {
+					logging.Log(1, fmt.Sprintf("This cache page failed to be page-signed. Error: %#v Page: %#v\n", signingErr, resp))
+				}
 				jsonResp, err := responsegenerator.ConvertApiResponseToJson(&resp)
 				if err != nil {
 					logging.Log(1, errors.New(fmt.Sprintf("The response that was prepared to respond to this query failed to convert to JSON. Error: %#v\n", err)))
@@ -249,7 +253,6 @@ func ParsePOSTRequest(r *http.Request) (api.ApiResponse, error) {
 	// - Type cannot be 0
 	// - Protocol subprotocols have to include "c0" (aether subprotocol of mim)
 	if r.Header["Content-Type"][0] == "application/json" &&
-		len(req.NodeId) == 64 &&
 		req.Address.Port > 0 &&
 		req.Address.Type != 0 {
 		for _, ext := range req.Address.Protocol.Subprotocols {

@@ -37,6 +37,6 @@ func Log(level int, input interface{}) {
 	}
 }
 func LogCrash(input interface{}) {
-	// fmt.Println(trace())
+	log.Println(globals.DumpStack())
 	log.Fatal(input)
 }

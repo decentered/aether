@@ -107,6 +107,7 @@ func CreateBoard(
 	entity.Owner = ownerFp
 	entity.BoardOwners = boardOwners
 	entity.Description = description
+	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Board
 	entity.Meta = meta
 	entity.RealmId = realmId
 	err := Bake(&entity)
@@ -134,6 +135,7 @@ func CreateThread(
 	entity.Body = body
 	entity.Link = link
 	entity.Owner = ownerFp
+	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Thread
 	entity.Meta = meta
 	entity.RealmId = realmId
 	err := Bake(&entity)
@@ -161,6 +163,7 @@ func CreatePost(
 	entity.Parent = parentFp
 	entity.Body = body
 	entity.Owner = ownerFp
+	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Post
 	entity.Meta = meta
 	entity.RealmId = realmId
 	err := Bake(&entity)
@@ -176,7 +179,7 @@ func CreateVote(
 	threadFp api.Fingerprint,
 	targetFp api.Fingerprint,
 	ownerFp api.Fingerprint,
-	voteType uint8,
+	voteType int,
 	meta string,
 	realmId api.Fingerprint,
 ) (api.Vote, error) {
@@ -188,6 +191,7 @@ func CreateVote(
 	entity.Target = targetFp
 	entity.Owner = ownerFp
 	entity.Type = voteType
+	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Vote
 	entity.Meta = meta
 	entity.RealmId = realmId
 	err := Bake(&entity)
@@ -215,13 +219,13 @@ func CreateAddress(
 	realmId api.Fingerprint,
 ) (api.Address, error) {
 
-	var addr api.Address
-	addr.Location = loc
-	addr.Sublocation = subloc
-	addr.LocationType = locType
-	addr.Port = port
-	addr.Type = addrType
-	addr.LastOnline = lastOnline
+	var entity api.Address
+	entity.Location = loc
+	entity.Sublocation = subloc
+	entity.LocationType = locType
+	entity.Port = port
+	entity.Type = addrType
+	entity.LastOnline = lastOnline
 	var prot api.Protocol
 	prot.VersionMajor = protVMajor
 	prot.VersionMinor = protVMinor
@@ -231,10 +235,11 @@ func CreateAddress(
 	client.VersionMinor = clientVMinor
 	client.VersionPatch = clientVPatch
 	client.ClientName = clientName
-	addr.Protocol = prot
-	addr.Client = client
-	addr.RealmId = realmId
-	return addr, nil
+	entity.Protocol = prot
+	entity.Client = client
+	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Thread
+	entity.RealmId = realmId
+	return entity, nil
 }
 
 func CreateKey(
@@ -252,6 +257,7 @@ func CreateKey(
 	entity.Key = key
 	entity.Name = name
 	entity.Info = info
+	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Thread
 	entity.Meta = meta
 	entity.RealmId = realmId
 	err := Bake(&entity)
@@ -265,7 +271,7 @@ func CreateKey(
 func CreateTruststate(
 	targetFp api.Fingerprint,
 	ownerFp api.Fingerprint,
-	tsType uint8,
+	tsType int,
 	domains []api.Fingerprint,
 	expiry api.Timestamp,
 	meta string,
@@ -279,6 +285,7 @@ func CreateTruststate(
 	entity.Type = tsType
 	entity.Domains = domains
 	entity.Expiry = expiry
+	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Thread
 	entity.Meta = meta
 	entity.RealmId = realmId
 	err := Bake(&entity)
@@ -353,7 +360,7 @@ func UpdatePost(request PostUpdateRequest) error {
 type VoteUpdateRequest struct {
 	Entity      *api.Vote
 	TypeUpdated bool
-	NewType     uint8
+	NewType     int
 }
 
 func UpdateVote(request VoteUpdateRequest) error {
@@ -389,7 +396,7 @@ func UpdateKey(request KeyUpdateRequest) error {
 type TruststateUpdateRequest struct {
 	Entity         *api.Truststate
 	TypeUpdated    bool
-	NewType        uint8
+	NewType        int
 	DomainsUpdated bool
 	NewDomains     []api.Fingerprint
 	ExpiryUpdated  bool
