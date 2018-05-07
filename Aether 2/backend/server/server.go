@@ -51,8 +51,9 @@ func Serve() {
 			case "/v0/node", "/v0/node/":
 				// Node GET endpoint returns the node info.
 				var resp api.ApiResponse
-				r := responsegenerator.GeneratePrefilledApiResponse()
-				resp = *r
+				resp.Prefill()
+				// r := responsegenerator.GeneratePrefilledApiResponse()
+				// resp = *r
 				resp.Endpoint = "node"
 				resp.Entity = "node"
 				resp.Timestamp = api.Timestamp(time.Now().Unix())
@@ -60,7 +61,7 @@ func Serve() {
 				if signingErr != nil {
 					logging.Log(1, fmt.Sprintf("This cache page failed to be page-signed. Error: %#v Page: %#v\n", signingErr, resp))
 				}
-				jsonResp, err := responsegenerator.ConvertApiResponseToJson(&resp)
+				jsonResp, err := resp.ToJSON()
 				if err != nil {
 					logging.Log(1, errors.New(fmt.Sprintf("The response that was prepared to respond to this query failed to convert to JSON. Error: %#v\n", err)))
 				}
@@ -206,11 +207,12 @@ func SaveRemote(req api.ApiResponse) error {
 	return nil
 }
 
+// --->N INBOUND.
 // insertLocallySourcedRemoteAddressDetails Inserts the locally sourced data about the remote into the address entity that is coming with the POST request.
 func insertLocallySourcedRemoteAddressDetails(r *http.Request, req *api.ApiResponse) error {
 	// This runs when a node connects to you.
 	// LITTLE-TRUSTED ADDRESS ENTRY
-	// Data to keep: Location, Sublocation, Port, LastOnline (sublocation is guaranteed to be empty since the connection is coming from an IP, not a static IP)
+	// Data to keep: Location, Sublocation, Port, LastSuccessfulPing (sublocation is guaranteed to be empty since the connection is coming from an IP, not a static IP)
 	// Delete everything else, they're untrustable.
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -230,7 +232,7 @@ func insertLocallySourcedRemoteAddressDetails(r *http.Request, req *api.ApiRespo
 	}
 	req.Address.Sublocation = "" // It's coming from an IP address, not a URL.
 	req.Address.Location = api.Location(host)
-	req.Address.LastOnline = api.Timestamp(time.Now().Unix())
+	req.Address.LastSuccessfulPing = api.Timestamp(time.Now().Unix())
 	req.Address.Type = 2 // If it is making a request to you, it cannot be a static node, by definition.
 	return nil
 }
@@ -257,7 +259,7 @@ func ParsePOSTRequest(r *http.Request) (api.ApiResponse, error) {
 		req.Address.Type != 0 {
 		for _, ext := range req.Address.Protocol.Subprotocols {
 			if ext.Name == "c0" {
-				// We insert to the POST request the locally sourced details. (Location, Sublocation, LocationType [ipv4 or 6], LastOnline)
+				// We insert to the POST request the locally sourced details. (Location, Sublocation, LocationType [ipv4 or 6], LastSuccessfulPing)
 				err := insertLocallySourcedRemoteAddressDetails(r, &req)
 				if err != nil {
 					return req, err

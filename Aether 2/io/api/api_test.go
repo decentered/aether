@@ -1,18 +1,18 @@
 package api_test
 
 import (
+	"aether-core/backend/cmd"
 	"aether-core/backend/responsegenerator"
 	"aether-core/io/api"
-	"aether-core/services/configstore"
+	"aether-core/io/persistence"
 	"aether-core/services/globals"
-	"aether-core/services/logging"
 	"aether-core/services/signaturing"
-	"crypto/ecdsa"
 	"crypto/elliptic"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"golang.org/x/crypto/ed25519"
 	"io"
 	"io/ioutil"
 	"log"
@@ -35,25 +35,14 @@ var testNodePort uint16
 var nodeLocation string
 
 func TestMain(m *testing.M) {
-	// Establish transient configs.
-	globals.BackendTransientConfig = &configstore.Btc
-	globals.BackendTransientConfig.SetDefaults()
-	globals.FrontendTransientConfig = &configstore.Ftc
-	globals.FrontendTransientConfig.SetDefaults()
+	// Create the database and configs.
+	cmd.EstablishConfigs(nil)
+	persistence.CreateDatabase()
+	persistence.CheckDatabaseReady()
+	globals.BackendTransientConfig.FingerprintCheckEnabled = false
+	globals.BackendTransientConfig.SignatureCheckEnabled = false
+	globals.BackendTransientConfig.ProofOfWorkCheckEnabled = false
 	globals.BackendTransientConfig.PageSignatureCheckEnabled = false
-	// Establish permanent configs.
-	becfg, err := configstore.EstablishBackendConfig()
-	if err != nil {
-		logging.LogCrash(err)
-	}
-	becfg.Cycle()
-	globals.BackendConfig = becfg
-	fecfg, err := configstore.EstablishFrontendConfig()
-	if err != nil {
-		logging.LogCrash(err)
-	}
-	fecfg.Cycle()
-	globals.FrontendConfig = fecfg
 	globals.BackendTransientConfig.PermConfigReadOnly = true
 	globals.FrontendTransientConfig.PermConfigReadOnly = true
 	globals.BackendConfig.SetMinimumPoWStrengths(5)
@@ -446,7 +435,7 @@ func TestGetCache_InvalidPageCount_CountNegative(t *testing.T) {
 func TestGetCache_InvalidPageCount_HugePageCount(t *testing.T) {
 	// This also tests for the 3 consequent missing pages safeguard, as the huge fake page count is stopped by the 3 pages after the last real page failing.
 	_, err := api.GetCache(testNodeAddress, "", testNodePort, "c0/posts/cache_huge_page_number/")
-	errMessage := "3 Consequent missing pages."
+	errMessage := "3 or more broken pages"
 	if err == nil {
 		t.Errorf("GetCache failed to stop when 3 missing pages followed each other.")
 	} else if !strings.Contains(err.Error(), errMessage) {
@@ -476,7 +465,7 @@ func TestGetEndpoint_Success(t *testing.T) {
 
 func TestGetEndpoint_3ConsequentCachesMissingFailure(t *testing.T) {
 	_, err := api.GetEndpoint(testNodeAddress, "", testNodePort, "votes", 0)
-	errMessage := "3 consequent cache misses. "
+	errMessage := "3 or more cache failures"
 	if err == nil {
 		t.Errorf("Did not notice the cache being missing.")
 	} else if !strings.Contains(err.Error(), errMessage) {
@@ -616,7 +605,8 @@ func TestBoardCreatePoW_Success_WithoutKey(t *testing.T) {
 	newboard2.Creation = 4564654
 	newboard2.Name = "my board name"
 	newboard2.Description = "my board description2"
-	err := newboard2.CreatePoW(new(ecdsa.PrivateKey), 16)
+	newboard2.EntityVersion = 1
+	err := newboard2.CreatePoW(new(ed25519.PrivateKey), 16)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
@@ -635,7 +625,8 @@ func TestThreadCreatePoW_Success_WithoutKey(t *testing.T) {
 	newthread.Creation = 4564654
 	newthread.Name = "my thread name"
 	newthread.Body = "my thread description"
-	err := newthread.CreatePoW(new(ecdsa.PrivateKey), 16)
+	newthread.EntityVersion = 1
+	err := newthread.CreatePoW(new(ed25519.PrivateKey), 16)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
@@ -654,7 +645,8 @@ func TestPostCreatePoW_Success_WithoutKey(t *testing.T) {
 	newpost.Creation = 4564654
 	newpost.Parent = "my post parent fingerprint"
 	newpost.Body = "my board description"
-	err := newpost.CreatePoW(new(ecdsa.PrivateKey), 16)
+	newpost.EntityVersion = 1
+	err := newpost.CreatePoW(new(ed25519.PrivateKey), 16)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
@@ -672,7 +664,8 @@ func TestVoteCreatePoW_Success_WithoutKey(t *testing.T) {
 	newvote.Board = "my random board fingerprint"
 	newvote.Creation = 4564654
 	newvote.Target = "my vote target fingerprint"
-	err := newvote.CreatePoW(new(ecdsa.PrivateKey), 16)
+	newvote.EntityVersion = 1
+	err := newvote.CreatePoW(new(ed25519.PrivateKey), 16)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
@@ -690,7 +683,8 @@ func TestKeyCreatePoW_Success_WithoutKey(t *testing.T) {
 	newkey.Type = "my key type"
 	newkey.Key = "my key"
 	newkey.Name = "my key name"
-	err := newkey.CreatePoW(new(ecdsa.PrivateKey), 16)
+	newkey.EntityVersion = 1
+	err := newkey.CreatePoW(new(ed25519.PrivateKey), 16)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
@@ -708,7 +702,8 @@ func TestTruststateCreatePoW_Success_WithoutKey(t *testing.T) {
 	newtruststate.Target = "my truststate target"
 	newtruststate.Owner = "my truststate owner"
 	newtruststate.Expiry = 4134235
-	err := newtruststate.CreatePoW(new(ecdsa.PrivateKey), 16)
+	newtruststate.EntityVersion = 1
+	err := newtruststate.CreatePoW(new(ed25519.PrivateKey), 16)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
@@ -729,12 +724,13 @@ func TestBoardCreateUpdatePoW_Success_WithoutKey(t *testing.T) {
 	newboard.Creation = 4564654
 	newboard.Name = "my board name"
 	newboard.Description = "my board description"
-	err := newboard.CreatePoW(new(ecdsa.PrivateKey), 16)
+	newboard.EntityVersion = 1
+	err := newboard.CreatePoW(new(ed25519.PrivateKey), 16)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
 		newboard.Description = "I updated this board's description"
-		err2 := newboard.CreateUpdatePoW(new(ecdsa.PrivateKey), 16)
+		err2 := newboard.CreateUpdatePoW(new(ed25519.PrivateKey), 16)
 		if err2 != nil {
 			t.Errorf("Test failed, err: '%s'", err2)
 		} else {
@@ -753,12 +749,13 @@ func TestVoteCreateUpdatePoW_Success_WithoutKey(t *testing.T) {
 	newvote.Board = "my random board fingerprint"
 	newvote.Creation = 4564654
 	newvote.Target = "my vote target fingerprint"
-	err := newvote.CreatePoW(new(ecdsa.PrivateKey), 16)
+	newvote.EntityVersion = 1
+	err := newvote.CreatePoW(new(ed25519.PrivateKey), 16)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
-		newvote.Type = uint8(1)
-		err2 := newvote.CreateUpdatePoW(new(ecdsa.PrivateKey), 16)
+		newvote.Type = 1
+		err2 := newvote.CreateUpdatePoW(new(ed25519.PrivateKey), 16)
 		if err2 != nil {
 			t.Errorf("Test failed, err: '%s'", err2)
 		} else {
@@ -777,12 +774,13 @@ func TestKeyCreateUpdatePoW_Success_WithoutKey(t *testing.T) {
 	newkey.Type = "my key type"
 	newkey.Key = "my key"
 	newkey.Name = "my key name"
-	err := newkey.CreatePoW(new(ecdsa.PrivateKey), 16)
+	newkey.EntityVersion = 1
+	err := newkey.CreatePoW(new(ed25519.PrivateKey), 16)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
 		newkey.Name = "my name changed"
-		err2 := newkey.CreateUpdatePoW(new(ecdsa.PrivateKey), 16)
+		err2 := newkey.CreateUpdatePoW(new(ed25519.PrivateKey), 16)
 		if err2 != nil {
 			t.Errorf("Test failed, err: '%s'", err2)
 		} else {
@@ -801,12 +799,13 @@ func TestTruststateCreateUpdatePoW_Success_WithoutKey(t *testing.T) {
 	newtruststate.Target = "my truststate target"
 	newtruststate.Owner = "my truststate owner"
 	newtruststate.Expiry = 4134235
-	err := newtruststate.CreatePoW(new(ecdsa.PrivateKey), 16)
+	newtruststate.EntityVersion = 1
+	err := newtruststate.CreatePoW(new(ed25519.PrivateKey), 16)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
 		newtruststate.Expiry = 2341512
-		err2 := newtruststate.CreateUpdatePoW(new(ecdsa.PrivateKey), 16)
+		err2 := newtruststate.CreateUpdatePoW(new(ed25519.PrivateKey), 16)
 		if err2 != nil {
 			t.Errorf("Test failed, err: '%s'", err2)
 		} else {
@@ -828,6 +827,7 @@ func TestBoardCreateVerifyFingerprint_Success(t *testing.T) {
 	item.Creation = 4564654
 	item.Name = "my board name"
 	item.Description = "my board description"
+	item.EntityVersion = 1
 	item.CreateFingerprint()
 	if item.Fingerprint == "" {
 		t.Errorf("Fingerprint wasn't created")
@@ -844,6 +844,7 @@ func TestThreadCreateVerifyFingerprint_Success(t *testing.T) {
 	item.Creation = 4564654
 	item.Name = "my thread name"
 	item.Body = "my thread description"
+	item.EntityVersion = 1
 	item.CreateFingerprint()
 	if item.Fingerprint == "" {
 		t.Errorf("Fingerprint wasn't created")
@@ -860,6 +861,7 @@ func TestPostCreateVerifyFingerprint_Success(t *testing.T) {
 	item.Creation = 4564654
 	item.Thread = "parent thread fingerprint"
 	item.Body = "my post body"
+	item.EntityVersion = 1
 	item.CreateFingerprint()
 	if item.Fingerprint == "" {
 		t.Errorf("Fingerprint wasn't created")
@@ -876,7 +878,8 @@ func TestVoteCreateVerifyFingerprint_Success(t *testing.T) {
 	item.Target = "my target fingerprint"
 	item.Thread = "parent thread fingerprint"
 	item.Owner = "owner fingerprint"
-	item.Type = uint8(1)
+	item.Type = 1
+	item.EntityVersion = 1
 	item.CreateFingerprint()
 	if item.Fingerprint == "" {
 		t.Errorf("Fingerprint wasn't created")
@@ -893,6 +896,7 @@ func TestKeyCreateVerifyFingerprint_Success(t *testing.T) {
 	item.Type = "my key type"
 	item.Name = "my key name"
 	item.Info = "my key info"
+	item.EntityVersion = 1
 	item.CreateFingerprint()
 	if item.Fingerprint == "" {
 		t.Errorf("Fingerprint wasn't created")
@@ -909,6 +913,7 @@ func TestTruststateCreateVerifyFingerprint_Success(t *testing.T) {
 	item.Target = "truststate target"
 	item.Owner = "truststate owner"
 	item.Expiry = 523523
+	item.EntityVersion = 1
 	item.CreateFingerprint()
 	if item.Fingerprint == "" {
 		t.Errorf("Fingerprint wasn't created")
@@ -932,6 +937,7 @@ func TestBoardCreateSignature_Success(t *testing.T) {
 	newboard2.Name = "my board name"
 	newboard2.Description = "my board description2"
 	newboard2.ProofOfWork = "my fake pow"
+	newboard2.EntityVersion = 1
 	err2 := newboard2.CreateSignature(privKey)
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
@@ -957,6 +963,7 @@ func TestThreadCreateSignature_Success(t *testing.T) {
 	newthread.Name = "my thread name"
 	newthread.Body = "my thread body"
 	newthread.ProofOfWork = "my fake pow"
+	newthread.EntityVersion = 1
 	err2 := newthread.CreateSignature(privKey)
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
@@ -981,6 +988,7 @@ func TestPostCreateSignature_Success(t *testing.T) {
 	newpost.Creation = 4564654
 	newpost.Parent = "my post parent fingerprint"
 	newpost.Body = "my board description"
+	newpost.EntityVersion = 1
 	err2 := newpost.CreateSignature(privKey)
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
@@ -1004,6 +1012,7 @@ func TestVoteCreateSignature_Success(t *testing.T) {
 	newvote.Board = "my random board fingerprint"
 	newvote.Creation = 4564654
 	newvote.Target = "my vote target fingerprint"
+	newvote.EntityVersion = 1
 	err2 := newvote.CreateSignature(privKey)
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
@@ -1027,6 +1036,7 @@ func TestKeyCreateSignature_Success(t *testing.T) {
 	newkey.Type = "my key type"
 	newkey.Key = "my key"
 	newkey.Name = "my key name"
+	newkey.EntityVersion = 1
 	err2 := newkey.CreateSignature(privKey)
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
@@ -1050,6 +1060,7 @@ func TestTruststateCreateSignature_Success(t *testing.T) {
 	newtruststate.Target = "my truststate target"
 	newtruststate.Owner = "my truststate owner"
 	newtruststate.Expiry = 4134235
+	newtruststate.EntityVersion = 1
 	err2 := newtruststate.CreateSignature(privKey)
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
@@ -1076,6 +1087,7 @@ func TestBoardCreateUpdateSignature_Success(t *testing.T) {
 	newboard.Creation = 4564654
 	newboard.Name = "my board name"
 	newboard.Description = "my board description"
+	newboard.EntityVersion = 1
 	err := newboard.CreateSignature(privKey)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
@@ -1105,11 +1117,12 @@ func TestVoteCreateUpdateSignature_Success(t *testing.T) {
 	newvote.Board = "my random board fingerprint"
 	newvote.Creation = 4564654
 	newvote.Target = "my vote target fingerprint"
+	newvote.EntityVersion = 1
 	err := newvote.CreateSignature(privKey)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
-		newvote.Type = uint8(1)
+		newvote.Type = 1
 		err2 := newvote.CreateUpdateSignature(privKey)
 		if err2 != nil {
 			t.Errorf("Test failed, err: '%s'", err2)
@@ -1131,12 +1144,14 @@ func TestKeyCreateUpdateSignature_Success(t *testing.T) {
 		t.Errorf("Key pair creation failed. Err: '%s'", err4)
 	}
 	var newkey api.Key
+	newkey.Fingerprint = "my test fingerprint"
 	newkey.Type = "my key type"
 	newkey.Key = "my key"
 	newkey.Name = "my key name"
-	err := newkey.CreateSignature(privKey)
-	if err != nil {
-		t.Errorf("Test failed, err: '%s'", err)
+	newkey.EntityVersion = 1
+	err5 := newkey.CreateSignature(privKey)
+	if err5 != nil {
+		t.Errorf("Test failed, err: '%s'", err5)
 	} else {
 		newkey.Name = "my name changed"
 		err2 := newkey.CreateUpdateSignature(privKey)
@@ -1163,6 +1178,7 @@ func TestTruststateCreateUpdateSignature_Success(t *testing.T) {
 	newtruststate.Target = "my truststate target"
 	newtruststate.Owner = "my truststate owner"
 	newtruststate.Expiry = 4134235
+	newtruststate.EntityVersion = 1
 	err := newtruststate.CreateSignature(privKey)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
@@ -1185,7 +1201,9 @@ func TestTruststateCreateUpdateSignature_Success(t *testing.T) {
 
 func TestApiResponseCreateSignature_Success(t *testing.T) {
 	globals.BackendTransientConfig.PageSignatureCheckEnabled = true
-	apiResp := responsegenerator.GeneratePrefilledApiResponse()
+	apiResp := api.ApiResponse{}
+	apiResp.Prefill()
+	// apiResp := responsegenerator.GeneratePrefilledApiResponse()
 	err := apiResp.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
@@ -1201,7 +1219,9 @@ func TestApiResponseCreateSignature_Success(t *testing.T) {
 
 func TestApiResponseCreateSignature_Fail(t *testing.T) {
 	globals.BackendTransientConfig.PageSignatureCheckEnabled = true
-	apiResp := responsegenerator.GeneratePrefilledApiResponse()
+	apiResp := api.ApiResponse()
+	apiResp.Prefill()
+	// apiResp := responsegenerator.GeneratePrefilledApiResponse()
 	err := apiResp.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
 	apiResp.Entity = "changing the page after it was signed"
 	if err != nil {

@@ -4,9 +4,9 @@
 package proofofwork
 
 import (
-	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
+	"golang.org/x/crypto/ed25519"
 	// "encoding/json"
 	"errors"
 	"fmt"
@@ -96,7 +96,7 @@ func getNowInUnixTS() int {
 // Mid level functions
 
 // Create creates the Hashcash proof of with the given difficulty. This function has an inner loop which adds a random element to the input and tries to find enough zeros at the beginning of the SHA1 hash of the result.
-func Create(input string, difficulty int, privKey *ecdsa.PrivateKey) (string, error) {
+func Create(input string, difficulty int, privKey *ed25519.PrivateKey) (string, error) {
 	// First of all, check if BailoutSeconds exists. If this does not exist we have to exit as the allotted maximum time until a PoW is created will be zero.
 	difficulty64 := int64(difficulty)
 	if globals.BackendConfig.GetPoWBailoutTimeSeconds() == 0 {
@@ -164,7 +164,7 @@ func Create(input string, difficulty int, privKey *ecdsa.PrivateKey) (string, er
 	// Mind the terminating ":" in case of no signature.
 	proofOfWork := "MIM1" + ":" + strconv.FormatInt(difficulty64, 10) + "::::" +
 		string(saltBytes) + ":" + strconv.FormatInt(counter, 10) + ":"
-	if privKey.D != nil {
+	if len(signaturing.MarshalPrivateKey(*privKey)) > 0 {
 		// We have a private key. Sign the hash with this key.
 		// The result will be in the format of [Rest of PoW]:[Signature]
 		result, err := signaturing.Sign(proofOfWork, privKey)

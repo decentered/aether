@@ -8,9 +8,9 @@ import (
 	"aether-core/services/signaturing"
 	// "fmt"
 	// "log"
-	"crypto/ecdsa"
 	"crypto/elliptic"
 	"encoding/hex"
+	"golang.org/x/crypto/ed25519"
 	"os"
 	"strings"
 	"testing"
@@ -67,7 +67,7 @@ func setup() {
 	newboard.ProofOfWork = ""
 	newboard.ProofOfWork = "MIM1:20::::hvMazmkOQUvYriEB:630538:"
 	// To regenerate:
-	// newboard.CreatePoW(new(ecdsa.PrivateKey), 20)
+	// newboard.CreatePoW(new(ed25519.PrivateKey), 20)
 	// fmt.Println(newboard.ProofOfWork)
 
 	signedNewboard.Fingerprint = "my random fingerprint3"
@@ -363,11 +363,11 @@ func TestVerifyUpdatePoW_Success_WithoutKey(t *testing.T) {
 	newboard.Creation = 4564654
 	newboard.Name = "my board name"
 	newboard.Description = "my description"
-	// newboard.CreatePoW(new(ecdsa.PrivateKey), 20)
+	// newboard.CreatePoW(new(ed25519.PrivateKey), 20)
 	// fmt.Println(newboard.ProofOfWork)
 	newboard.ProofOfWork = "MIM1:20::::VcoyLilzglhVKYdG:687101:"
 	newboard.Description = "my updated description"
-	// newboard.CreateUpdatePoW(new(ecdsa.PrivateKey), 20)
+	// newboard.CreateUpdatePoW(new(ed25519.PrivateKey), 20)
 	// fmt.Println(newboard.UpdateProofOfWork)
 	newboard.UpdateProofOfWork = "MIM1:20::::fhUxvaQuQpePjkwr:3315783:"
 	result, err := newboard.VerifyPoW("")
@@ -413,7 +413,7 @@ func TestCreatePoW_Success_WithoutKey(t *testing.T) {
 	newboard2.Creation = 4564654
 	newboard2.Name = "my board name"
 	newboard2.Description = "my board description2"
-	err := newboard2.CreatePoW(new(ecdsa.PrivateKey), 20)
+	err := newboard2.CreatePoW(new(ed25519.PrivateKey), 20)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
@@ -432,9 +432,9 @@ func TestCreatePoW_RunTwice_Success_WithoutKey(t *testing.T) {
 	newboard2.Creation = 4564654
 	newboard2.Name = "my board name"
 	newboard2.Description = "my board description2"
-	err := newboard2.CreatePoW(new(ecdsa.PrivateKey), 20)
+	err := newboard2.CreatePoW(new(ed25519.PrivateKey), 20)
 	// We run the CreatePoW twice to make sure the second run is idempotent (that it properly removes the first PoW before running so as to not include the old PoW in the input to the new PoW)
-	err2 := newboard2.CreatePoW(new(ecdsa.PrivateKey), 20)
+	err2 := newboard2.CreatePoW(new(ed25519.PrivateKey), 20)
 	if err != nil || err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
@@ -453,7 +453,7 @@ func TestCreatePoW_SaltIsDifferent_Success(t *testing.T) {
 	newboard2.Creation = 4564654
 	newboard2.Name = "my board name"
 	newboard2.Description = "my board description2"
-	err := newboard2.CreatePoW(new(ecdsa.PrivateKey), 20)
+	err := newboard2.CreatePoW(new(ed25519.PrivateKey), 20)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -495,7 +495,7 @@ func TestCreatePoW_Fail_TookTooLong(t *testing.T) {
 	newboard.Name = "my board name"
 	newboard.Description = "my board description2"
 	// In the unlikely case that your test machine can create a 32 bit hash collision in less than 30 seconds, increase it to 36 or 40. If so, on a completely unrelated note: can I borrow your computer?
-	err := newboard.CreatePoW(new(ecdsa.PrivateKey), 32)
+	err := newboard.CreatePoW(new(ed25519.PrivateKey), 32)
 	errMessage := "The timestamp took too long to create."
 	if err == nil {
 		t.Errorf("Did not bail after too long a time has passed.")
@@ -514,12 +514,12 @@ func TestCreateUpdatePoW_Success_WithoutKey(t *testing.T) {
 	newboard.Creation = 4564654
 	newboard.Name = "my board name"
 	newboard.Description = "my board description"
-	err := newboard.CreatePoW(new(ecdsa.PrivateKey), 20)
+	err := newboard.CreatePoW(new(ed25519.PrivateKey), 20)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
 		newboard.Description = "I updated this board's description"
-		err2 := newboard.CreateUpdatePoW(new(ecdsa.PrivateKey), 20)
+		err2 := newboard.CreateUpdatePoW(new(ed25519.PrivateKey), 20)
 		if err2 != nil {
 			t.Errorf("Test failed, err: '%s'", err2)
 		} else {
@@ -606,17 +606,17 @@ func TestCreateUpdatePoW_RunTwice_Success_WithoutKey(t *testing.T) {
 	newboard.Creation = 4564654
 	newboard.Name = "my board name"
 	newboard.Description = "my board description"
-	err := newboard.CreatePoW(new(ecdsa.PrivateKey), 20)
+	err := newboard.CreatePoW(new(ed25519.PrivateKey), 20)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
 		newboard.Description = "I updated this board's description"
-		err2 := newboard.CreateUpdatePoW(new(ecdsa.PrivateKey), 20)
+		err2 := newboard.CreateUpdatePoW(new(ed25519.PrivateKey), 20)
 		if err2 != nil {
 			t.Errorf("Test failed, err: '%s'", err2)
 		} else {
 			newboard.Description = "I updated this board's description twice"
-			err3 := newboard.CreateUpdatePoW(new(ecdsa.PrivateKey), 20)
+			err3 := newboard.CreateUpdatePoW(new(ed25519.PrivateKey), 20)
 			if err3 != nil {
 				t.Errorf("Test failed, err: '%s'", err3)
 			} else {
@@ -673,12 +673,12 @@ func TestCreateUpdatePoW_RunTwice_ForgotReUpdatePoW_Fail_WithoutKey(t *testing.T
 	newboard.Creation = 4564654
 	newboard.Name = "my board name"
 	newboard.Description = "my board description"
-	err := newboard.CreatePoW(new(ecdsa.PrivateKey), 20)
+	err := newboard.CreatePoW(new(ed25519.PrivateKey), 20)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else {
 		newboard.Description = "I updated this board's description"
-		err2 := newboard.CreateUpdatePoW(new(ecdsa.PrivateKey), 20)
+		err2 := newboard.CreateUpdatePoW(new(ed25519.PrivateKey), 20)
 		if err2 != nil {
 			t.Errorf("Test failed, err: '%s'", err2)
 		} else {

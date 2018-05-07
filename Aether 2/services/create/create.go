@@ -95,6 +95,7 @@ func CreateBoardOwner(
 func CreateBoard(
 	boardName string,
 	ownerFp api.Fingerprint,
+	ownerPk string,
 	boardOwners []api.BoardOwner,
 	description string,
 	meta string,
@@ -105,6 +106,7 @@ func CreateBoard(
 	entity.Creation = api.Timestamp(time.Now().Unix())
 	entity.Name = boardName
 	entity.Owner = ownerFp
+	entity.OwnerPublicKey = ownerPk
 	entity.BoardOwners = boardOwners
 	entity.Description = description
 	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Board
@@ -124,6 +126,7 @@ func CreateThread(
 	body string,
 	link string,
 	ownerFp api.Fingerprint,
+	ownerPk string,
 	meta string,
 	realmId api.Fingerprint,
 ) (api.Thread, error) {
@@ -135,6 +138,7 @@ func CreateThread(
 	entity.Body = body
 	entity.Link = link
 	entity.Owner = ownerFp
+	entity.OwnerPublicKey = ownerPk
 	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Thread
 	entity.Meta = meta
 	entity.RealmId = realmId
@@ -152,6 +156,7 @@ func CreatePost(
 	parentFp api.Fingerprint,
 	body string,
 	ownerFp api.Fingerprint,
+	ownerPk string,
 	meta string,
 	realmId api.Fingerprint,
 ) (api.Post, error) {
@@ -163,6 +168,7 @@ func CreatePost(
 	entity.Parent = parentFp
 	entity.Body = body
 	entity.Owner = ownerFp
+	entity.OwnerPublicKey = ownerPk
 	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Post
 	entity.Meta = meta
 	entity.RealmId = realmId
@@ -179,6 +185,7 @@ func CreateVote(
 	threadFp api.Fingerprint,
 	targetFp api.Fingerprint,
 	ownerFp api.Fingerprint,
+	ownerPk string,
 	voteType int,
 	meta string,
 	realmId api.Fingerprint,
@@ -190,6 +197,7 @@ func CreateVote(
 	entity.Thread = threadFp
 	entity.Target = targetFp
 	entity.Owner = ownerFp
+	entity.OwnerPublicKey = ownerPk
 	entity.Type = voteType
 	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Vote
 	entity.Meta = meta
@@ -208,7 +216,8 @@ func CreateAddress(
 	locType uint8,
 	port uint16,
 	addrType uint8,
-	lastOnline api.Timestamp,
+	lastSuccessfulPing api.Timestamp,
+	lastSuccessfulSync api.Timestamp,
 	protVMajor uint8,
 	protVMinor uint16,
 	subprotocols []api.Subprotocol,
@@ -225,7 +234,8 @@ func CreateAddress(
 	entity.LocationType = locType
 	entity.Port = port
 	entity.Type = addrType
-	entity.LastOnline = lastOnline
+	entity.LastSuccessfulPing = lastSuccessfulPing
+	entity.LastSuccessfulSync = lastSuccessfulSync
 	var prot api.Protocol
 	prot.VersionMajor = protVMajor
 	prot.VersionMinor = protVMinor
@@ -271,6 +281,7 @@ func CreateKey(
 func CreateTruststate(
 	targetFp api.Fingerprint,
 	ownerFp api.Fingerprint,
+	ownerPk string,
 	tsType int,
 	domains []api.Fingerprint,
 	expiry api.Timestamp,
@@ -282,6 +293,7 @@ func CreateTruststate(
 	entity.Creation = api.Timestamp(time.Now().Unix())
 	entity.Target = targetFp
 	entity.Owner = ownerFp
+	entity.OwnerPublicKey = ownerPk
 	entity.Type = tsType
 	entity.Domains = domains
 	entity.Expiry = expiry

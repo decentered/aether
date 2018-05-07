@@ -7,6 +7,7 @@ import (
 	"aether-core/io/api"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
+	// "aether-core/services/toolbox"
 	"errors"
 	"fmt"
 	"github.com/jmoiron/sqlx"
@@ -68,10 +69,11 @@ func enforceReadValidity(
 	return nil
 }
 
-// sanitiseTimeRange validates and cleans the time range used in ReadX functions (medium level API below)
-func sanitiseTimeRange(
+// SanitiseTimeRange validates and cleans the time range used in ReadX functions (medium level API below)
+func SanitiseTimeRange(
 	beginTimestamp api.Timestamp,
-	endTimestamp api.Timestamp, now api.Timestamp) (api.Timestamp, api.Timestamp, error) {
+	endTimestamp api.Timestamp,
+	now api.Timestamp) (api.Timestamp, api.Timestamp, error) {
 	// If there is no end timestamp, the end is now.
 	if endTimestamp == 0 || endTimestamp > now {
 		endTimestamp = now
@@ -112,7 +114,9 @@ func Read(
 	embeds []string,
 	beginTimestamp api.Timestamp,
 	endTimestamp api.Timestamp) (api.Response, error) {
-
+	if globals.BackendTransientConfig.ShutdownInitiated {
+		return api.Response{}, nil
+	}
 	var result api.Response
 	now := api.Timestamp(time.Now().Unix())
 	// Fingerprints search and start/end timestamp search are mutually exclusive. Make sure that is enforced.
@@ -125,7 +129,7 @@ func Read(
 	var err2 error
 	if len(fingerprints) == 0 {
 		// If this is a time range search:
-		sanitisedBeginTimestamp, sanitisedEndTimestamp, err2 = sanitiseTimeRange(beginTimestamp, endTimestamp, now)
+		sanitisedBeginTimestamp, sanitisedEndTimestamp, err2 = SanitiseTimeRange(beginTimestamp, endTimestamp, now)
 		if err2 != nil {
 			return result, err2
 		}
@@ -801,7 +805,7 @@ func readDbAddressesTimeRangeSearch(
 	beginTimestamp api.Timestamp,
 	endTimestamp api.Timestamp,
 	offset int,
-	timeRangeSearchType string) (*[]DbAddress, error) {
+	searchType string) (*[]DbAddress, error) {
 	var dbArr []DbAddress
 	// Time range search
 	// This should result in:
@@ -815,13 +819,15 @@ func readDbAddressesTimeRangeSearch(
 	}
 	var rangeSearchColumn string
 	// Options: all, connected.
-	if timeRangeSearchType == "" || timeRangeSearchType == "all" {
+	if searchType == "timerange_all" {
 		// Default case. Default is LocalArrival.
 		rangeSearchColumn = "LocalArrival"
-	} else if timeRangeSearchType == "connected" {
-		rangeSearchColumn = "LastOnline"
+	} else if searchType == "timerange_lastsuccessfulping" {
+		rangeSearchColumn = "LastSuccessfulPing"
+	} else if searchType == "timerange_lastsuccessfulsync" {
+		rangeSearchColumn = "LastSuccessfulSync"
 	} else {
-		return &dbArr, errors.New(fmt.Sprintf("You have provided an invalid time range search type. You provided: %s", timeRangeSearchType))
+		return &dbArr, errors.New(fmt.Sprintf("You have provided an invalid time range search type. You provided: %s", searchType))
 	}
 	query := fmt.Sprintf("SELECT DISTINCT * from Addresses WHERE (%s > ? AND %s < ?) ORDER BY %s DESC", rangeSearchColumn, rangeSearchColumn, rangeSearchColumn)
 	rows, err := globals.DbInstance.Queryx(query, beginTimestamp, endTs)
@@ -841,21 +847,100 @@ func readDbAddressesTimeRangeSearch(
 	return &dbArr, nil
 }
 
+//readAddressContainerResponse is a direct prepared response to a container generation request, whether be it for a cache generation or POST response generation.
+func readAddressContainerResponse(beg, end api.Timestamp, addrType uint8, limit int) (*[]DbAddress, error) {
+	// Filter by time range given, sort by fixed elements, and limit the results to limit
+	results := []DbAddress{}
+	q := "SELECT * FROM Addresses WHERE (LastSuccessfulPing > ? AND LastSuccessfulPing < ? AND AddressType = ?) ORDER BY LastSuccessfulSync DESC, LastSuccessfulPing DESC LIMIT ?"
+	r, err := globals.DbInstance.Queryx(q, beg, end, addrType, limit)
+	defer r.Close() // In case of premature exit.
+	if err != nil {
+		return &results, err
+	}
+	for r.Next() {
+		var a DbAddress
+		err := r.StructScan(&a)
+		if err != nil {
+			return &results, err
+		}
+		results = append(results, a)
+	}
+	r.Close()
+	logging.Logf(1, "Addr Response generated to serve in POST: %#v", Dbg_convertAddrSliceToNameSlice(results))
+	return &results, nil
+}
+
+func readDBAddressesAll(isDesc bool) (*[]DbAddress, error) {
+	results := []DbAddress{}
+	q := ""
+	if isDesc {
+		q = "SELECT * FROM Addresses ORDER BY LastSuccessfulSync DESC, LastSuccessfulPing DESC, LocalArrival DESC LIMIT ?"
+	} else {
+		q = "SELECT * FROM Addresses ORDER BY LastSuccessfulSync ASC, LastSuccessfulPing ASC, LocalArrival ASC LIMIT ?"
+	}
+	r, err := globals.DbInstance.Queryx(q, globals.BackendConfig.MaxAddressTableSize)
+	defer r.Close()
+	if err != nil {
+		return &results, err
+	}
+	for r.Next() {
+		var a DbAddress
+		err := r.StructScan(&a)
+		if err != nil {
+			return &results, err
+		}
+		results = append(results, a)
+	}
+	r.Close()
+	return &results, nil
+}
+
+func ReadDbAddresses(
+	loc, subloc api.Location, port uint16,
+	beg, end api.Timestamp, limit, offset int,
+	addrType uint8, searchType string) (*[]DbAddress, error) {
+	if searchType == "container_generate" {
+		live, err1 := readAddressContainerResponse(beg, end, 2, (limit/10)*8)
+		bs, err2 := readAddressContainerResponse(beg, end, 3, (limit / 10))
+		static, err3 := readAddressContainerResponse(beg, end, 255, (limit / 10))
+		all := []DbAddress{}
+		all = append(all, (*live)...)
+		all = append(all, (*bs)...)
+		all = append(all, (*static)...)
+		if err1 != nil || err2 != nil || err3 != nil {
+			errs := []error{}
+			return &all, errors.New(fmt.Sprintf("Some errors appeared while trying to prepare this address response to a remote request. Errors: %#v", errs))
+		}
+		return &all, nil
+	} else if searchType == "basic" {
+		return readDbAddressesBasicSearch(loc, subloc, port)
+	} else if searchType == "limit" {
+		return readDbAddressesFirstXResultsSearch(limit, offset, addrType)
+	} else if searchType == "timerange_all" ||
+		searchType == "timerange_lastsuccessfulping" ||
+		searchType == "timerange_lastsuccessfulsync" {
+		return readDbAddressesTimeRangeSearch(beg, end, offset, searchType)
+	} else if searchType == "all_desc" {
+		return readDBAddressesAll(true)
+	} else if searchType == "all_asc" {
+		return readDBAddressesAll(false)
+	} else {
+		return &[]DbAddress{}, errors.New("You have requested data from ReadAddresses in an invalid configuration.")
+	}
+}
+
 // ReadAddresses reads addresses from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
+// TODO FUTURE: these should eventually do a join on subprotocols to be able to filter by subprotocol items. But for now, since we're not using that, there's no join, which is faster.
 func ReadAddresses(
-	Location api.Location,
-	Sublocation api.Location,
-	Port uint16,
-	beginTimestamp api.Timestamp,
-	endTimestamp api.Timestamp,
-	maxResults int, offset int, addrType uint8,
-	timeRangeSearchType string) ([]api.Address, error) {
+	loc, subloc api.Location, port uint16,
+	beg, end api.Timestamp, limit, offset int,
+	addrType uint8, searchType string) ([]api.Address, error) {
 	var arr []api.Address
-	dbArr, err := ReadDbAddresses(Location, Sublocation, Port, beginTimestamp, endTimestamp, maxResults, offset, addrType, timeRangeSearchType)
+	res, err := ReadDbAddresses(loc, subloc, port, beg, end, limit, offset, addrType, searchType)
 	if err != nil {
 		return arr, err
 	}
-	for _, entity := range dbArr {
+	for _, entity := range *res {
 		apiEntity, err := DBtoAPI(entity)
 		if err != nil {
 			// Log the problem and go to the next iteration without saving this one.
@@ -867,63 +952,92 @@ func ReadAddresses(
 	return arr, nil
 }
 
-func ReadDbAddresses(
-	Location api.Location,
-	Sublocation api.Location,
-	Port uint16,
-	beginTimestamp api.Timestamp,
-	endTimestamp api.Timestamp,
-	maxResults int, offset int, addrType uint8,
-	timeRangeSearchType string) ([]DbAddress, error) {
-	/*
-		There are three ways you can use this.
-		1) Provide Location, sublocation, port, and nothing else = regular search
-		2) Provide MaxResults, Maybe provide offset, addrType, and nothing else = first X results search
-		3) Provide Begin, End timestamp, nothing else = time range search.
-		None of these can be combined. Provide only one set - not a combination.
+// func ReadDbAddresses(
+// 	Location api.Location,
+// 	Sublocation api.Location,
+// 	Port uint16,
+// 	beginTimestamp api.Timestamp,
+// 	endTimestamp api.Timestamp,
+// 	maxResults int, offset int, addrType uint8,
+// 	searchType string) ([]DbAddress, error) {
+// 	/*
+// 		There are three ways you can use this.
+// 		1) Provide Location, sublocation, port, and nothing else = regular search
+// 		2) Provide MaxResults, Maybe provide offset, addrType, and nothing else = first X results search
+// 		3) Provide Begin, End timestamp, nothing else = time range search.
+// 		None of these can be combined. Provide only one set - not a combination.
 
-		timeRangeSearchType:
-		Options: all, connected. It only affects time range search (#3.)
-		Allows the caller to specify whether you want this search to be done based on localArrival (all addresses in the database is processed) or lastOnline (only the addresses the computer has personally connected to returns).
-		If nothing is given (i.e. ""), it defaults to "all".
-	*/
-	var dbArr []DbAddress
-	if len(Location) > 0 && Port > 0 && maxResults == 0 { // Regular address search.
-		logging.Log(1, "This is an address search. Type: Basic.")
-		dbArrPointer, err := readDbAddressesBasicSearch(Location, Sublocation, Port)
-		dbArr = *dbArrPointer
-		if err != nil {
-			return dbArr, err
-		}
-	} else if maxResults > 0 && len(Location) == 0 && Port == 0 {
-		// First X results search.
-		logging.Log(2, "This is an address search. Type: First X results.")
-		dbArrPointer, err := readDbAddressesFirstXResultsSearch(maxResults, offset, addrType)
-		dbArr = *dbArrPointer
-		if err != nil {
-			return dbArr, err
-		}
-	} else if maxResults == 0 && len(Location) == 0 && Port == 0 { // Time range search
-		// This should result in:
-		// - Entities that has landed to local after the beginning and before the end
-		// If the end timestamp is 0, it's assumed that endTs is right now.
-		logging.Log(2, "This is an address search. Type: Time Range.")
-		arrPointer, err := readDbAddressesTimeRangeSearch(beginTimestamp, endTimestamp, offset, timeRangeSearchType)
-		dbArr = *arrPointer
-		if err != nil {
-			return dbArr, err
-		}
-	} else {
-		// Invalid configuration coming from the address. Return error.
-		return dbArr, errors.New("You have requested data from ReadAddresses in an invalid configuration. It can provide a) search by IP and Port, b) Return last X updated addresses, c) Return the addresses that were updated in a given time range. These cannot be combined. In other words,if you want to use any of the options, you need to zero out the inputs required for the other two. You have provided inputs for more than one option. ")
-	}
-	// if arrPointer != nil {
-	// 	arr = *arrPointer
-	// } else {
-	// 	arr = []api.Address{}
-	// }
-	return dbArr, nil
-}
+// 		searchType:
+// 		Options: timerange_all, timerange_connected. It only affects time range search (#3.)
+// 		Allows the caller to specify whether you want this search to be done based on localArrival (all addresses in the database is processed) or lastsuccessfulping/lastsuccessfulsync (only the addresses the computer has personally connected to returns).
+// 		If nothing is given (i.e. ""), it defaults to "all".
+// 	*/
+// 	var dbArr []DbAddress
+// 	if len(Location) > 0 && Port > 0 && maxResults == 0 { // Regular address search.
+// 		logging.Log(1, "This is an address search. Type: Basic.")
+// 		logging.LogCrash("yo")
+// 		dbArrPointer, err := readDbAddressesBasicSearch(Location, Sublocation, Port)
+// 		dbArr = *dbArrPointer
+// 		if err != nil {
+// 			return dbArr, err
+// 		}
+// 	} else if maxResults > 0 && len(Location) == 0 && Port == 0 {
+// 		// First X results search.
+// 		logging.Log(1, "This is an address search. Type: First X results.")
+// 		logging.LogCrash("yo")
+// 		dbArrPointer, err := readDbAddressesFirstXResultsSearch(maxResults, offset, addrType)
+// 		dbArr = *dbArrPointer
+// 		if err != nil {
+// 			return dbArr, err
+// 		}
+// 	} else if maxResults == 0 && len(Location) == 0 && Port == 0 { // Time range search
+// 		// This should result in:
+// 		// - Entities that has landed to local after the beginning and before the end
+// 		// If the end timestamp is 0, it's assumed that endTs is right now.
+// 		logging.Log(1, "This is an address search. Type: Time Range.")
+// 		logging.LogCrash("yo")
+// 		arrPointer, err := readDbAddressesTimeRangeSearch(beginTimestamp, endTimestamp, offset, searchType)
+// 		dbArr = *arrPointer
+// 		if err != nil {
+// 			return dbArr, err
+// 		}
+// 	} else {
+// 		// Invalid configuration coming from the address. Return error.
+// 		return dbArr, errors.New("You have requested data from ReadAddresses in an invalid configuration. It can provide a) search by IP and Port, b) Return last X updated addresses, c) Return the addresses that were updated in a given time range. These cannot be combined. In other words,if you want to use any of the options, you need to zero out the inputs required for the other two. You have provided inputs for more than one option. ")
+// 	}
+// 	// if arrPointer != nil {
+// 	// 	arr = *arrPointer
+// 	// } else {
+// 	// 	arr = []api.Address{}
+// 	// }
+// 	return dbArr, nil
+// }
+
+// ReadAddresses reads addresses from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
+// func ReadAddresses(
+// 	Location api.Location,
+// 	Sublocation api.Location,
+// 	Port uint16,
+// 	beginTimestamp api.Timestamp,
+// 	endTimestamp api.Timestamp,
+// 	maxResults int, offset int, addrType uint8,
+// 	searchType string) ([]api.Address, error) {
+// 	var arr []api.Address
+// 	dbArr, err := ReadDbAddresses(Location, Sublocation, Port, beginTimestamp, endTimestamp, maxResults, offset, addrType, searchType)
+// 	if err != nil {
+// 		return arr, err
+// 	}
+// 	for _, entity := range dbArr {
+// 		apiEntity, err := DBtoAPI(entity)
+// 		if err != nil {
+// 			// Log the problem and go to the next iteration without saving this one.
+// 			logging.Log(1, err)
+// 			continue
+// 		}
+// 		arr = append(arr, apiEntity.(api.Address))
+// 	}
+// 	return arr, nil
+// }
 
 // ReadKeys reads keys from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
 func ReadKeys(
@@ -1141,4 +1255,12 @@ func ReadDBSubprotocols(Location api.Location, Sublocation api.Location, Port ui
 		rows.Close()
 	}
 	return subprotArr, nil
+}
+
+func Dbg_convertAddrSliceToNameSlice(nodes []DbAddress) []string {
+	names := []string{}
+	for _, val := range nodes {
+		names = append(names, val.ClientName)
+	}
+	return names
 }

@@ -157,12 +157,13 @@ func createNodeData() {
 	a.Sublocation = "example"
 	a.Port = 8090
 	a.LocationType = 1
-	a.LastOnline = 1
+	a.LastSuccessfulPing = 1
 	a.Protocol.VersionMajor = 1
 	a.Protocol.Subprotocols = []api.Subprotocol{s}
 	a.Client.VersionMajor = 1
 	a.Client.ClientName = "client name"
 	a.EntityVersion = 1
+	a.SetVerified(true)
 
 	ts.Fingerprint = "my truststate fingerprint"
 	ts.Target = k.Fingerprint
@@ -604,7 +605,7 @@ func TestReadAddress_Success(t *testing.T) {
 	subloc := api.Location("example")
 	port := uint16(8090)
 	resp, err := persistence.ReadAddresses(
-		loc, subloc, port, 0, 0, 0, 0, 0, "")
+		loc, subloc, port, 0, 0, 0, 0, 0, "timerange_all")
 	// fmt.Printf("%#v\n", resp)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
@@ -632,7 +633,7 @@ func TestFirstPartyInsertReadAddress_Success(t *testing.T) {
 	a2.Sublocation = "example33"
 	a2.Port = 1111
 	a2.LocationType = 1
-	a2.LastOnline = 1
+	a2.LastSuccessfulPing = 1
 	a2.Protocol.VersionMajor = 1
 	a2.Protocol.Subprotocols = []api.Subprotocol{s1, s2}
 	a2.Client.VersionMajor = 1
@@ -646,7 +647,7 @@ func TestFirstPartyInsertReadAddress_Success(t *testing.T) {
 	port := uint16(1111)
 
 	resp, err := persistence.ReadAddresses(
-		loc, subloc, port, 0, 0, 0, 0, 0, "")
+		loc, subloc, port, 0, 0, 0, 0, 0, "timerange_all")
 	if !(resp[0].Protocol.Subprotocols[0].Name == "c0" || resp[0].Protocol.Subprotocols[1].Name == "c0") {
 		t.Errorf(fmt.Sprintf("Test failed, the subprotocol information has not been committed. Response: %#v", resp))
 	}
@@ -662,7 +663,7 @@ func TestFirstPartyInsertReadAddress_Success(t *testing.T) {
 
 func TestReadAddress_Empty(t *testing.T) {
 	resp, err := persistence.ReadAddresses(
-		"fake loc", "fake subloc", 9090, 0, 0, 0, 0, 0, "")
+		"fake loc", "fake subloc", 9090, 0, 0, 0, 0, 0, "timerange_all")
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp) > 0 {
@@ -778,6 +779,7 @@ func TestDbToApi_TooManyItems(t *testing.T) {
 
 func TestApiToDb_Success(t *testing.T) {
 	var a api.Address
+	a.SetVerified(true)
 	a.Location = "www.example.com"
 	a.Sublocation = "hello"
 	a.Port = uint16(8090)
@@ -802,6 +804,7 @@ func TestApiToDb_Success(t *testing.T) {
 func TestApiToDb_RepeatedItems(t *testing.T) {
 	var a api.Address
 	a.Location = "www.example.com"
+	a.SetVerified(true)
 	a.Sublocation = "hello"
 	a.Port = uint16(8090)
 	var s1 api.Subprotocol
@@ -823,6 +826,7 @@ func TestApiToDb_TooManyItems(t *testing.T) {
 	var a api.Address
 	a.Location = "www.example.com"
 	a.Sublocation = "hello"
+	a.SetVerified(true)
 	a.Port = uint16(8090)
 	var s api.Subprotocol
 	s.Name = "c0"
@@ -842,6 +846,7 @@ func TestApiToDb_TooManyItems(t *testing.T) {
 func TestApiToDb_ItemLengthLongerThanAllowed(t *testing.T) {
 	var a api.Address
 	a.Location = "www.example.com"
+	a.SetVerified(true)
 	a.Sublocation = "hello"
 	a.Port = uint16(8090)
 	var s api.Subprotocol
@@ -1012,10 +1017,11 @@ func TestInsert_MultipleTypes_Success(t *testing.T) {
 	s.SupportedEntities = []string{"board", "thread", "post", "vote", "key", "truststate"}
 
 	a.Location = addressLoc
+	a.SetVerified(true)
 	a.Sublocation = addressSubloc
 	a.Port = addressPort
 	a.LocationType = 1
-	a.LastOnline = 1
+	a.LastSuccessfulPing = 1
 	a.Protocol.VersionMajor = 1
 	a.Protocol.Subprotocols = []api.Subprotocol{s, s}
 	a.Client.VersionMajor = 1
@@ -1027,7 +1033,7 @@ func TestInsert_MultipleTypes_Success(t *testing.T) {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
 	// Check for first
-	resp, err2 := persistence.ReadAddresses(addressLoc, addressSubloc, addressPort, 0, 0, 0, 0, 0, "")
+	resp, err2 := persistence.ReadAddresses(addressLoc, addressSubloc, addressPort, 0, 0, 0, 0, 0, "timerange_all")
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
 	} else if len(resp) == 0 {

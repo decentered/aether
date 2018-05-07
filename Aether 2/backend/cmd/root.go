@@ -225,6 +225,8 @@ func EstablishConfigs(cmd *cobra.Command) flags {
 	} else {
 		logging.LogCrash(fmt.Sprintf("Storage engine you've inputted is not supported. Please change it from the backend user config into something that is supported. You've provided: %s", globals.BackendConfig.GetDbEngine()))
 	}
+	// Delete all cached post responses from the last run if it wasn't cleaned properly.
+	globals.BackendTransientConfig.POSTResponseRepo.DeleteAllFromDisk()
 	return flgs
 }
 

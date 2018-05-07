@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jmoiron/sqlx"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -63,60 +64,105 @@ func ExistsInDB(entityType string, fp Fingerprint, lu Timestamp) bool {
 }
 
 func InsertApiResponseToResponse(response Response, apiresp ApiResponse) Response {
-	response.AddressIndexes = apiresp.ResponseBody.AddressIndexes
-	response.Addresses = apiresp.ResponseBody.Addresses
-	response.BoardIndexes = apiresp.ResponseBody.BoardIndexes
 	response.Boards = apiresp.ResponseBody.Boards
-	response.KeyIndexes = apiresp.ResponseBody.KeyIndexes
-	response.Keys = apiresp.ResponseBody.Keys
-	response.PostIndexes = apiresp.ResponseBody.PostIndexes
-	response.Posts = apiresp.ResponseBody.Posts
-	response.ThreadIndexes = apiresp.ResponseBody.ThreadIndexes
 	response.Threads = apiresp.ResponseBody.Threads
-	response.TruststateIndexes = apiresp.ResponseBody.TruststateIndexes
-	response.Truststates = apiresp.ResponseBody.Truststates
-	response.VoteIndexes = apiresp.ResponseBody.VoteIndexes
+	response.Posts = apiresp.ResponseBody.Posts
 	response.Votes = apiresp.ResponseBody.Votes
+	response.Keys = apiresp.ResponseBody.Keys
+	response.Truststates = apiresp.ResponseBody.Truststates
+	response.Addresses = apiresp.ResponseBody.Addresses
+
+	response.BoardIndexes = apiresp.ResponseBody.BoardIndexes
+	response.ThreadIndexes = apiresp.ResponseBody.ThreadIndexes
+	response.PostIndexes = apiresp.ResponseBody.PostIndexes
+	response.VoteIndexes = apiresp.ResponseBody.VoteIndexes
+	response.KeyIndexes = apiresp.ResponseBody.KeyIndexes
+	response.TruststateIndexes = apiresp.ResponseBody.TruststateIndexes
+	response.AddressIndexes = apiresp.ResponseBody.AddressIndexes
+
+	response.BoardManifests = apiresp.ResponseBody.BoardManifests
+	response.ThreadManifests = apiresp.ResponseBody.ThreadManifests
+	response.PostManifests = apiresp.ResponseBody.PostManifests
+	response.VoteManifests = apiresp.ResponseBody.VoteManifests
+	response.KeyManifests = apiresp.ResponseBody.KeyManifests
+	response.TruststateManifests = apiresp.ResponseBody.TruststateManifests
+	response.AddressManifests = apiresp.ResponseBody.AddressManifests
+
 	response.CacheLinks = apiresp.Results
+
 	if response.MostRecentSourceTimestamp < apiresp.Timestamp {
 		response.MostRecentSourceTimestamp = apiresp.Timestamp
 	}
 	return response
 }
 
+// TODO MAKE THIS USE POINTERS, not copying
 func concatResponses(response Response, response2 Response) Response {
-	response.AddressIndexes = append(
-		response.AddressIndexes, response2.AddressIndexes...)
-	response.Addresses = append(
-		response.Addresses, response2.Addresses...)
-	response.BoardIndexes = append(
-		response.BoardIndexes, response2.BoardIndexes...)
-	response.Boards = append(
+	/*
+		This is how append works: (the first slice to be added, you don't need "...")
+		test1 := []string{"a","b"}
+			test2 := []string{"c","d"}
+			test3 := []string{}
+
+			test3 = append(test1, test2...)
+			fmt.Println(test3)
+			-> [a,b,c,d]
+	*/
+	var resp Response
+	resp.Boards = append(
 		response.Boards, response2.Boards...)
-	response.KeyIndexes = append(
-		response.KeyIndexes, response2.KeyIndexes...)
-	response.Keys = append(
-		response.Keys, response2.Keys...)
-	response.PostIndexes = append(
-		response.PostIndexes, response2.PostIndexes...)
-	response.Posts = append(
-		response.Posts, response2.Posts...)
-	response.ThreadIndexes = append(
-		response.ThreadIndexes, response2.ThreadIndexes...)
-	response.Threads = append(
+	resp.Threads = append(
 		response.Threads, response2.Threads...)
-	response.TruststateIndexes = append(
-		response.TruststateIndexes, response2.TruststateIndexes...)
-	response.Truststates = append(
-		response.Truststates, response2.Truststates...)
-	response.VoteIndexes = append(
-		response.VoteIndexes, response2.VoteIndexes...)
-	response.Votes = append(
+	resp.Posts = append(
+		response.Posts, response2.Posts...)
+	resp.Votes = append(
 		response.Votes, response2.Votes...)
+	resp.Keys = append(
+		response.Keys, response2.Keys...)
+	resp.Truststates = append(
+		response.Truststates, response2.Truststates...)
+	resp.Addresses = append(
+		response.Addresses, response2.Addresses...)
+
+	resp.BoardIndexes = append(
+		response.BoardIndexes, response2.BoardIndexes...)
+	resp.ThreadIndexes = append(
+		response.ThreadIndexes, response2.ThreadIndexes...)
+	resp.PostIndexes = append(
+		response.PostIndexes, response2.PostIndexes...)
+	resp.VoteIndexes = append(
+		response.VoteIndexes, response2.VoteIndexes...)
+	resp.KeyIndexes = append(
+		response.KeyIndexes, response2.KeyIndexes...)
+	resp.TruststateIndexes = append(
+		response.TruststateIndexes, response2.TruststateIndexes...)
+	resp.AddressIndexes = append(
+		response.AddressIndexes, response2.AddressIndexes...)
+
+	resp.BoardManifests = append(
+		response.BoardManifests, response2.BoardManifests...)
+	resp.ThreadManifests = append(
+		response.ThreadManifests, response2.ThreadManifests...)
+	resp.PostManifests = append(
+		response.PostManifests, response2.PostManifests...)
+	resp.VoteManifests = append(
+		response.VoteManifests, response2.VoteManifests...)
+	resp.KeyManifests = append(
+		response.KeyManifests, response2.KeyManifests...)
+	resp.TruststateManifests = append(
+		response.TruststateManifests, response2.TruststateManifests...)
+	resp.AddressManifests = append(
+		response.AddressManifests, response2.AddressManifests...)
+
+	resp.CacheLinks = append(
+		response.CacheLinks, response2.CacheLinks...)
+
 	if response.MostRecentSourceTimestamp < response2.MostRecentSourceTimestamp {
-		response.MostRecentSourceTimestamp = response2.MostRecentSourceTimestamp
+		resp.MostRecentSourceTimestamp = response2.MostRecentSourceTimestamp
+	} else {
+		resp.MostRecentSourceTimestamp = response.MostRecentSourceTimestamp
 	}
-	return response
+	return resp
 }
 
 // Basic, reusable instances of transport and client.
@@ -208,7 +254,11 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 200 {
-		body, err := ioutil.ReadAll(resp.Body)
+		limitedReader := &io.LimitedReader{
+			R: resp.Body,
+			N: int64(globals.BackendConfig.GetMaxInboundPageSizeKb() * 1000)}
+		// *1000 because kb > b
+		body, err := ioutil.ReadAll(limitedReader)
 		if err != nil {
 			// logging.LogCrash(err)
 			fmt.Sprint(err.Error())
@@ -250,6 +300,9 @@ func GetPageRaw(host string, subhost string, port uint16, location string, metho
 	if method == "POST" {
 		logging.Log(2, fmt.Sprintf("We've made a POST request to the endpoint %s and this was its body: %#v", location, string(postBody)))
 	}
+	// if method == "POST" {
+	// 	apiresp.Dump() // let's see
+	// }
 	pageVerified, err := apiresp.VerifySignature() // If signature check is disabled, this will always return true.
 	if err != nil {
 		return ApiResponse{}, errors.New(fmt.Sprintf("Page signature verification failed with an error. Error: %s", err))
@@ -266,6 +319,9 @@ func GetPageRaw(host string, subhost string, port uint16, location string, metho
 		apiresp.NodeId = "NODEID FOR NODE(S) WITH EMPTY NODEPUBLICKEY"
 	}
 	errs := apiresp.Verify()
+	if len(errs) == 1 && strings.Contains(errs[0].Error(), "This ApiResponse failed the boundary check") {
+		return ApiResponse{}, errs[0]
+	}
 	if len(errs) >= 3 {
 		errStrs := []string{}
 		for _, err := range errs {
@@ -297,75 +353,83 @@ func GetPage(host string, subhost string, port uint16, location string, method s
 	return response, elapsed, nil // elapsed potentially unset.
 }
 
-// CollectMultipartPOSTResponse gets the multipart post response from a given post endpoint result. This function does not make the post request, it is only used to collect the result that is generated by a prior POST request.
-func CollectMultipartPOSTResponse(host string, subhost string, port uint16, location string) (Response, error) {
-	indexResp, err := getIndexOfCache(host, subhost, port, location)
+func generateHitlist(host string, subhost string, port uint16, location string) (map[int]bool, error) {
+	manifestResponse, err := getManifestOfCache(host, subhost, port, location)
 	if err != nil {
-		return Response{}, errors.New(fmt.Sprintf("Error raised from GetIndexOfCache inside CollectMultipartPOSTResponse. Error: %s", err))
+		return make(map[int]bool), errors.New(fmt.Sprintf("Error raised from GetManifestOfCache inside generateHitlist. Error: %s", err))
 	}
 	// Look at everything in the index and find the things that we want to pull. Page Number : bool pairs help us find which pages to hit.
 	allPgs := make(map[int]bool)
-	if len(indexResp.BoardIndexes) > 0 {
-		for _, val := range indexResp.BoardIndexes {
-			if !ExistsInDB("board", val.Fingerprint, val.LastUpdate) {
-				// Grab the whole page, DB will remove useless stuff.
-				allPgs[val.PageNumber] = true
+	if len(manifestResponse.BoardManifests) > 0 {
+		for key, _ := range manifestResponse.BoardManifests {
+			for _, val := range manifestResponse.BoardManifests[key].Entities {
+				if !ExistsInDB("board", val.Fingerprint, val.LastUpdate) {
+					// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
+					allPgs[int(manifestResponse.BoardManifests[key].Page)] = true
+				}
 			}
 		}
 	}
-	if len(indexResp.ThreadIndexes) > 0 {
-		for _, val := range indexResp.ThreadIndexes {
-			if !ExistsInDB("thread", val.Fingerprint, val.LastUpdate) {
-				allPgs[val.PageNumber] = true
-			}
-		}
-	}
-	if len(indexResp.PostIndexes) > 0 {
-		for _, val := range indexResp.PostIndexes {
-			if !ExistsInDB("post", val.Fingerprint, val.LastUpdate) {
-				allPgs[val.PageNumber] = true
-			}
-		}
-	}
-	if len(indexResp.VoteIndexes) > 0 {
-		for _, val := range indexResp.VoteIndexes {
-			if !ExistsInDB("vote", val.Fingerprint, val.LastUpdate) {
-				allPgs[val.PageNumber] = true
-			}
-		}
-	}
-	if len(indexResp.KeyIndexes) > 0 {
-		for _, val := range indexResp.KeyIndexes {
-			if !ExistsInDB("key", val.Fingerprint, val.LastUpdate) {
-				allPgs[val.PageNumber] = true
-			}
-		}
-	}
-	if len(indexResp.TruststateIndexes) > 0 {
-		for _, val := range indexResp.TruststateIndexes {
-			if !ExistsInDB("truststate", val.Fingerprint, val.LastUpdate) {
-				allPgs[val.PageNumber] = true
-			}
-		}
-	}
-	logging.Log(2, fmt.Sprintf("The pages we have to make a call to are: %#v\n", allPgs))
 
-	// For each page we have for this post response, hit the main cache and gather the data.
-	mainResp := Response{}
-	for key, _ := range allPgs {
-		loc := fmt.Sprint(location, "/", key, ".json")
-		logging.Log(2, fmt.Sprintf("Making a request to %s\n", loc))
-		resp, _, err := GetPage(host, subhost, port, loc, "GET", []byte{})
-		if err != nil {
-			return Response{}, err
+	if len(manifestResponse.ThreadManifests) > 0 {
+		for key, _ := range manifestResponse.ThreadManifests {
+			for _, val := range manifestResponse.ThreadManifests[key].Entities {
+				if !ExistsInDB("thread", val.Fingerprint, val.LastUpdate) {
+					// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
+					allPgs[int(manifestResponse.ThreadManifests[key].Page)] = true
+				}
+			}
 		}
-		mainResp = concatResponses(mainResp, resp)
 	}
-	return mainResp, nil
+
+	if len(manifestResponse.PostManifests) > 0 {
+		for key, _ := range manifestResponse.PostManifests {
+			for _, val := range manifestResponse.PostManifests[key].Entities {
+				if !ExistsInDB("post", val.Fingerprint, val.LastUpdate) {
+					// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
+					allPgs[int(manifestResponse.PostManifests[key].Page)] = true
+				}
+			}
+		}
+	}
+
+	if len(manifestResponse.VoteManifests) > 0 {
+		for key, _ := range manifestResponse.VoteManifests {
+			for _, val := range manifestResponse.VoteManifests[key].Entities {
+				if !ExistsInDB("vote", val.Fingerprint, val.LastUpdate) {
+					// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
+					allPgs[int(manifestResponse.VoteManifests[key].Page)] = true
+				}
+			}
+		}
+	}
+
+	if len(manifestResponse.KeyManifests) > 0 {
+		for key, _ := range manifestResponse.KeyManifests {
+			for _, val := range manifestResponse.KeyManifests[key].Entities {
+				if !ExistsInDB("key", val.Fingerprint, val.LastUpdate) {
+					// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
+					allPgs[int(manifestResponse.KeyManifests[key].Page)] = true
+				}
+			}
+		}
+	}
+
+	if len(manifestResponse.TruststateManifests) > 0 {
+		for key, _ := range manifestResponse.TruststateManifests {
+			for _, val := range manifestResponse.TruststateManifests[key].Entities {
+				if !ExistsInDB("truststate", val.Fingerprint, val.LastUpdate) {
+					// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
+					allPgs[int(manifestResponse.TruststateManifests[key].Page)] = true
+				}
+			}
+		}
+	}
+	return allPgs, nil
 }
 
 // GetCache returns an entire cache. This is useful to pull a cache from the remote. This is a single thread process, it does go through the pages in order.  We could bombard the remote with goroutines, but on a larger scale, that would be called a DDoS of the remote node, so we shouldn't do that.
-func GetCache(host string, subhost string, port uint16, location string) (Response, error) {
+func GetCache(host string, subhost string, port uint16, location string, isAddr bool) (Response, error) {
 	var response Response
 	// Get the first raw page (because we need to access pagination),
 	pageResp, err := GetPageRaw(host, subhost, port, fmt.Sprint(location, "/0.json"), "GET", []byte{})
@@ -386,6 +450,8 @@ func GetCache(host string, subhost string, port uint16, location string) (Respon
 	// Convert this raw page response to page response data for merge.
 	response = InsertApiResponseToResponse(response, pageResp)
 	// Create a counter for missing pages. If 3 of them come one after another, bail.
+	// Address specific
+	addrCount := 0
 	brokenPageCounter := 0
 	// Iterate over all of the pages, starting from 1 (we already cleared the 0)
 	for i := uint64(1); i <= pageCount; i++ { // Pagination starts from 0
@@ -414,6 +480,14 @@ func GetCache(host string, subhost string, port uint16, location string) (Respon
 		}
 		// And save into the response.
 		response = concatResponses(response, pageResp2)
+		// Address specific
+		if isAddr {
+			addrCount = addrCount + len(pageResp2.Addresses)
+			if addrCount >= 100 {
+				// fmt.Println("This address cache download bailed beacuse we have enough addresses.")
+				break
+			}
+		}
 	}
 	return response, nil
 }
@@ -434,6 +508,34 @@ func mapEndpointToEndpointAddress(endpoint string) string {
 		epAddress = endpoint
 	}
 	return epAddress
+}
+
+// GetManifestGatedCache hits the manifests of the cache to determine which pages of the cache this computer needs to hit. This is useful in the case where you expect less than 50% of the cache will be downloaded. Mind that this adds a database check dependency (to know which one of these things we have at hand) and it will have to download the manifests for that cache, so it's a tradeoff.
+func GetManifestGatedCache(host string, subhost string, port uint16, location string, endpoint string) (Response, error) {
+	allPgs, err := generateHitlist(host, subhost, port, location)
+	if err != nil && strings.Contains(err.Error(), "Non-200 status code returned from Fetch") {
+		// Manifest doesn't exist for this cache.
+		logging.Log(1, fmt.Sprintf("This cache does not have a manifest. We'll be downloading the full cache. Host %s, Subhost: %s, Port: %d, Location: %s", host, subhost, port, location))
+		resp, err2 := GetCache(host, subhost, port, location, endpoint == "addresses")
+		return resp, err2
+	} else if err != nil {
+		logging.Log(1, errors.New(fmt.Sprintf("Error raised from generateHitlist inside GetManifestGatedCache. Error: %s", err)))
+		return Response{}, errors.New(fmt.Sprintf("Error raised from generateHitlist inside GetManifestGatedCache. Error: %s", err))
+	}
+	logging.Log(2, fmt.Sprintf("The pages we have to make a call to are: %#v\n", allPgs))
+
+	// For each page we have for this post response, hit the main cache and gather the data.
+	mainResp := Response{}
+	for key, _ := range allPgs {
+		loc := fmt.Sprint(location, "/", key, ".json")
+		logging.Log(2, fmt.Sprintf("Making a request to %s\n", loc))
+		resp, _, err := GetPage(host, subhost, port, loc, "GET", []byte{})
+		if err != nil {
+			return Response{}, err
+		}
+		mainResp = concatResponses(mainResp, resp)
+	}
+	return mainResp, nil
 }
 
 // GetEndpoint returns an entire endpoint from the remote node.
@@ -459,6 +561,8 @@ func GetEndpoint(host string, subhost string, port uint16, endpoint string, last
 	}
 	// A broken cache can happen because the cache has underlying missing pages, or pages that has failed verification. At the level of the endpoint, it does not matter why the cache has failed, only that it failed. if there are enough failures, we bail.
 	brokenCacheCounter := 0
+	// Address specific
+	addrCount := 0
 	for _, val := range indexes {
 		// If the cache does end after our last checkin timestamp, we want to read that cache.
 		// ----------------- Why? -------------------------
@@ -472,7 +576,9 @@ func GetEndpoint(host string, subhost string, port uint16, endpoint string, last
 		if val.EndsAt >= lastCheckin {
 			// Get the first page of the cache.
 			cache, err := GetCache(host, subhost, port,
-				fmt.Sprint(epAddress, "/", val.ResponseUrl))
+				fmt.Sprint(epAddress, "/", val.ResponseUrl), endpoint == "addresses")
+			// cache, err := GetCache(host, subhost, port,
+			// 	fmt.Sprint(epAddress, "/", val.ResponseUrl))
 			response = concatResponses(response, cache)
 			if err != nil {
 				brokenCacheCounter++ // We never reset this within this endpoint call.
@@ -486,6 +592,14 @@ func GetEndpoint(host string, subhost string, port uint16, endpoint string, last
 							", Port: ", port,
 							", Endpoint: ", endpoint,
 							", Cache link: ", fmt.Sprint(endpoint, "/", val.ResponseUrl)))
+				}
+			}
+			// Address specific
+			if endpoint == "addresses" {
+				addrCount = addrCount + len(response.Addresses)
+				if addrCount >= 100 {
+					// fmt.Println("This address endpoint download bailed beacuse we have enough addresses.")
+					break
 				}
 			}
 		}
@@ -504,6 +618,99 @@ func GetEndpoint(host string, subhost string, port uint16, endpoint string, last
 	return response, nil
 }
 
+/*
+	HEADS UP:
+	Post "Pingpong"
+	We flip this to true if the POST response was 1 page. Why does it matter? Because our logs provide only candidate inputs, and if the result is only one page, it is not paginated, thus doesn't have indexes, thus it is not subject to 'exists in db' checks. By the virtue of getting the result, you've already downloaded it (i.e. you can't save bandwidth by not hitting the pages, it is already one page and you already have that page), so there is no point in doing this checks as DB will check it already anyway. But it creates a confusing side effect where it looks like the node has sent unnecessary data exclusively for the endpoints that were single-page because unneeded data wasn't filtered out by the local.
+
+	In actuality, the unnecessary data is being sent by all endpoints in POST, but when there is a multipage post response, the local client can go through the index and not hit the pages it does not need. So they look like zeroes. But that check doesn't happen for single-page responses.
+
+	Why is unnecessary data being sent?
+
+	Let's look at an example.
+
+	t0 1 > 0 : FirstS : N1 gets 31 new keys (total 62) ts:t0
+
+	t1 1 > 0 : Resync : nothing  ts:t1
+
+	t2 0 > 1 : FirstS : N0 gets 62 keys (the keys unique to 1, plus all 0's keys) 31 NEW KEYS @ N0 at ts:t2
+
+	t3 1 > 0 : Resync : N1 gets 31 keys (because the ts N1 has for N0 is ts:t1, and all the keys N0 just got from N1 are at ts:t2)
+
+	t4 0 > 1 : nothing ts:t4
+
+	t5 1 > 0 : nothing ts:t5
+
+	The crux is at t3, the data in N1 got transmitted to N0, and N0 transmitted it back to N1. This is because Mim connections are one-way. They are not two-way syncs. The nodes cannot retain information of which node they got the results from, because that node might have been reset, and might actually need that information. The local nodes cannot communicate what they have in their database, because that would be a privacy violation.
+
+	Why is this not an issue?
+	- It does not cost bandwidth except in the case of a single page. Single page means very little bandwidth is used. Any response of decent size will be multipart, and in multipart responses, the local node will check the index, discover that the things in the index are those that it already has, and it won't download the pages.
+	- This only happens to POST responses, and not GET. POST responses are the 'tip of the spear', the usual way of process is that you exhaust the caches with GET first, and then get the delta from the end of the last cache to now via the POST response. Caches are generated frequently, the time range that the POST response will cover will be in the order of hours, not days / weeks. Most of the network traffic is GET.
+
+*/
+
+func GetPOSTEndpoint(host string, subhost string, port uint16, endpoint string, lastCheckin Timestamp) (Response, time.Duration, error) {
+	// But before anything, we need to create the mapping for the endpoint URLs.
+	endpointsMap := map[string]string{
+		"boards":      "c0/boards",
+		"threads":     "c0/threads",
+		"posts":       "c0/posts",
+		"votes":       "c0/votes",
+		"keys":        "c0/keys",
+		"truststates": "c0/truststates",
+		"addresses":   "addresses",
+	}
+	apiReq := ApiResponse{}
+	apiReq.Prefill()
+	// Here, we need to insert the last sync timestamp into the post request, so that it will be gated appropriately.
+	f := Filter{}
+	f.Type = "timestamp"
+	f.Values = []string{strconv.Itoa(int(lastCheckin)), strconv.Itoa(0)}
+	apiReq.Filters = []Filter{f}
+	signingErr := apiReq.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+	if signingErr != nil {
+		return Response{}, 0, signingErr
+	}
+	reqAsJson, err := apiReq.ToJSON()
+	if err != nil {
+		return Response{}, 0, err
+	}
+	postResp, respDuration, err7 := GetPage(host, subhost, port, endpointsMap[endpoint], "POST", reqAsJson)
+	if err7 != nil {
+		return Response{}, respDuration, errors.New(fmt.Sprintf("Getting POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", endpoint, err7))
+	}
+	allResults := Response{}
+	// Add entities embedded directly into the response to our response container, if any. A response can have both.
+	// allResults = concatResponses(allResults, postResp)
+	allResults.Insert(&postResp)
+	// If there are any cache links, one or multiple, read all of them, and insert.
+	// Address-specific. We'll build the structure out if we need to do this for anything other than addresses.
+	if endpoint == "addresses" && len(allResults.Addresses) >= 100 {
+		return allResults, respDuration, nil
+	}
+	for _, clink := range postResp.CacheLinks {
+		if clink.EndsAt > lastCheckin {
+			// This cache ends after we have our sync timestamp with this remote. We can benefit from downloading this cachelink.
+			fmt.Printf("Downloading %s\n", clink.ResponseUrl)
+			postCacheResp, err8 := GetManifestGatedCache(host, subhost, port, fmt.Sprintf("responses/%s", postResp.CacheLinks[0].ResponseUrl), endpoint)
+			// We're adding /responses/ because that's where the singular responses will be.
+			if err8 != nil {
+				return allResults, respDuration, errors.New(fmt.Sprintf("Getting Multi page POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", endpoint, err8))
+			}
+			// Ends here, since we don't want to capture DB time.
+			// allResults = concatResponses(allResults, postCacheResp)
+			allResults.Insert(&postCacheResp)
+			// Address-specific.
+			if endpoint == "addresses" && len(allResults.Addresses) >= 100 {
+				return allResults, respDuration, nil
+			}
+		} else {
+			fmt.Printf("%s was skipped because this container's end is older than our last sync with this node.", clink.ResponseUrl)
+		}
+	}
+	return allResults, respDuration, nil
+}
+
 // GetRemoteNode downloads the entire remote node data by hitting all endpoints and all caches and all pages within them. This is the bootstrap function. This should be used when the local database is empty and the remote node is new. Never call this when the local database is not empty as that is fairly wasteful.
 func GetRemoteNode(host string, subhost string, port uint16) (Response, error) {
 	endpoints := []string{
@@ -518,6 +725,31 @@ func GetRemoteNode(host string, subhost string, port uint16) (Response, error) {
 		}
 	}
 	return response, nil // It won't communicate out any errors.
+}
+
+// getManifestOfCache gets the manifest of a cache. Location is the url up to cache name.
+func getManifestOfCache(
+	host string, subhost string, port uint16, location string) (Response, error) {
+	firstManifestPage, err := GetPageRaw(
+		host, subhost, port, fmt.Sprint(location, "/manifest/0.json"), "GET", []byte{})
+	if err != nil {
+		return Response{}, err
+	}
+	var resp Response
+	resp = InsertApiResponseToResponse(resp, firstManifestPage)
+	if firstManifestPage.Pagination.Pages > 0 {
+		for i := uint64(1); i <= firstManifestPage.Pagination.Pages; i++ {
+			page, err := GetPageRaw(host, subhost, port,
+				fmt.Sprint(location, "/manifest/", i, ".json"), "GET", []byte{})
+			if err != nil {
+				return Response{}, err
+			}
+			var pgResp Response
+			pgResp = InsertApiResponseToResponse(pgResp, page)
+			resp = concatResponses(resp, pgResp)
+		}
+	}
+	return resp, nil
 }
 
 // getIndexOfCache gets the index of a cache. Location is the url up to cache name.

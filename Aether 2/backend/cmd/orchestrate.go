@@ -10,7 +10,7 @@ import (
 	"aether-core/services/globals"
 	"aether-core/services/logging"
 	"aether-core/services/scheduling"
-	"github.com/fatih/color"
+	// "github.com/fatih/color"
 	// "aether-core/services/ports"
 	"encoding/json"
 	"fmt"
@@ -66,6 +66,12 @@ var cmdOrchestrate = &cobra.Command{
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		flags := EstablishConfigs(cmd)
+		// Prep the database
+		persistence.CreateDatabase()
+		persistence.CheckDatabaseReady()
+		showIntro()
+		// startup()
+		globals.BackendTransientConfig.DispatcherExclusions = make(map[*interface{}]time.Time)
 		// do things here
 		// If all of them are changed, or if none of them are changed, we're good. If SOME of them are changed, we crash.
 		if !((flags.bootstrapIp.changed && flags.bootstrapPort.changed && flags.bootstrapType.changed) || (!flags.bootstrapIp.changed && !flags.bootstrapPort.changed && !flags.bootstrapType.changed)) {
@@ -74,19 +80,15 @@ var cmdOrchestrate = &cobra.Command{
 				flags.bootstrapPort.value.(int),
 				flags.bootstrapType.value.(int)))
 		}
-		addr := constructCallAddress(api.Location(flags.bootstrapIp.value.(string)), uint16(flags.bootstrapPort.value.(int)), uint8(flags.bootstrapType.value.(int)))
-		// Prep the database
-		persistence.CreateDatabase()
-		persistence.CheckDatabaseReady()
-		addrs := []api.Address{addr}
-		errs := persistence.InsertOrUpdateAddresses(&addrs)
-		if len(errs) > 0 {
-			logging.LogCrash(fmt.Sprintf("These errors were encountered on InsertOrUpdateAddress attempt: %s", errs))
-		}
-		showIntro()
-		// startup()
-		globals.BackendTransientConfig.DispatcherExclusions = make(map[*interface{}]time.Time)
-		if flags.syncAndQuit.value.(bool) {
+		if flags.syncAndQuit.value.(bool) &&
+			flags.bootstrapIp.changed &&
+			flags.bootstrapPort.changed {
+			addr := constructCallAddress(api.Location(flags.bootstrapIp.value.(string)), flags.bootstrapPort.value.(int), flags.bootstrapType.value.(int))
+			addrs := []api.Address{addr}
+			errs := persistence.InsertOrUpdateAddresses(&addrs)
+			if len(errs) > 0 {
+				logging.LogCrash(fmt.Sprintf("These errors were encountered on InsertOrUpdateAddress attempt: %s", errs))
+			}
 			// First, verify external port, so that our metrics will report the right port.
 			// We just want to connect, pull and quit.
 			err := dispatch.Sync(addr)
@@ -112,28 +114,31 @@ var cmdOrchestrate = &cobra.Command{
 
 // Orchestrate endpoint will allow us to first generate random data, then pull that into the local database.
 
-func constructCallAddress(ip api.Location, port uint16, addrtype uint8) api.Address {
+func constructCallAddress(ip api.Location, port int, addrtype int) api.Address {
 	subprots := []api.Subprotocol{api.Subprotocol{"c0", 1, 0, []string{"board", "thread", "post", "vote", "key", "truststate"}}}
-	addr, err := create.CreateAddress(ip, "", 4, port, addrtype, 1, 1, 0, subprots, 2, 0, 0, "Aether", "")
+	addr, err := create.CreateAddress(ip, "", 4, uint16(port), uint8(addrtype), 1, 1, 1, 0, subprots, 2, 0, 0, "Aether", "")
 	if err != nil {
 		logging.LogCrash(err)
 	}
+	addr.SetVerified(true)
 	return addr
 }
 
-func parsePlansForThisNode(planAsByte []byte) []map[string]interface{} {
+func parsePlansForThisNode(planAsByte []byte) []PlanCommand {
 	// This is just JSON parsing without a backing struct. The other alternative was copying over the struct (I don't want to have a swarmtest dependency here, I can't import from there), so this is arguably cleaner.
-	var f interface{}
-	err2 := json.Unmarshal(planAsByte, &f)
+	// var f interface{}
+	plancmd := []PlanCommand{}
+	err2 := json.Unmarshal(planAsByte, &plancmd)
 	if err2 != nil {
 		logging.LogCrash(fmt.Sprintf("The swarm plan JSON parsing failed. Error: %s", err2))
 	}
-	sch := f.([]interface{})
-	var plansForThisNode []map[string]interface{}
-	for _, val := range sch {
-		valMapped := val.(map[string]interface{})
-		if valMapped["FromNodeAppName"] == globals.BackendTransientConfig.AppIdentifier {
-			plansForThisNode = append(plansForThisNode, valMapped)
+	// sch := f.([]interface{})
+	// var plansForThisNode []map[string]interface{}
+	var plansForThisNode []PlanCommand
+	for _, val := range plancmd {
+		// valMapped := val.(map[string]interface{})
+		if val.FromNodeAppName == globals.BackendTransientConfig.AppIdentifier {
+			plansForThisNode = append(plansForThisNode, val)
 		}
 	}
 	return plansForThisNode
@@ -149,23 +154,19 @@ func scheduleSwarmPlan(planloc string) {
 	// Parse the plans relevant to this specific node based on the AppIdentifier
 	plans := parsePlansForThisNode(planAsByte)
 	// Insert the plans into the scheduler.
-	for _, val := range plans {
-		ip := val["ToIp"].(string)
-		port := uint16(val["ToPort"].(float64))
-		nodetype := uint8(val["ToType"].(float64))
-		triggerafter := time.Duration(int64(val["TriggerAfter"].(float64)))
-		logging.Log(1, fmt.Sprintf("This node is going to attempt to connect to the address: %s:%d in %v", ip, port, triggerafter))
-		scheduling.ScheduleOnce(func() {
-			clr := color.New(color.FgYellow)
-			logging.Log(1, clr.Sprintf("Injecting the address: %s:%d into the database now.", ip, port))
-			// color.Cyan(fmt.Sprintf("Injecting the address: %s:%d into the database now.", ip, port))
-			addr := constructCallAddress(api.Location(ip), port, nodetype)
-			addrs := []api.Address{addr}
-			errs := persistence.InsertOrUpdateAddresses(&addrs)
-			if len(errs) > 0 {
-				logging.LogCrash(fmt.Sprintf("These errors were encountered on InsertOrUpdateAddress attempt: %s", errs))
+	for _, plan := range plans {
+		if plan.CommandName == "connect" {
+			logging.Log(1, fmt.Sprintf("This node is going to attempt to connect to the address: %s:%d in %v", plan.ToIp, plan.ToPort, plan.TriggerAfter))
+			if plan.Force {
+				scheduling.ScheduleOnce(selectCmdFunc("connect_force", plan), plan.TriggerAfter)
+			} else {
+				scheduling.ScheduleOnce(selectCmdFunc("connect_nonforce", plan), plan.TriggerAfter)
 			}
-		}, triggerafter)
+		} else if plan.CommandName == "cachegen" {
+			logging.Log(1, fmt.Sprintf("This node is going to generate caches in %v", plan.TriggerAfter))
+			scheduling.ScheduleOnce(selectCmdFunc("cachegen", plan), plan.TriggerAfter)
+		}
+
 	}
 	// spew.Dump(plans)
 	// spew.Dump(schMapped)

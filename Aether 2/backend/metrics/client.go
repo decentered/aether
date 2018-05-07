@@ -118,7 +118,7 @@ func deliverBackendMetrics(client pb.MetricsServiceClient, metrics *pb.Metrics) 
 // insertEntitiesAsMetricForm inserts the entities the batchInsert takes into the database into the metrics form to be sent over the wire. This is only used in the debug mode, regular nodes do not send information about what is being sent and received even when regular metrics are enabled.
 func insertEntitiesAsMetricForm(input []interface{}, proto *pb.Metrics) {
 	if proto.Persistence == nil {
-		proto.Persistence = &pb.Metrics_Persistence{}
+		proto.Persistence = &pb.Persistence{}
 	}
 	for _, val := range input {
 		e := pb.Entity{}
@@ -159,7 +159,7 @@ func insertEntitiesAsMetricForm(input []interface{}, proto *pb.Metrics) {
 // insertNodeEntityAsMetricForm converts the dbnode entity that comes from the node insert from the db writer. This is nice,because it allows us to keep track of what node each node would connect to.
 func insertNodeEntityAsMetricForm(input map[string]string, proto *pb.Metrics) {
 	if proto.Persistence == nil {
-		proto.Persistence = &pb.Metrics_Persistence{}
+		proto.Persistence = &pb.Persistence{}
 	}
 	n := pb.NodeEntity{}
 	n.Fingerprint = input["Fingerprint"]
@@ -213,4 +213,27 @@ func SendMetrics(client pb.MetricsServiceClient) *pb.MetricsDeliveryResponse {
 	result := deliverBackendMetrics(client, &globals.BackendTransientConfig.CurrentMetricsPage)
 	globals.BackendTransientConfig.CurrentMetricsPage = pb.Metrics{} // After the send, blank out the metrics page.
 	return result
+}
+
+func SendConnState(remote api.Address, isOpen bool, firstSync bool) {
+	client, conn := StartConnection()
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	machine := getAnonymousMachineIdentifier(client, "backend")
+	// var metrics pb.Metrics
+	var connState pb.ConnState
+	connState.Machine = machine
+	oConn := pb.OrchestrateConn{}
+	oConn.State = isOpen
+	oConn.ToIp = string(remote.Location)
+	oConn.ToPort = int32(remote.Port)
+	oConn.ToNodeName = remote.Client.ClientName
+	oConn.Timestamp = int64(time.Now().Unix())
+	oConn.FirstSync = firstSync
+	connState.Connection = &oConn
+	_, err := client.SendConnectionState(ctx, &connState)
+	if err != nil {
+		logging.Log(1, fmt.Sprintf("Could not deliver ConnState: %v", err))
+	}
 }

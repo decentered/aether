@@ -132,39 +132,19 @@ type DbVote struct {
 	DbUpdateable
 }
 
-type DbAddress struct {
-	Location             api.Location    `db:"Location"`
-	Sublocation          api.Location    `db:"Sublocation"`
-	Port                 uint16          `db:"Port"`
-	LocationType         uint8           `db:"IPType"`
-	Type                 uint8           `db:"AddressType"`
-	LastOnline           api.Timestamp   `db:"LastOnline"`
-	ProtocolVersionMajor uint8           `db:"ProtocolVersionMajor"`
-	ProtocolVersionMinor uint16          `db:"ProtocolVersionMinor"`
-	ClientVersionMajor   uint8           `db:"ClientVersionMajor"`
-	ClientVersionMinor   uint16          `db:"ClientVersionMinor"`
-	ClientVersionPatch   uint16          `db:"ClientVersionPatch"`
-	ClientName           string          `db:"ClientName"`
-	LocalArrival         api.Timestamp   `db:"LocalArrival"`
-	LastReferenced       api.Timestamp   `db:"LastReferenced"`
-	EntityVersion        int             `db:"EntityVersion"`
-	RealmId              api.Fingerprint `db:"RealmId"`
-}
-
 type DbKey struct {
-	Fingerprint          api.Fingerprint `db:"Fingerprint"`
-	Type                 string          `db:"Type"`
-	PublicKey            string          `db:"PublicKey"`
-	PublicKeyFingerprint api.Fingerprint `db:"PublicKeyFingerprint"`
-	Expiry               api.Timestamp   `db:"Expiry"`
-	Name                 string          `db:"Name"`
-	Info                 string          `db:"Info"`
-	LocalArrival         api.Timestamp   `db:"LocalArrival"`
-	LastReferenced       api.Timestamp   `db:"LastReferenced"`
-	EntityVersion        int             `db:"EntityVersion"`
-	Meta                 string          `db:"Meta"`
-	RealmId              api.Fingerprint `db:"RealmId"`
-	EncrContent          string          `db:"EncrContent"`
+	Fingerprint    api.Fingerprint `db:"Fingerprint"`
+	Type           string          `db:"Type"`
+	PublicKey      string          `db:"PublicKey"`
+	Expiry         api.Timestamp   `db:"Expiry"`
+	Name           string          `db:"Name"`
+	Info           string          `db:"Info"`
+	LocalArrival   api.Timestamp   `db:"LocalArrival"`
+	LastReferenced api.Timestamp   `db:"LastReferenced"`
+	EntityVersion  int             `db:"EntityVersion"`
+	Meta           string          `db:"Meta"`
+	RealmId        api.Fingerprint `db:"RealmId"`
+	EncrContent    string          `db:"EncrContent"`
 	DbProvable
 	DbUpdateable
 }
@@ -185,6 +165,26 @@ type DbTruststate struct {
 	EncrContent    string          `db:"EncrContent"`
 	DbProvable
 	DbUpdateable
+}
+
+type DbAddress struct {
+	Location             api.Location  `db:"Location"`
+	Sublocation          api.Location  `db:"Sublocation"`
+	Port                 uint16        `db:"Port"`
+	LocationType         uint8         `db:"IPType"`
+	Type                 uint8         `db:"AddressType"`
+	LastSuccessfulPing   api.Timestamp `db:"LastSuccessfulPing"`
+	LastSuccessfulSync   api.Timestamp `db:"LastSuccessfulSync"`
+	ProtocolVersionMajor uint8         `db:"ProtocolVersionMajor"`
+	ProtocolVersionMinor uint16        `db:"ProtocolVersionMinor"`
+	ClientVersionMajor   uint8         `db:"ClientVersionMajor"`
+	ClientVersionMinor   uint16        `db:"ClientVersionMinor"`
+	ClientVersionPatch   uint16        `db:"ClientVersionPatch"`
+	ClientName           string        `db:"ClientName"`
+	LocalArrival         api.Timestamp `db:"LocalArrival"`
+	// LastReferenced       api.Timestamp   `db:"LastReferenced"`
+	EntityVersion int             `db:"EntityVersion"`
+	RealmId       api.Fingerprint `db:"RealmId"`
 }
 
 // Non-communicating entities
@@ -209,6 +209,7 @@ type BoardPack struct {
 type AddressPack struct {
 	Address      DbAddress
 	Subprotocols []DbSubprotocol
+	Junctions    []DbAddressSubprotocol
 }
 
 // APItoDB translates structs of API objects into structs of DB objects. It also checks whether the objects are verified or not, and if not, it prevents them entry into the database layer.
@@ -351,14 +352,17 @@ func APItoDB(object interface{}) (interface{}, error) {
 		return dbObj, nil
 
 	case api.Address:
-		// Addresses are not verifiable, thus the verification step does not apply.
+		if !obj.GetVerified() {
+			return AddressPack{}, errors.New(fmt.Sprintf("This Api entity failed verification (or the verification hasn't been run on it), thus is denied conversion to the Db entity. Entity %#v", obj))
+		}
 		var dbObj DbAddress
 		dbObj.Location = obj.Location
 		dbObj.Sublocation = obj.Sublocation
 		dbObj.LocationType = obj.LocationType
 		dbObj.Port = obj.Port
 		dbObj.Type = obj.Type
-		dbObj.LastOnline = obj.LastOnline
+		dbObj.LastSuccessfulPing = obj.LastSuccessfulPing
+		dbObj.LastSuccessfulSync = obj.LastSuccessfulSync
 		dbObj.ProtocolVersionMajor = obj.Protocol.VersionMajor
 		dbObj.ProtocolVersionMinor = obj.Protocol.VersionMinor
 		dbObj.ClientVersionMajor = obj.Client.VersionMajor
@@ -367,7 +371,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.ClientName = obj.Client.ClientName
 		now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
-		dbObj.LastReferenced = api.Timestamp(now)
+		// dbObj.LastReferenced = api.Timestamp(now)
 		dbObj.EntityVersion = obj.EntityVersion
 		dbObj.RealmId = obj.RealmId
 		var ap AddressPack
@@ -381,7 +385,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 			s.VersionMinor = val.VersionMinor
 			// fmt.Printf("%#v", val.SupportedEntities)
 			// Convert protocol entities in subprotocol into comma separated list
-			parsedStr, err := parseStringSliceToCommaSeparatedString(val.SupportedEntities, 64, 100)
+			parsedStr, err := parseStringSliceToCommaSeparatedString(val.SupportedEntities, "addresses")
 			if err != nil {
 				logging.Log(1, fmt.Sprintf("Subprotocol %s has an error in its supported entities list. Supported Entities List: %#v Error: %s. This field will be saved as empty in the database.", s.Name, val.SupportedEntities, err))
 				return ap, err
@@ -391,15 +395,9 @@ func APItoDB(object interface{}) (interface{}, error) {
 			res, _ := json.Marshal(s)
 			fp := fingerprinting.Create(string(res))
 			s.Fingerprint = api.Fingerprint(fp)
-
 			subprotocols = append(subprotocols, s)
-			// for _, supportedEntity := range val.SupportedEntities {
-			// 	if len(s.SupportedEntities) == 0 {
-			// 		s.SupportedEntities = string(supportedEntity)
-			// 	} else {
-			// 		s.SupportedEntities = fmt.Sprint(s.SupportedEntities, ",", supportedEntity)
-			// 	}
-			// }
+			jItem := generateAdrSprotJunctionItem(dbObj, s)
+			ap.Junctions = append(ap.Junctions, jItem)
 		}
 		ap.Subprotocols = subprotocols
 		return ap, nil
@@ -412,7 +410,6 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Fingerprint = obj.Fingerprint
 		dbObj.Type = obj.Type
 		dbObj.PublicKey = obj.Key
-		dbObj.PublicKeyFingerprint = api.Fingerprint(fingerprinting.Create(dbObj.PublicKey))
 		dbObj.Expiry = obj.Expiry
 		dbObj.Name = obj.Name
 		dbObj.Info = obj.Info
@@ -462,7 +459,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.UpdateSignature = obj.UpdateSignature
 		parsedStr, err :=
 			parseStringSliceToCommaSeparatedString(
-				convertFingerprintSliceToStringSlice(obj.Domains), 64, 100)
+				convertFingerprintSliceToStringSlice(obj.Domains), "truststates")
 		if err != nil {
 			return dbObj, err
 		}
@@ -592,7 +589,8 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.LocationType = obj.LocationType
 		apiObj.Port = obj.Port
 		apiObj.Type = obj.Type
-		apiObj.LastOnline = obj.LastOnline
+		apiObj.LastSuccessfulPing = obj.LastSuccessfulPing
+		apiObj.LastSuccessfulSync = obj.LastSuccessfulSync
 		apiObj.Protocol.VersionMajor = obj.ProtocolVersionMajor
 		apiObj.Protocol.VersionMinor = obj.ProtocolVersionMinor
 		apiObj.Client.VersionMajor = obj.ClientVersionMajor
@@ -723,7 +721,16 @@ func parseCommaSeparatedStringToStringSlice(str string, maxLen int, maxCount int
 }
 
 // parseStringSliceToCommaSeparatedString converts a slice of strings into one single comma separated string.
-func parseStringSliceToCommaSeparatedString(strs []string, maxLen int, maxCount int) (string, error) {
+func parseStringSliceToCommaSeparatedString(strs []string, entityType string) (string, error) {
+	maxLen := 0
+	maxCount := 0
+	if entityType == "addresses" {
+		maxLen = api.MAX_ADDRESS_PROTOCOL_SUBPROTOCOL_SUPPORTEDENTITIES_NAME_V1
+		maxCount = api.MAX_ADDRESS_PROTOCOL_SUBPROTOCOL_SUPPORTEDENTITIES_V1
+	} else if entityType == "truststates" {
+		maxLen = 64 // Fingerprint length
+		maxCount = api.MAX_TRUSTSTATE_DOMAINS_V1
+	}
 	var err error
 	var finalStr string
 	if len(strs) > maxCount {

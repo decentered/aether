@@ -10,11 +10,13 @@ import (
 	// "aether-core/backend/metrics"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
-	"errors"
+	"aether-core/services/toolbox"
+	// "errors"
 	"github.com/fatih/color"
 	// "github.com/jmoiron/sqlx/types"
 	// "github.com/davecgh/go-spew/spew"
 	// "runtime"
+	"github.com/pkg/errors"
 	"strconv"
 	"strings"
 	"time"
@@ -48,7 +50,7 @@ func InsertNode(n DbNode) error {
 	return nil
 }
 func insertNode(n DbNode) error {
-	// fmt.Println(globals.DumpStack())
+	// fmt.Println(toolbox.DumpStack())
 	// fmt.Println("Node to be inserted:")
 	// spew.Dump(n)
 	// fmt.Printf("%#v\n", n)
@@ -91,47 +93,111 @@ func insertNode(n DbNode) error {
 	return nil
 }
 
+func AddrTrustedInsert(a *[]api.Address) error {
+	if globals.BackendTransientConfig.ShutdownInitiated {
+		return nil
+	}
+	tx, dbErr := globals.DbInstance.Beginx()
+	if dbErr != nil {
+		logging.LogCrash(dbErr)
+	}
+	for key, _ := range *a {
+		(*a)[key].SetVerified(true)
+		aPkIface, err := APItoDB((*a)[key])
+		if err != nil {
+			// return errors.Wrap(err, "AddrTrustedInsert encountered an error in using APItoDB.")
+			logging.Log(1, fmt.Sprintf("AddrTrustedInsert encountered an error in using APItoDB. Error: %#v", err))
+			continue
+		}
+		addrPack := aPkIface.(AddressPack)
+		err2 := enforceNoEmptyIdentityFields(addrPack)
+		if err2 != nil {
+			logging.Log(1, fmt.Sprintf("AddrTrustedInsert encountered an error in checking identity fields. Error: %#v", err2))
+			continue
+			// return errors.Wrap(err2, "AddrTrustedInsert encountered an error in checking identity fields")
+		}
+		err3 := enforceNoEmptyTrustedAddressRequiredFields(addrPack)
+		if err3 != nil {
+			// return errors.Wrap(err3, "AddrTrustedInsert encountered an error in checking required fields.")
+			logging.Log(1, fmt.Sprintf("AddrTrustedInsert encountered an error in checking required fields. Error: %#v", err3))
+			continue
+		}
+		_, err5 := tx.NamedExec(getSQLCommands("dbAddressUpdate")[0], addrPack.Address)
+		if err5 != nil {
+			logging.LogCrash(err5)
+		}
+		if len(addrPack.Subprotocols) > 0 {
+			for _, sp := range addrPack.Subprotocols {
+				_, err6 := tx.NamedExec(getSQLCommands("dbSubprotocol")[0], sp)
+				if err6 != nil {
+					logging.LogCrash(err6)
+				}
+			}
+		}
+		if len(addrPack.Junctions) > 0 {
+			for _, jn := range addrPack.Junctions {
+				_, err7 := tx.NamedExec(getSQLCommands("dbAddressSubprotocol")[0], jn)
+				if err7 != nil {
+					logging.LogCrash(err7)
+				}
+			}
+		}
+	}
+	err8 := tx.Commit()
+	if err8 != nil {
+		tx.Rollback()
+		logging.Log(1, fmt.Sprintf("AddrTrustedInsert encountered an error when trying to commit to the database. Error is: %s", err8))
+		return errors.Wrap(err8, "AddrTrustedInsert encountered an error when trying to commit to the database.")
+	}
+	return nil
+}
+
 // InsertOrUpdateAddresses is the multi-entry of the core function InsertOrUpdateAddress. This is the only public API, and it should be used exclusively, because this is where we have the connection retry logic that we need.
 
 // TODO: We need to do validation here and if the address does not pass validation (i.e. the versions are either zero, or they're outside of the range this node supports) we need to return an error and then bail from connecting.
 func InsertOrUpdateAddresses(a *[]api.Address) []error {
-	addresses := *a
-	errs := []error{}
-	logging.Log(2, fmt.Sprintf("We got an insert or update address request for these addresses: %#v", addresses))
-	for i, _ := range addresses {
-		err := insertOrUpdateAddress(addresses[i])
-		if err != nil {
-			logging.Log(1, err)
-			if strings.Contains(err.Error(), "Database was locked") {
-				logging.Log(1, "This transaction was not committed because database was locked. We'll wait 10 seconds and retry the transaction.")
-				time.Sleep(10 * time.Second)
-				logging.Log(1, "Retrying the previously failed InsertOrUpdateAddresses transaction.")
-				err2 := insertOrUpdateAddress(addresses[i])
-				if err2 != nil {
-					fmt.Println(err2)
-					logging.Log(1, err2)
-					if strings.Contains(err.Error(), "Database was locked") {
-						logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
-					} else { // err2 != nil, but it's not "DB is locked".
-						errs = append(errs, err2)
-					}
-				} else { // err2 = nil (reattempted locked transaction succeeded.)
-					logging.Log(1, "The retry attempt of the failed transaction succeeded.")
-				}
-			} else { // err != nil, but it's not "DB is locked".
-				errs = append(errs, err)
-			}
-		}
+	err := AddrTrustedInsert(a)
+	if err != nil {
+		return []error{err}
 	}
-	// We collect non-transient errors into a bucket and send it back.
-	return errs
+	return []error{}
+	// addresses := *a
+	// errs := []error{}
+	// logging.Log(2, fmt.Sprintf("We got an insert or update address request for these addresses: %#v", addresses))
+	// for i, _ := range addresses {
+	// 	err := insertOrUpdateAddress(addresses[i])
+	// 	if err != nil {
+	// 		logging.Log(1, err)
+	// 		if strings.Contains(err.Error(), "Database was locked") {
+	// 			logging.Log(1, "This transaction was not committed because database was locked. We'll wait 10 seconds and retry the transaction.")
+	// 			time.Sleep(10 * time.Second)
+	// 			logging.Log(1, "Retrying the previously failed InsertOrUpdateAddresses transaction.")
+	// 			err2 := insertOrUpdateAddress(addresses[i])
+	// 			if err2 != nil {
+	// 				fmt.Println(err2)
+	// 				logging.Log(1, err2)
+	// 				if strings.Contains(err.Error(), "Database was locked") {
+	// 					logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
+	// 				} else { // err2 != nil, but it's not "DB is locked".
+	// 					errs = append(errs, err2)
+	// 				}
+	// 			} else { // err2 = nil (reattempted locked transaction succeeded.)
+	// 				logging.Log(1, "The retry attempt of the failed transaction succeeded.")
+	// 			}
+	// 		} else { // err != nil, but it's not "DB is locked".
+	// 			errs = append(errs, err)
+	// 		}
+	// 	}
+	// }
+	// // We collect non-transient errors into a bucket and send it back.
+	// return errs
 }
 
 func enforceNoEmptyTrustedAddressRequiredFields(obj AddressPack) error {
-	if obj.Address.LocationType == 0 || obj.Address.LastOnline == 0 || obj.Address.ProtocolVersionMajor == 0 || obj.Address.ClientVersionMajor == 0 || obj.Address.ClientName == "" || obj.Address.EntityVersion == 0 || len(obj.Subprotocols) < 1 {
+	if obj.Address.LocationType == 0 || obj.Address.LastSuccessfulPing == 0 || obj.Address.ProtocolVersionMajor == 0 || obj.Address.ClientVersionMajor == 0 || obj.Address.ClientName == "" || obj.Address.EntityVersion == 0 || len(obj.Subprotocols) < 1 {
 		return errors.New(
 			fmt.Sprintf(
-				"This address has some required fields empty (One or more of: LocationType, LastOnline, ProtocolVersionMajor, Subprotocols, ClientVersionMajor, ClientName, EntityVersion). Address: %#v\n", obj))
+				"This address has some required fields empty (One or more of: LocationType, LastSuccessfulPing, ProtocolVersionMajor, Subprotocols, ClientVersionMajor, ClientName, EntityVersion). Address: %#v\n", obj))
 	}
 	for _, subprot := range obj.Subprotocols {
 		if subprot.Fingerprint == "" || subprot.Name == "" || subprot.VersionMajor == 0 || subprot.SupportedEntities == "" {
@@ -145,6 +211,8 @@ func enforceNoEmptyTrustedAddressRequiredFields(obj AddressPack) error {
 
 // insertOrUpdateAddress is the ONLY way to update an address in the database. Be very careful with this, careless use of this function can result in entry of untrusted data from the remotes into the local database. The only legitimate use of this is to put in the details of nodes that this local machine has personally connected to.
 func insertOrUpdateAddress(a api.Address) error {
+	// Because this address pack is constructed by the local machine based on the inbound TCP connection, we are marking this as trusted.
+	a.SetVerified(true)
 	addressPackAsInterface, err := APItoDB(a)
 	if err != nil {
 		return errors.New(fmt.Sprint(
@@ -342,12 +410,6 @@ func batchInsert(apiObjectsPtr *[]interface{}) (InsertMetrics, error) {
 			logging.Log(2, err3)
 			continue
 		}
-		err4 := enforceFieldLengths(dbo)
-		if err4 != nil {
-			// If this unit does have fields that are too long, we'll pass on adding these to the database.
-			logging.Log(2, err4)
-			continue
-		}
 		switch dbObject := dbo.(type) {
 		case BoardPack:
 			bb.DbBoards = append(bb.DbBoards, dbObject.Board)
@@ -368,9 +430,10 @@ func batchInsert(apiObjectsPtr *[]interface{}) (InsertMetrics, error) {
 
 			// This also means that we will actually be not using the Subprotocols data, as that would be untrusted data.
 
-			dbObject.Address.LocationType = 0 // IPv4 or 6
-			dbObject.Address.Type = 0         // 2 = live, 255 = static
-			dbObject.Address.LastOnline = 0   // We cannot trust someone else's last online timestamp
+			dbObject.Address.LocationType = 0       // IPv4 or 6
+			dbObject.Address.Type = 0               // 2 = live, 255 = static
+			dbObject.Address.LastSuccessfulPing = 0 // We cannot trust someone else's lsp timestamp
+			dbObject.Address.LastSuccessfulSync = 0 // We cannot trust someone else's lsc timestamp
 			dbObject.Address.ProtocolVersionMajor = 0
 			dbObject.Address.ProtocolVersionMinor = 0
 			dbObject.Address.ClientVersionMajor = 0
@@ -461,6 +524,9 @@ func generateInsertLog(bb *batchBucket) string {
 }
 
 func insert(batchBucket *batchBucket, im *InsertMetrics) error {
+	if globals.BackendTransientConfig.ShutdownInitiated {
+		return nil
+	}
 	// We have our final list of entries. Add these objects to DB and let DB deal with what is a new addition and what is an update.
 	// (Hot code path.) Start transaction.
 	start := time.Now()
@@ -553,6 +619,13 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 				}
 			}
 		}
+		// fmt.Println("Db address prune hits.")
+		cmds := getSQLCommands("dbAddressPrune")
+		_, err := tx.Exec(cmds[0], globals.BackendConfig.GetMaxAddressTableSize())
+		if err != nil {
+			fmt.Println(err)
+			logging.LogCrash(err)
+		}
 	}
 	if len(bb.DbBoardOwners) > 0 {
 		etype := "dbBoardOwner"
@@ -580,21 +653,21 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 	elapsed := time.Since(start)
 	if len(insertType) == 1 { // If this is a multiple insert, I won't save the time it takes, because we don't know which part takes the most time.
 		if insertType[0] == "dbBoard" {
-			im.BoardsDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+			im.BoardsDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
 		} else if insertType[0] == "dbThread" {
-			im.ThreadsDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+			im.ThreadsDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
 		} else if insertType[0] == "dbPost" {
-			im.PostsDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+			im.PostsDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
 		} else if insertType[0] == "dbVote" {
-			im.VotesDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+			im.VotesDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
 		} else if insertType[0] == "dbKey" {
-			im.KeysDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+			im.KeysDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
 		} else if insertType[0] == "dbTruststate" {
-			im.TruststatesDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+			im.TruststatesDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
 		} else if insertType[0] == "dbAddress" {
-			im.AddressesDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+			im.AddressesDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
 		} else if insertType[0] == "dbBoardOwner" {
-			im.BoardOwnerDBCommitTime = globals.Round(elapsed.Seconds(), 0.1)
+			im.BoardOwnerDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
 		}
 	}
 	return nil
@@ -675,6 +748,8 @@ func getSQLCommands(dbType string) []string {
 		} else {
 			logging.LogCrash(fmt.Sprintf("Db Engine type not recognised."))
 		}
+	} else if dbType == "dbAddressPrune" {
+		sqlstrs = append(sqlstrs, addressPrune)
 	}
 	return sqlstrs
 }
@@ -820,12 +895,10 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 			obj.EntityVersion == 0 ||
 			obj.ProofOfWork == "" ||
 			obj.Signature == "" ||
-			((len(obj.PublicKey) > 0 && len(obj.PublicKeyFingerprint) == 0) ||
-				(len(obj.PublicKey) == 0 && len(obj.PublicKeyFingerprint) > 0)) ||
 			obj.Expiry == 0 {
 			return errors.New(
 				fmt.Sprintf(
-					"This key has some required fields empty (One or more of: Type, PublicKey, Creation, PoW, Signature, Expiry, EntityVersion), or PublicKey is empty when PublicKeyFingerprint is not, or vice versa. Key: %#v\n", obj))
+					"This key has some required fields empty (One or more of: Type, PublicKey, Creation, PoW, Signature, Expiry, EntityVersion) Key: %#v\n", obj))
 		}
 	case DbTruststate:
 		if obj.Target == "" ||
@@ -841,27 +914,6 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 				fmt.Sprintf(
 					"This trust state has some required fields empty (One or more of: Target, Owner, Type, Creation, PoW, Signature, EntityVersion), or Owner is empty when OwnerPublicKey is not, or vice versa. Truststate: %#v\n", obj))
 		}
-	}
-	return nil
-}
-
-// enforceFieldLengths enforces the lengths of the fields of the objects. Violation of these lengths should result in a ban, because the app enforces the lengths in creation, and if there is a too long field , that must have been constructed out of the app for malicious purposes.
-func enforceFieldLengths(object interface{}) error {
-	// TODO: This is where ban PKs if they don't respect field lengths. The gate before this is the size for each page, we already have gates for that.
-	// Language field si defined as ISO 639-1, which is LOWERCASE. We won't deny uppercase, we'll convert to lowercase and use that.
-	switch obj := object.(type) {
-	case BoardPack:
-		if len(obj.Board.Language) >= 3 {
-			return errors.New(
-				fmt.Sprintf(
-					"This board has some fields longer than allowed. (One or more of: Language) BoardPack: %#v\n", obj))
-		}
-	case DbThread:
-	case DbPost:
-	case DbVote:
-	case DbKey:
-	case DbTruststate:
-	case AddressPack:
 	}
 	return nil
 }

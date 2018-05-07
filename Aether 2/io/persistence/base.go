@@ -6,6 +6,7 @@ package persistence
 import (
 	"aether-core/services/globals"
 	"aether-core/services/logging"
+	"aether-core/services/toolbox"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	// "github.com/jmoiron/sqlx"
@@ -14,7 +15,7 @@ import (
 	"errors"
 	"github.com/fatih/color"
 	"math/rand"
-	"os"
+	// "os"
 	"strings"
 	"time"
 )
@@ -22,7 +23,8 @@ import (
 // DeleteDatabase removes the existing database in the default location.
 func DeleteDatabase() {
 	if globals.BackendConfig.GetDbEngine() == "sqlite" {
-		os.RemoveAll(globals.BackendConfig.GetUserDirectory())
+		dbFile := fmt.Sprintf("%s/AetherDB.db", globals.BackendConfig.GetUserDirectory())
+		toolbox.DeleteFromDisk(dbFile)
 	} else if globals.BackendConfig.GetDbEngine() == "mysql" {
 		globals.DbInstance.MustExec("DROP DATABASE `AetherDB`;")
 	}
@@ -66,12 +68,24 @@ func createDatabase() error {
 	var schema10 string
 	var schema11 string
 	var schema12 string
-	var schema13 string
-	var schema14 string
-	var schema15 string
+	// var schema13 string
+	// var schema14 string
+	// var schema15 string
 	var schema16 string
-	var schema17 string
-	var schema18 string
+	// var schema17 string
+	// var schema18 string
+	var idxSqlite1 string
+	var idxSqlite2 string
+	var idxSqlite3 string
+	var idxSqlite4 string
+	var idxSqlite5 string
+	var idxSqlite6 string
+	var idxSqlite7 string
+	var idxSqlite8 string
+	var idxSqlite9 string
+	var idxSqlite10 string
+	var idxSqlite11 string
+	// var idxSqlite12 string
 
 	if globals.BackendConfig.DbEngine == "mysql" {
 		schemaPrep1 = `
@@ -96,7 +110,7 @@ func createDatabase() error {
           Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
           Name VARCHAR(255) NOT NULL,
           Owner VARCHAR(64) NOT NULL,
-          OwnerPublicKey VARCHAR(1024) NOT NULL,
+          OwnerPublicKey VARCHAR(128) NOT NULL,
           Description MEDIUMTEXT NOT NULL,  -- Converted from varchar(65535) to text, because it doesn't fit into a MYSQL table. Enforce max 65535 chars on the application layer.
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
@@ -110,7 +124,8 @@ func createDatabase() error {
           Language VARCHAR(3) NOT NULL,
           Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
-          EncrConcent MEDIUMTEXT NOT NULL
+          EncrContent MEDIUMTEXT NOT NULL,
+          INDEX (LastReferenced)
         )ROW_FORMAT=COMPRESSED;`
 		schema4 = `
         CREATE TABLE IF NOT EXISTS Threads (
@@ -120,7 +135,7 @@ func createDatabase() error {
           Body MEDIUMTEXT NOT NULL,
           Link VARCHAR(5000) NOT NULL,
           Owner VARCHAR(64) NOT NULL,
-          OwnerPublicKey VARCHAR(1024) NOT NULL,
+          OwnerPublicKey VARCHAR(128) NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
           Signature VARCHAR(512) NOT NULL,
@@ -132,8 +147,8 @@ func createDatabase() error {
           EntityVersion SMALLINT NOT NULL,
           Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
-          EncrConcent MEDIUMTEXT NOT NULL,
-          INDEX (Board)
+          EncrContent MEDIUMTEXT NOT NULL,
+          INDEX (Board, LastReferenced)
         )ROW_FORMAT=COMPRESSED;`
 		schema5 = `
         CREATE TABLE IF NOT EXISTS Posts (
@@ -143,7 +158,7 @@ func createDatabase() error {
           Parent VARCHAR(64) NOT NULL,
           Body MEDIUMTEXT NOT NULL,
           Owner VARCHAR(64) NOT NULL,
-          OwnerPublicKey VARCHAR(1024) NOT NULL,
+          OwnerPublicKey VARCHAR(128) NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
           Signature VARCHAR(512) NOT NULL,
@@ -155,8 +170,8 @@ func createDatabase() error {
           EntityVersion SMALLINT NOT NULL,
           Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
-          EncrConcent MEDIUMTEXT NOT NULL,
-          INDEX (Thread, Parent)
+          EncrContent MEDIUMTEXT NOT NULL,
+          INDEX (Thread, Parent, LastReferenced)
         )ROW_FORMAT=COMPRESSED;`
 		schema6 = `
         CREATE TABLE IF NOT EXISTS Votes (
@@ -165,7 +180,7 @@ func createDatabase() error {
           Thread VARCHAR(64) NOT NULL,
           Target VARCHAR(64) NOT NULL,
           Owner VARCHAR(64) NOT NULL,
-          OwnerPublicKey VARCHAR(1024) NOT NULL,
+          OwnerPublicKey VARCHAR(128) NOT NULL,
           Type SMALLINT NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
@@ -178,8 +193,8 @@ func createDatabase() error {
           EntityVersion SMALLINT NOT NULL,
           Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
-          EncrConcent MEDIUMTEXT NOT NULL,
-          INDEX (Target)
+          EncrContent MEDIUMTEXT NOT NULL,
+          INDEX (Target, LastReferenced)
         )ROW_FORMAT=COMPRESSED;`
 		schema7 = `
         CREATE TABLE IF NOT EXISTS Addresses (
@@ -188,7 +203,8 @@ func createDatabase() error {
           Port INTEGER NOT NULL,
           IPType SMALLINT NOT NULL,
           AddressType SMALLINT NOT NULL,
-          LastOnline BIGINT NOT NULL,
+          LastSuccessfulPing BIGINT NOT NULL,
+          LastSuccessfulSync BIGINT NOT NULL,
           ProtocolVersionMajor SMALLINT NOT NULL,
           ProtocolVersionMinor INTEGER NOT NULL,
           ClientVersionMajor SMALLINT NOT NULL,
@@ -196,7 +212,6 @@ func createDatabase() error {
           ClientVersionPatch INTEGER NOT NULL,
           ClientName VARCHAR(255) NOT NULL,
           LocalArrival BIGINT NOT NULL,
-          LastReferenced BIGINT NOT NULL,
           EntityVersion SMALLINT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
           PRIMARY KEY(Location, Sublocation, Port)
@@ -205,8 +220,7 @@ func createDatabase() error {
         CREATE TABLE IF NOT EXISTS PublicKeys (
           Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
           Type VARCHAR(64) NOT NULL,
-          PublicKey TEXT NOT NULL,
-          PublicKeyFingerprint VARCHAR(64) NOT NULL,
+          PublicKey VARCHAR(128) NOT NULL,
           Expiry BIGINT NOT NULL,
           Name VARCHAR(64) NOT NULL,
           Info MEDIUMTEXT NOT NULL,
@@ -221,15 +235,15 @@ func createDatabase() error {
           EntityVersion SMALLINT NOT NULL,
           Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
-          EncrConcent MEDIUMTEXT NOT NULL,
-          INDEX (PublicKeyFingerprint)
+          EncrContent MEDIUMTEXT NOT NULL,
+          INDEX (PublicKey, LastReferenced)
         )ROW_FORMAT=COMPRESSED;`
 		schema9 = `
         CREATE TABLE IF NOT EXISTS Truststates (
           Fingerprint VARCHAR(64) PRIMARY KEY NOT NULL,
           Target VARCHAR(64) NOT NULL,
           Owner VARCHAR(64) NOT NULL,
-          OwnerPublicKey VARCHAR(1024) NOT NULL,
+          OwnerPublicKey VARCHAR(128) NOT NULL,
           Type SMALLINT NOT NULL,
           Domains VARCHAR(7000) NOT NULL,
           Expiry BIGINT NOT NULL,
@@ -244,7 +258,8 @@ func createDatabase() error {
           EntityVersion SMALLINT NOT NULL,
           Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
-          EncrConcent MEDIUMTEXT NOT NULL
+          EncrContent MEDIUMTEXT NOT NULL,
+          INDEX (LastReferenced)
         )ROW_FORMAT=COMPRESSED;
       `
 		schema10 = `
@@ -294,7 +309,7 @@ func createDatabase() error {
           "Fingerprint" varchar(64) NOT NULL
         ,  "Name" varchar(255) NOT NULL
         ,  "Owner" varchar(64) NOT NULL
-        ,  "OwnerPublicKey" varchar(1024) NOT NULL
+        ,  "OwnerPublicKey" varchar(128) NOT NULL
         ,  "Description" text NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
@@ -319,7 +334,7 @@ func createDatabase() error {
         ,  "Body" text NOT NULL
         ,  "Link" varchar(5000) NOT NULL
         ,  "Owner" varchar(64) NOT NULL
-        ,  "OwnerPublicKey" varchar(1024) NOT NULL
+        ,  "OwnerPublicKey" varchar(128) NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
         ,  "Signature" varchar(512) NOT NULL
@@ -342,7 +357,7 @@ func createDatabase() error {
         ,  "Parent" varchar(64) NOT NULL
         ,  "Body" text NOT NULL
         ,  "Owner" varchar(64) NOT NULL
-        ,  "OwnerPublicKey" varchar(1024) NOT NULL
+        ,  "OwnerPublicKey" varchar(128) NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
         ,  "Signature" varchar(512) NOT NULL
@@ -364,7 +379,7 @@ func createDatabase() error {
         ,  "Thread" varchar(64) NOT NULL
         ,  "Target" varchar(64) NOT NULL
         ,  "Owner" varchar(64) NOT NULL
-        ,  "OwnerPublicKey" varchar(1024) NOT NULL
+        ,  "OwnerPublicKey" varchar(128) NOT NULL
         ,  "Type" integer NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
@@ -380,32 +395,11 @@ func createDatabase() error {
         ,  "EncrContent" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
         );`
-		schema7 = `
-        CREATE TABLE IF NOT EXISTS "Addresses" (
-          "Location" varchar(256) NOT NULL
-        ,  "Sublocation" varchar(256) NOT NULL
-        ,  "Port" integer NOT NULL
-        ,  "IPType" integer NOT NULL
-        ,  "AddressType" integer NOT NULL
-        ,  "LastOnline" integer NOT NULL
-        ,  "ProtocolVersionMajor" integer NOT NULL
-        ,  "ProtocolVersionMinor" integer NOT NULL
-        ,  "ClientVersionMajor" integer NOT NULL
-        ,  "ClientVersionMinor" integer NOT NULL
-        ,  "ClientVersionPatch" integer NOT NULL
-        ,  "ClientName" varchar(255) NOT NULL
-        ,  "LocalArrival" integer NOT NULL
-        ,  "LastReferenced" integer NOT NULL
-        ,  "EntityVersion" integer NOT NULL
-        ,  "RealmId" varchar(64) NOT NULL
-        ,  PRIMARY KEY ("Location","Sublocation","Port")
-        );`
 		schema8 = `
         CREATE TABLE IF NOT EXISTS "PublicKeys" (
           "Fingerprint" varchar(64) NOT NULL
         ,  "Type" varchar(64) NOT NULL
         ,  "PublicKey" text NOT NULL
-        ,  "PublicKeyFingerprint" varchar(64) NOT NULL
         ,  "Expiry" integer NOT NULL
         ,  "Name" varchar(64) NOT NULL
         ,  "Info" text NOT NULL
@@ -428,7 +422,7 @@ func createDatabase() error {
           "Fingerprint" varchar(64) NOT NULL
         ,  "Target" varchar(64) NOT NULL
         ,  "Owner" varchar(64) NOT NULL
-        ,  "OwnerPublicKey" varchar(1024) NOT NULL
+        ,  "OwnerPublicKey" varchar(128) NOT NULL
         ,  "Type" integer NOT NULL
         ,  "Domains" varchar(7000) NOT NULL
         ,  "Expiry" integer NOT NULL
@@ -445,6 +439,26 @@ func createDatabase() error {
         ,  "RealmId" varchar(64) NOT NULL
         ,  "EncrContent" text NOT NULL
         ,  PRIMARY KEY ("Fingerprint")
+        );`
+		schema7 = `
+        CREATE TABLE IF NOT EXISTS "Addresses" (
+          "Location" varchar(256) NOT NULL
+        ,  "Sublocation" varchar(256) NOT NULL
+        ,  "Port" integer NOT NULL
+        ,  "IPType" integer NOT NULL
+        ,  "AddressType" integer NOT NULL
+        ,  "LastSuccessfulPing" integer NOT NULL
+        ,  "LastSuccessfulSync" integer NOT NULL
+        ,  "ProtocolVersionMajor" integer NOT NULL
+        ,  "ProtocolVersionMinor" integer NOT NULL
+        ,  "ClientVersionMajor" integer NOT NULL
+        ,  "ClientVersionMinor" integer NOT NULL
+        ,  "ClientVersionPatch" integer NOT NULL
+        ,  "ClientName" varchar(255) NOT NULL
+        ,  "LocalArrival" integer NOT NULL
+        ,  "EntityVersion" integer NOT NULL
+        ,  "RealmId" varchar(64) NOT NULL
+        ,  PRIMARY KEY ("Location","Sublocation","Port")
         );`
 		schema10 = `
           CREATE TABLE IF NOT EXISTS "Nodes" (
@@ -475,26 +489,48 @@ func createDatabase() error {
           ,  "SubprotocolFingerprint" varchar(64) NOT NULL
           ,  PRIMARY KEY ("AddressLocation","AddressSublocation","AddressPort","SubprotocolFingerprint")
           );`
-		schema13 = `
-          CREATE INDEX IF NOT EXISTS "idx_Posts_Thread" ON "Posts" ("Thread");
-          `
-		schema14 = `
-          CREATE INDEX IF NOT EXISTS "idx_Threads_Board" ON "Threads" ("Board");
-          `
-		schema15 = `
-          CREATE INDEX IF NOT EXISTS "idx_Votes_Target" ON "Votes" ("Target");
-          `
 		schema16 = `
             CREATE TABLE IF NOT EXISTS "Diagnostics" (
               "DbRoundtripTestField" integer NOT NULL
             ,  PRIMARY KEY ("DbRoundtripTestField")
           );`
-		schema17 = `
-          CREATE INDEX IF NOT EXISTS "idx_PublicKeys_PublicKeyFingerprint" ON "PublicKeys" ("PublicKeyFingerprint");
+
+		idxSqlite1 = `
+          CREATE INDEX IF NOT EXISTS "idx_Posts_Thread" ON "Posts" ("Thread");
           `
-		schema18 = `
+		idxSqlite2 = `
+          CREATE INDEX IF NOT EXISTS "idx_Threads_Board" ON "Threads" ("Board");
+          `
+		idxSqlite3 = `
+          CREATE INDEX IF NOT EXISTS "idx_Votes_Target" ON "Votes" ("Target");
+          `
+		idxSqlite4 = `
+          CREATE INDEX IF NOT EXISTS "idx_PublicKeys_PublicKey" ON "PublicKeys" ("PublicKey");
+          `
+		idxSqlite5 = `
           CREATE INDEX IF NOT EXISTS "idx_Posts_Parent" ON "Posts" ("Parent");
           `
+		idxSqlite6 = `
+          CREATE INDEX IF NOT EXISTS "idx_Boards_LastReferenced" ON "Boards" ("LastReferenced");
+          `
+		idxSqlite7 = `
+          CREATE INDEX IF NOT EXISTS "idx_Threads_LastReferenced" ON "Threads" ("LastReferenced");
+          `
+		idxSqlite8 = `
+          CREATE INDEX IF NOT EXISTS "idx_Posts_LastReferenced" ON "Posts" ("LastReferenced");
+          `
+		idxSqlite9 = `
+          CREATE INDEX IF NOT EXISTS "idx_Votes_LastReferenced" ON "Votes" ("LastReferenced");
+          `
+		idxSqlite10 = `
+          CREATE INDEX IF NOT EXISTS "idx_PublicKeys_LastReferenced" ON "PublicKeys" ("LastReferenced");
+          `
+		idxSqlite11 = `
+          CREATE INDEX IF NOT EXISTS "idx_Truststates_LastReferenced" ON "Truststates" ("LastReferenced");
+          `
+		// idxSqlite12 = `
+		//         CREATE INDEX IF NOT EXISTS "idx_Addresses_LastReferenced" ON "Addresses" ("LastReferenced");
+		//         `
 	} else {
 		logging.LogCrash(fmt.Sprintf("Storage engine you've inputted is not supported. Please change it from the backend user config into something that is supported. You've provided: %s", globals.BackendConfig.GetDbEngine()))
 	}
@@ -512,12 +548,19 @@ func createDatabase() error {
 		creationSchemas = append(creationSchemas, schema10)
 		creationSchemas = append(creationSchemas, schema11)
 		creationSchemas = append(creationSchemas, schema12)
-		creationSchemas = append(creationSchemas, schema13)
-		creationSchemas = append(creationSchemas, schema14)
-		creationSchemas = append(creationSchemas, schema15)
 		creationSchemas = append(creationSchemas, schema16)
-		creationSchemas = append(creationSchemas, schema17)
-		creationSchemas = append(creationSchemas, schema18)
+		creationSchemas = append(creationSchemas, idxSqlite1)
+		creationSchemas = append(creationSchemas, idxSqlite2)
+		creationSchemas = append(creationSchemas, idxSqlite3)
+		creationSchemas = append(creationSchemas, idxSqlite4)
+		creationSchemas = append(creationSchemas, idxSqlite5)
+		creationSchemas = append(creationSchemas, idxSqlite6)
+		creationSchemas = append(creationSchemas, idxSqlite7)
+		creationSchemas = append(creationSchemas, idxSqlite8)
+		creationSchemas = append(creationSchemas, idxSqlite9)
+		creationSchemas = append(creationSchemas, idxSqlite10)
+		creationSchemas = append(creationSchemas, idxSqlite11)
+		// creationSchemas = append(creationSchemas, idxSqlite12)
 	} else if globals.BackendConfig.GetDbEngine() == "mysql" {
 		creationSchemas = append(creationSchemas, schemaPrep1)
 		creationSchemas = append(creationSchemas, schemaPrep2)
@@ -661,15 +704,19 @@ WHERE (
     :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
     :LastUpdate > (SELECT Creation FROM ExtantE) AND
     :LastUpdate > :Creation AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate > :Creation AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate = 0 AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
 );
 `
 var boardInsert = `
@@ -792,15 +839,18 @@ WHERE (
     :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
     :LastUpdate > (SELECT Creation FROM ExtantE) AND
     :LastUpdate > :Creation AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate > :Creation AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate = 0 AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
 );
 `
 var threadInsert_ThreadsBoardsKey_LastReferencedUpdate = `
@@ -819,15 +869,18 @@ WHERE (
     :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
     :LastUpdate > (SELECT Creation FROM ExtantE) AND
     :LastUpdate > :Creation AND
-    Fingerprint = (SELECT Owner FROM ParentBoard)
+    Fingerprint = (SELECT Owner FROM ParentBoard) AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate > :Creation AND
-    Fingerprint = (SELECT Owner FROM ParentBoard)
+    Fingerprint = (SELECT Owner FROM ParentBoard) AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate = 0 AND
-    Fingerprint = (SELECT Owner FROM ParentBoard)
+    Fingerprint = (SELECT Owner FROM ParentBoard) AND
+    PublicKey = :OwnerPublicKey
 );
 `
 var threadInsert = `
@@ -905,15 +958,18 @@ WHERE (
     :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
     :LastUpdate > (SELECT Creation FROM ExtantE) AND
     :LastUpdate > :Creation AND
-    Fingerprint = (SELECT Owner FROM ParentBoard)
+    Fingerprint = (SELECT Owner FROM ParentBoard) AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate > :Creation AND
-    Fingerprint = (SELECT Owner FROM ParentBoard)
+    Fingerprint = (SELECT Owner FROM ParentBoard) AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate = 0 AND
-    Fingerprint = (SELECT Owner FROM ParentBoard)
+    Fingerprint = (SELECT Owner FROM ParentBoard) AND
+    PublicKey = :OwnerPublicKey
 );
 `
 var postInsert_PostsThread_LastReferencedUpdate = `
@@ -955,15 +1011,18 @@ WHERE (
     :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
     :LastUpdate > (SELECT Creation FROM ExtantE) AND
     :LastUpdate > :Creation AND
-    Fingerprint = (SELECT Owner FROM ParentThread)
+    Fingerprint = (SELECT Owner FROM ParentThread) AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate > :Creation AND
-    Fingerprint = (SELECT Owner FROM ParentThread)
+    Fingerprint = (SELECT Owner FROM ParentThread) AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate = 0 AND
-    Fingerprint = (SELECT Owner FROM ParentThread)
+    Fingerprint = (SELECT Owner FROM ParentThread) AND
+    PublicKey = :OwnerPublicKey
 );
 `
 var postInsert_PostsKey_LastReferencedUpdate = `
@@ -978,15 +1037,18 @@ WHERE (
     :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
     :LastUpdate > (SELECT Creation FROM ExtantE) AND
     :LastUpdate > :Creation AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate > :Creation AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate = 0 AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
 );
 `
 var postInsert_PostsPosts_Recursive_LastReferencedUpdate = `
@@ -1073,15 +1135,18 @@ WHERE (
     :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
     :LastUpdate > (SELECT Creation FROM ExtantE) AND
     :LastUpdate > :Creation AND
-    PublicKeys.Fingerprint IN (SELECT Owner FROM FinalTable)
+    PublicKeys.Fingerprint IN (SELECT Owner FROM FinalTable) AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate > :Creation AND
-    PublicKeys.Fingerprint IN (SELECT Owner FROM FinalTable)
+    PublicKeys.Fingerprint IN (SELECT Owner FROM FinalTable) AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate = 0 AND
-    PublicKeys.Fingerprint IN (SELECT Owner FROM FinalTable)
+    PublicKeys.Fingerprint IN (SELECT Owner FROM FinalTable) AND
+    PublicKey = :OwnerPublicKey
 );
 `
 var postInsert = `
@@ -1131,15 +1196,18 @@ WHERE (
     :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
     :LastUpdate > (SELECT Creation FROM ExtantE) AND
     :LastUpdate > :Creation AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate > :Creation AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate = 0 AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
 );
 `
 var voteInsert = `
@@ -1188,7 +1256,6 @@ SELECT Candidate.* FROM
 (SELECT :Fingerprint AS Fingerprint,
         :Type AS Type,
         :PublicKey AS PublicKey,
-        :PublicKeyFingerprint AS PublicKeyFingerprint,
         :Expiry AS Expiry,
         :Name AS Name,
         :Info AS Info,
@@ -1229,15 +1296,18 @@ WHERE (
     :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
     :LastUpdate > (SELECT Creation FROM ExtantE) AND
     :LastUpdate > :Creation AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate > :Creation AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate = 0 AND
-    Fingerprint = :Owner
+    Fingerprint = :Owner AND
+    PublicKey = :OwnerPublicKey
 );
 `
 var truststateInsert_TruststatesTargetKey_LastReferencedUpdate = `
@@ -1252,15 +1322,18 @@ WHERE (
     :LastUpdate > (SELECT LastUpdate FROM ExtantE) AND
     :LastUpdate > (SELECT Creation FROM ExtantE) AND
     :LastUpdate > :Creation AND
-    Fingerprint = :Target
+    Fingerprint = :Target AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate > :Creation AND
-    Fingerprint = :Target
+    Fingerprint = :Target AND
+    PublicKey = :OwnerPublicKey
   OR
     (SELECT Fingerprint FROM ExtantE) IS NULL AND
     :LastUpdate = 0 AND
-    Fingerprint = :Target
+    Fingerprint = :Target AND
+    PublicKey = :OwnerPublicKey
 );
 `
 var truststateInsert = `
@@ -1307,7 +1380,8 @@ INSERT IGNORE INTO Addresses
   Sublocation,
   Port, IPType,
   AddressType,
-  LastOnline,
+  LastSuccessfulPing,
+  LastSuccessfulSync,
   ProtocolVersionMajor,
   ProtocolVersionMinor,
   ClientVersionMajor,
@@ -1316,15 +1390,15 @@ INSERT IGNORE INTO Addresses
   ClientName,
   EntityVersion,
   RealmId,
-  LocalArrival,
-  LastReferenced
+  LocalArrival
 ) VALUES (
   :Location,
   :Sublocation,
   :Port,
   :IPType,
   :AddressType,
-  :LastOnline,
+  :LastSuccessfulPing,
+  :LastSuccessfulSync,
   :ProtocolVersionMajor,
   :ProtocolVersionMinor,
   :ClientVersionMajor,
@@ -1333,8 +1407,7 @@ INSERT IGNORE INTO Addresses
   :ClientName,
   :EntityVersion,
   :RealmId,
-  :LocalArrival,
-  :LastReferenced
+  :LocalArrival
 )
   `
 
@@ -1346,7 +1419,8 @@ INSERT OR IGNORE INTO Addresses
   Port,
   IPType,
   AddressType,
-  LastOnline,
+  LastSuccessfulPing,
+  LastSuccessfulSync,
   ProtocolVersionMajor,
   ProtocolVersionMinor,
   ClientVersionMajor,
@@ -1355,15 +1429,15 @@ INSERT OR IGNORE INTO Addresses
   ClientName,
   EntityVersion,
   RealmId,
-  LocalArrival,
-  LastReferenced
+  LocalArrival
 ) VALUES (
   :Location,
   :Sublocation,
   :Port,
   :IPType,
   :AddressType,
-  :LastOnline,
+  :LastSuccessfulPing,
+  :LastSuccessfulSync,
   :ProtocolVersionMajor,
   :ProtocolVersionMinor,
   :ClientVersionMajor,
@@ -1372,50 +1446,74 @@ INSERT OR IGNORE INTO Addresses
   :ClientName,
   :EntityVersion,
   :RealmId,
-  :LocalArrival,
-  :LastReferenced
+  :LocalArrival
 )
   `
 
 // Address update insert is mutable. This is used when the node connects to the address itself. Example: When a node connects to 256.253.231.123:8080, it will update the entry for that address with the data coming from the remote node. This is the only way to mutate an address object.
+
+/* In the WHERE clause below, we do not check for inequivalency of location, sublocation and port because we do the join based on that, they're guaranteed to be the same. We are also explicitly NOT checking for the local arrival being different because this is the entire point of this comparison: if the only thing that changes is the local arrival, we do NOT insert.
+
+Why?
+
+Because a static node's LastSuccessfulSync only gets updated to its timestamp. That means LastSuccessfulSync can actually be in the past. If we generate responses and caches based on LastSuccessfulSync, what happens is that it might actually be placed outside that cache's or responses scope, and in the scope of caches / responses that are already generated. Which effectively means it won't be communicated.
+
+If we do the opposite, and scan based on localarrival, then every time a node is communicated with, the localarrival will update. Even when there are no updates. That means when a static node is hit, it will be placed to the top of the list of addresses that node has connected to and will be served at the top. Considering that static nodes stay online 24/7, this will cause the addresses list that this node serves to be mostly / all made of static nodes.
+
+To prevent that, what we do is that every time LastSuccessfulSync changes in an address we update the localarrival, but ONLY then. If anything changes in an address except localarrival then we update localarrival as well as the changes, but if it's just localarrival change and nothing else, then we do not update.
+
+This solves our problem, because if a static node is updated, the LastSuccessfulSync will be set to its timestamp and the localarrival will be set to now. since we scan by localarrival, it is guaranteed to be included in the response, but so long as the LastSuccessfulSync does not change, that will be it. It won't update every time the node is connected to.
+*/
 var addressUpdateInsert = `
 REPLACE INTO Addresses
-(
-  Location,
-  Sublocation,
-  Port,
-  IPType,
-  AddressType,
-  LastOnline,
-  ProtocolVersionMajor,
-  ProtocolVersionMinor,
-  ClientVersionMajor,
-  ClientVersionMinor,
-  ClientVersionPatch,
-  ClientName,
-  EntityVersion,
-  RealmId,
-  LocalArrival,
-  LastReferenced
-) VALUES (
-  :Location,
-  :Sublocation,
-  :Port,
-  :IPType,
-  :AddressType,
-  :LastOnline,
-  :ProtocolVersionMajor,
-  :ProtocolVersionMinor,
-  :ClientVersionMajor,
-  :ClientVersionMinor,
-  :ClientVersionPatch,
-  :ClientName,
-  :EntityVersion,
-  :RealmId,
-  :LocalArrival,
-  :LastReferenced
-)
-  `
+SELECT Candidate.* FROM
+(SELECT :Location AS Location,
+        :Sublocation AS Sublocation,
+        :Port AS Port,
+        :IPType AS IPType,
+        :AddressType AS AddressType,
+        MAX(:LastSuccessfulPing,
+          IFNULL(
+            (SELECT LastSuccessfulPing FROM Addresses WHERE Location = :Location AND Sublocation=:Sublocation AND Port=:Port) , 0
+          )
+        )
+        AS LastSuccessfulPing,
+        MAX(:LastSuccessfulSync,
+          IFNULL(
+            (SELECT LastSuccessfulSync FROM Addresses WHERE Location = :Location AND Sublocation=:Sublocation AND Port=:Port) , 0
+          )
+        )
+        AS LastSuccessfulSync,
+        :ProtocolVersionMajor AS ProtocolVersionMajor,
+        :ProtocolVersionMinor AS ProtocolVersionMinor,
+        :ClientVersionMajor AS ClientVersionMajor,
+        :ClientVersionMinor AS ClientVersionMinor,
+        :ClientVersionPatch AS ClientVersionPatch,
+        :ClientName AS ClientName,
+        :LocalArrival AS LocalArrival,
+        :EntityVersion AS EntityVersion,
+        :RealmId AS RealmId
+        ) AS Candidate
+LEFT JOIN Addresses ON Candidate.Location = Addresses.Location AND Candidate.Sublocation = Addresses.Sublocation AND Candidate.Port = Addresses.Port
+WHERE (
+      Candidate.IPType != Addresses.IPType OR
+      Candidate.AddressType != Addresses.AddressType OR
+      Candidate.LastSuccessfulPing != Addresses.LastSuccessfulPing OR
+      Candidate.LastSuccessfulSync != Addresses.LastSuccessfulSync OR
+      Candidate.ProtocolVersionMajor != Addresses.ProtocolVersionMajor OR
+      Candidate.ProtocolVersionMinor != Addresses.ProtocolVersionMinor OR
+      Candidate.ClientVersionMajor != Addresses.ClientVersionMajor OR
+      Candidate.ClientVersionMinor != Addresses.ClientVersionMinor OR
+      Candidate.ClientVersionPatch != Addresses.ClientVersionPatch OR
+      Candidate.ClientName != Addresses.ClientName OR
+      Candidate.EntityVersion != Addresses.EntityVersion OR
+      Candidate.RealmId != Addresses.RealmId
+    OR
+      Addresses.Location IS NULL AND
+      Addresses.Sublocation IS NULL AND
+      Addresses.Port IS NULL
+);
+`
 
 // Subprotocol insert is the part of address insertion series. This makes it so that we have a list of all subprotocols flying around.
 var subprotocolInsert = `
@@ -1466,3 +1564,18 @@ INSERT OR IGNORE INTO AddressesSubprotocols
   :SubprotocolFingerprint
 )
 `
+
+// var addressPrune = `
+// DELETE FROM Addresses ORDER BY LastSuccessfulPing ASC, LastSuccessfulSync ASC LIMIT (MAX(-(? - (SELECT COUNT(*) FROM Addresses)),0))
+// `
+var addressPrune = `
+DELETE FROM Addresses
+WHERE (Location, Sublocation, Port)
+NOT IN
+  (
+  SELECT Location, Sublocation, Port
+  FROM Addresses
+  ORDER BY LastSuccessfulPing DESC,
+           LastSuccessfulSync DESC
+  LIMIT ?
+  )`

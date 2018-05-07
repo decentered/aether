@@ -14,9 +14,10 @@
 package main
 
 import (
-	pb "aether-core/backend/metrics/proto"
+	// pb "aether-core/backend/metrics/proto"
 	sms "aether-core/backend/swarmtest/simplemetricsserver"
 	"aether-core/services/ports"
+	"aether-core/services/toolbox"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,10 +33,6 @@ import (
 )
 
 // Utility functions
-
-func createPath(path string) {
-	os.MkdirAll(path, 0755)
-}
 
 func saveFileToDisk(fileContents []byte, path string, filename string) {
 	ioutil.WriteFile(fmt.Sprint(path, "/", filename), fileContents, 0755)
@@ -60,8 +57,8 @@ type node struct {
 var settings settingsStruct
 
 func setDefaults() {
-	createPath("Runtime-Generated-Files")
-	settings.swarmsize = 2
+	toolbox.CreatePath("Runtime-Generated-Files")
+	settings.swarmsize = 10
 	settings.testdurationsec = 1200
 	// xs (20k obj per node), s (0.5m obj/n), m
 	settings.dbsize = "xs"
@@ -106,7 +103,7 @@ func generateNodeData(n *node) {
 	nodeTempFolder := settings.staticnodeloc
 	nodeTempPath := fmt.Sprintf("%s/%s", nodeTempFolder, n.appname)
 	// Set up a folder with the appropriate name for each node that is being run
-	createPath(nodeTempFolder)
+	toolbox.CreatePath(nodeTempFolder)
 	abspath, err := filepath.Abs(nodeTempPath)
 	if err != nil {
 		log.Fatal(err)
@@ -175,89 +172,16 @@ func insertDataIntoBackendNodeInstance(n node) {
 	log.Printf("Database insert of randomly generated node data is complete for the node %s", n.appname)
 }
 
-// StructuredBuffer is the struct that collects the node input and db input events that are being reported by the metrics framework from the swarm nodes.
-type StructuredBuffer struct {
-	StartTimestamp int64 // This is our zero point.
-	Nodes          []BufNode
-}
-
-type BufNode struct {
-	NodeId          string
-	DbInputEvents   []DbInputEvent
-	NodeInputEvents []NodeInputEvent
-}
-
-type DbInputEvent struct {
-	Timestamp     int64
-	InputtedItems []*pb.Entity
-}
-
-type NodeInputEvent struct {
-	Timestamp    int64
-	InputtedNode *pb.NodeEntity
-}
-
-// AddNodeIdIfNotExtant makes a list of nodes that has reported data so far.
-func (sbuf *StructuredBuffer) AddNodeIdIfNotExtant(nodeid string) {
-	var exists bool
-	bufNode := BufNode{}
-	for _, val := range sbuf.Nodes {
-		if val.NodeId == nodeid {
-			exists = true
-		}
-	}
-	if !exists {
-		bufNode = BufNode{NodeId: nodeid}
-		sbuf.Nodes = append(sbuf.Nodes, bufNode)
-	}
-}
-
-// findNodeKeyInSBuf finds a specific node in the metrics data.
-func (sbuf *StructuredBuffer) findNodeKeyInSBuf(nodeid string) int {
-	for key, val := range sbuf.Nodes {
-		if val.NodeId == nodeid {
-			return key
-		}
-	}
-	log.Fatal("This should never happen. Func: findNodeKeyInSBuf")
-	return -1
-}
-
-// structureBufData converts raw metrics data into something easier to read. This data is still humongous, however, and needs further processing.
-func structureBufData(rawBuf map[int64][]pb.Metrics) *StructuredBuffer {
-	sBuf := StructuredBuffer{}
-	sBuf.StartTimestamp = startTime
-	// For each timestamp we have:
-	for ts, val := range rawBuf {
-		// Check every metrics page inside. For every metrics page:
-		for _, metricsPage := range val {
-			// Below is here because we need to check machine node ids to access the appropriate bufnode.
-			sBuf.AddNodeIdIfNotExtant(metricsPage.Machine.NodeId)
-			// Look whether the nodeid exists in this sbuf and add as needed.
-			// Determine if this page is a node insert or db insert.
-			nkey := sBuf.findNodeKeyInSBuf(metricsPage.Machine.NodeId)
-			if metricsPage.Persistence.NodeInsertionsSinceLastMetricsDbg != nil {
-				// Node insert.
-				nodeInputEvent := NodeInputEvent{
-					Timestamp:    ts,
-					InputtedNode: metricsPage.Persistence.NodeInsertionsSinceLastMetricsDbg[0]}
-				sBuf.Nodes[nkey].NodeInputEvents = append(sBuf.Nodes[nkey].NodeInputEvents, nodeInputEvent)
-			} else if metricsPage.Persistence.ArrivedEntitiesSinceLastMetricsDbg != nil {
-				// Db Insert
-				dbInputEvent := DbInputEvent{Timestamp: ts, InputtedItems: metricsPage.Persistence.ArrivedEntitiesSinceLastMetricsDbg}
-				sBuf.Nodes[nkey].DbInputEvents = append(sBuf.Nodes[nkey].DbInputEvents, dbInputEvent)
-			}
-		}
-	}
-	return &sBuf
-}
-
-type ConnectionRequest struct {
+type PlanCommand struct {
+	CommandName     string
 	FromNodeAppName string
 	ToIp            string
 	ToPort          int
 	ToType          int
 	TriggerAfter    time.Duration
+	Force           bool
+	// Force: false: insert into the addresses DB and let node discover connectivity itself
+	// Force: true: directly trigger sync()
 }
 
 // findPort finds the port of a given node in the available nodes.
@@ -280,7 +204,7 @@ You have one bootstrap node, and all other nodes connect to that node at the sam
 
 */
 func generateSwarmSchedules(nodes []node, testType string) {
-	var connRequests []ConnectionRequest
+	var planCommands []PlanCommand
 	bsNodeName := "Aether-0" // This is given externally
 	bsPort, err := findPort(bsNodeName, &nodes)
 	if err != nil {
@@ -290,14 +214,67 @@ func generateSwarmSchedules(nodes []node, testType string) {
 		for _, n := range nodes {
 			if n.appname != bsNodeName {
 				// If not bootstrap node, make a call to bootstrap node in 30 secs
-				cr := generateConnectionRequest(n.appname, bsPort, 30)
-				connRequests = append(connRequests, cr)
+				cr := generateConnectionRequest(n.appname, bsPort, 30, false)
+				planCommands = append(planCommands, cr)
 			}
 		}
+	} else if testType == "manual_postresponse_reuse_3_nodes" {
+		// Instructions: disable the regular sync. XS size
+		// A1 > A0 @ 3sec (no reuse)
+		// A0 > A1 @ 30 sec (no reuse)
+		// A2 > A0 @ 60sec (votes and posts should have 2 cacheresults)
+		// Expected result: A0 should be able to reuse response entirely, and return two caches, one generated on A2's request, one remainder from A1's request, for both posts and votes on XS size.
+		if len(nodes) != 3 {
+			log.Fatal("This test requires 3 nodes.")
+		}
+		for _, n := range nodes {
+			if n.appname == "Aether-0" {
+				cr := generateConnectionRequest(n.appname, nodes[1].externalPort, 30, true)
+				planCommands = append(planCommands, cr)
+			} else if n.appname == "Aether-1" {
+				cr := generateConnectionRequest(n.appname, nodes[0].externalPort, 3, true)
+				planCommands = append(planCommands, cr)
+			} else if n.appname == "Aether-2" {
+				cr := generateConnectionRequest(n.appname, nodes[0].externalPort, 60, true)
+				planCommands = append(planCommands, cr)
+			}
+		}
+	} else if testType == "manual_postresponse_plus_directresp_4_nodes" {
+		/*
+			Instructions: Set Vote page threshold to 15000 and disable regular sync. XS size.
+			A0 > A1 - a0 gets 12800 more. it's now eligible for post response generation (t3)
+			A1 > A0 - a0 generates first post response (t20)
+			A0 > A2 - a0 gets 12800 more (but that's below threshold) (t45)
+			A2 > A0 - should result in one post container response and one direct response. (t70)
+		*/
+		if len(nodes) != 4 {
+			log.Fatal("This test requires 4 nodes.")
+		}
+		for _, n := range nodes {
+			if n.appname == "Aether-0" {
+				cr := generateConnectionRequest(n.appname, nodes[1].externalPort, 3, true)
+				cr2 := generateConnectionRequest(n.appname, nodes[2].externalPort, 45, true)
+				planCommands = append(planCommands, cr)
+				planCommands = append(planCommands, cr2)
+			} else if n.appname == "Aether-1" {
+				cr := generateConnectionRequest(n.appname, nodes[0].externalPort, 20, true)
+				planCommands = append(planCommands, cr)
+			} else if n.appname == "Aether-2" {
+				cr := generateConnectionRequest(n.appname, nodes[0].externalPort, 70, true)
+				planCommands = append(planCommands, cr)
+			}
+		}
+	} else if testType == "cachegen_test" {
+		if len(nodes) != 1 {
+			log.Fatal("This test requires 1 node.")
+		}
+		planCmd := generateCacheGenRequest(nodes[0].appname, 10)
+		planCommands = append(planCommands, planCmd)
 	} else if testType == "" {
 		// This is where other tests go in.
 	}
-	crAsByte, err := json.MarshalIndent(connRequests, "", "    ")
+
+	crAsByte, err := json.MarshalIndent(planCommands, "", "    ")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -307,26 +284,33 @@ func generateSwarmSchedules(nodes []node, testType string) {
 	}
 }
 
-func generateConnectionRequest(originName string, toPort int, triggerAfter int) ConnectionRequest {
-	r := ConnectionRequest{}
+func generateConnectionRequest(originName string, toPort int, triggerAfter int, force bool) PlanCommand {
+	r := PlanCommand{}
 	r.FromNodeAppName = originName
 	r.ToIp = "127.0.0.1"
 	r.ToPort = toPort
 	r.ToType = 2
 	r.TriggerAfter = time.Duration(triggerAfter) * time.Second
+	r.Force = force
+	r.CommandName = "connect"
 	return r
+}
+
+func generateCacheGenRequest(appname string, triggerAfter int) PlanCommand {
+	return PlanCommand{FromNodeAppName: appname, CommandName: "cachegen", TriggerAfter: time.Duration(triggerAfter) * time.Second}
 }
 
 // collectAndSaveResults saves collates and saves the metrics at the end of th e test. This is where we get the insights we want out.
 func collectAndSaveResults(startTs int64) {
 	// At the end of the test, save the data into a JSON file so it can be replayed.
-	structuredBuf := structureBufData(sms.Buf)
-	bufAsByte, err := json.Marshal(structuredBuf)
+	// structuredBuf := sms.structureBufData(sms.Buf)
+	strBuf := sms.ProcessConnectionStates(sms.ConnStateBuf, startTs)
+	bufAsByte, err := json.MarshalIndent(strBuf, "", "    ")
 	if err != nil {
 		log.Fatal(err)
 	}
 	formattedTime := fmt.Sprint(time.Now().Format(time.RFC1123))
-	createPath("Runtime-Generated-Files/Test Results")
+	toolbox.CreatePath("Runtime-Generated-Files/Test Results")
 	err3 := ioutil.WriteFile(fmt.Sprintf("Runtime-Generated-Files/Test Results/Swarm Results %s.json", formattedTime), bufAsByte, 0644)
 	if err3 != nil {
 		log.Fatal(err3)
@@ -359,27 +343,6 @@ func startSwarmNode(appname string, externalPort int, killTimeout int, wg *sync.
 	}
 }
 
-/*
-
-func sleepFun(sec time.Duration, wg *sync.WaitGroup) {
-    defer wg.Done()
-    time.Sleep(sec * time.Second)
-    fmt.Println("goroutine exit")
-}
-
-func main() {
-    var wg sync.WaitGroup
-
-    wg.Add(2)
-    go sleepFun(1, &wg)
-    go sleepFun(3, &wg)
-    wg.Wait()
-    fmt.Println("Main goroutine exit")
-
-}
-
-*/
-
 func startSwarmNodes(nodes []node, killTimeout int) {
 	// sms.presentnodes does not depend on saveresults - it's immediately available as the metrics come in. That's where we can get the port from.
 	// The wait group blocks until all goroutines are complete and exited.
@@ -410,6 +373,7 @@ func main() {
 		serverInstance.Shutdown(nil)
 	}
 	// Here, generate the list of connection requests we want to inject to the swarm nodes. This is where we create the connection mapping we want to test live.
+	// generateSwarmSchedules(nodes, "simple")
 	generateSwarmSchedules(nodes, "simple")
 	// Start the nodes, this time without a kill-switch at the end of the load.
 	startSwarmNodes(nodes, settings.testdurationsec)

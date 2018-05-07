@@ -1,12 +1,13 @@
 package signaturing_test
 
 import (
-	"aether-core/services/signaturing"
-	// "crypto/ecdsa"
 	"aether-core/io/api"
-	"crypto/elliptic"
+	"aether-core/services/signaturing"
+	// "crypto/elliptic"
+	"aether-core/backend/cmd"
+	"golang.org/x/crypto/ed25519"
 	// "fmt"
-	"encoding/hex"
+	// "encoding/hex"
 	"os"
 	"testing"
 )
@@ -21,6 +22,7 @@ func TestMain(m *testing.M) {
 }
 
 func setup() {
+	cmd.EstablishConfigs(nil)
 }
 
 func teardown() {
@@ -33,7 +35,7 @@ func TestCreateKeyPair_Success(t *testing.T) {
 	if err != nil {
 		t.Errorf("Key pair creation failed. Err: '%s'", err)
 	}
-	if privKey.D == nil || privKey.PublicKey.X == nil || privKey.PublicKey.Y == nil {
+	if len(signaturing.MarshalPrivateKey(*privKey)) == 0 {
 		t.Errorf("Created key pair is invalid.")
 	}
 }
@@ -58,7 +60,7 @@ func TestVerify_Success(t *testing.T) {
 	if err2 != nil {
 		t.Errorf("Signing failed. Err: '%s'", err2)
 	}
-	marshaledPubKey := hex.EncodeToString(elliptic.Marshal(elliptic.P521(), privKey.PublicKey.X, privKey.PublicKey.Y))
+	marshaledPubKey := signaturing.MarshalPublicKey(privKey.Public().(ed25519.PublicKey))
 	signatureIsValid := signaturing.Verify("this is my input", signature, string(marshaledPubKey))
 	if signatureIsValid != true {
 		t.Errorf("Signature verification failed.")
@@ -91,11 +93,12 @@ func TestBoardCreateVerifySignature_Success(t *testing.T) {
 	newboard2.Name = "my board name"
 	newboard2.Description = "my board description2"
 	newboard2.ProofOfWork = "my fake pow"
+	newboard2.EntityVersion = 1
 	err2 := newboard2.CreateSignature(privKey)
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
 	} else {
-		marshaledPubKey := hex.EncodeToString(elliptic.Marshal(elliptic.P521(), privKey.PublicKey.X, privKey.PublicKey.Y))
+		marshaledPubKey := signaturing.MarshalPublicKey(privKey.Public().(ed25519.PublicKey))
 		result, err3 := newboard2.VerifySignature(marshaledPubKey)
 		if err3 != nil {
 			t.Errorf("Test failed, err: '%s'", err3)
@@ -116,11 +119,12 @@ func TestBoardCreateVerifySignatureWithPriorSignature_Success(t *testing.T) {
 	newboard2.Name = "my board name"
 	newboard2.Description = "my board description2"
 	newboard2.Signature = "my fake signature"
+	newboard2.EntityVersion = 1
 	err2 := newboard2.CreateSignature(privKey)
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
 	} else {
-		marshaledPubKey := hex.EncodeToString(elliptic.Marshal(elliptic.P521(), privKey.PublicKey.X, privKey.PublicKey.Y))
+		marshaledPubKey := signaturing.MarshalPublicKey(privKey.Public().(ed25519.PublicKey))
 		result, err3 := newboard2.VerifySignature(marshaledPubKey)
 		if err3 != nil {
 			t.Errorf("Test failed, err: '%s'", err3)
@@ -141,6 +145,7 @@ func TestBoardCreateVerifySignature_InvalidPubKey_Fail(t *testing.T) {
 	newboard2.Name = "my board name"
 	newboard2.Description = "my board description2"
 	newboard2.ProofOfWork = "my fake pow"
+	newboard2.EntityVersion = 1
 	err2 := newboard2.CreateSignature(privKey)
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
@@ -164,11 +169,12 @@ func TestBoardCreateVerifySignature_InvalidSignature_Fail(t *testing.T) {
 	newboard2.Name = "my board name"
 	newboard2.Description = "my board description2"
 	newboard2.ProofOfWork = "my fake pow"
+	newboard2.EntityVersion = 1
 	err2 := newboard2.CreateSignature(privKey)
 	if err2 != nil {
 		t.Errorf("Test failed, err: '%s'", err2)
 	} else {
-		marshaledPubKey := hex.EncodeToString(elliptic.Marshal(elliptic.P521(), privKey.PublicKey.X, privKey.PublicKey.Y))
+		marshaledPubKey := signaturing.MarshalPublicKey(privKey.Public().(ed25519.PublicKey))
 		signatureIsValid := signaturing.Verify("this is my input", "fake signature", marshaledPubKey)
 		if signatureIsValid != false {
 			t.Errorf("This signature was supposed to fail, but it did not.")
@@ -186,6 +192,7 @@ func TestBoardCreateUpdateSignature_Success(t *testing.T) {
 	newboard.Creation = 4564654
 	newboard.Name = "my board name"
 	newboard.Description = "my board description"
+	newboard.EntityVersion = 1
 	err := newboard.CreateSignature(privKey)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
@@ -195,7 +202,7 @@ func TestBoardCreateUpdateSignature_Success(t *testing.T) {
 		if err2 != nil {
 			t.Errorf("Test failed, err: '%s'", err2)
 		} else {
-			marshaledPubKey := hex.EncodeToString(elliptic.Marshal(elliptic.P521(), privKey.PublicKey.X, privKey.PublicKey.Y))
+			marshaledPubKey := signaturing.MarshalPublicKey(privKey.Public().(ed25519.PublicKey))
 			result, err3 := newboard.VerifySignature(marshaledPubKey)
 			if err3 != nil {
 				t.Errorf("Test failed, err: '%s'", err3)

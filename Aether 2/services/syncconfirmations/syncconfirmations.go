@@ -87,7 +87,7 @@ Now the important thing is that the five minute intervals into the past is gener
   |-----|--**-|---*-|-----|
 	 FAIL		OK		OK	 FAIL			Result: FAIL
 
-This intentional - we want connectivity to be mostly always available, and if a node is having connectivity problems, it should NOT look like it's tracking the head and generate caches, etc.
+This intentional - we want connectivity to be mostly always available, and if a node is having connectivity problems, it should NOT look like it's tracking the head.
 
 SO:
 
