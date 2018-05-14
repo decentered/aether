@@ -4,6 +4,7 @@
 package api
 
 import (
+	"aether-core/services/logging"
 	"errors"
 	"fmt"
 	"strconv"
@@ -633,6 +634,9 @@ func checkApiResponseBounds_V1_0(item *ApiResponse) bool {
 		pageManifestSliceBC(&item.ResponseBody.TruststateManifests, MIN_APIRESONSE_RESPONSEBODY_MANIFEST_PAGES_V1_0, MAX_APIRESONSE_RESPONSEBODY_MANIFEST_PAGES_V1_0) &&
 		pageManifestSliceBC(&item.ResponseBody.AddressManifests, MIN_APIRESONSE_RESPONSEBODY_MANIFEST_PAGES_V1_0, MAX_APIRESONSE_RESPONSEBODY_MANIFEST_PAGES_V1_0) &&
 		entityCountSliceBC(&item.Caching.EntityCounts, 0, MAX_ADDRESS_PROTOCOL_SUBPROTOCOL_V1*MAX_ADDRESS_PROTOCOL_SUBPROTOCOL_SUPPORTEDENTITIES_V1) // 32 subprotocols with 128 entities each is our max.
+	if !bodyOk {
+		logging.Logf(1, "This ApiResponse failed Boundscheck: %#v", item)
+	}
 	bodySane := item.Pagination.Pages >= item.Pagination.CurrentPage
 	if !(bodyOk && bodySane) {
 		return false

@@ -301,6 +301,15 @@ This is how many addresses our database will hold at max.
 # NeighbourCount
 How many nodes we are interested in keeping in touch with on a rolling basis.
 
+# MaxInboundConns
+How many nodes do we allow to be simultaneously connected to this node. This number depends on your bandwidth and CPU resources. Setting this number to zero renders the config invalid (same as most things in config) and it will automatically regenerate from scratch, removing all prior config data.
+
+# MaxDbSizeMb
+This is the size that the user has allotted the application to use in the computer. Mind that this is only the database, and it is only the threshold where the event horizon starts to delete. Even when this threshold is not reached, if entities's last references reach the threshold of local memory, they will still be deleted.
+
+# VotesMemoryDays
+How long will the votes be retained in memory. This is a special case of LocalMemoryDays. We retain the votes much fewer days than the rest of the items because they're much more numerous and much less information dense. That does not mean all voting information will disappear though - when the frontend compiles votes, the compiled vote counts will be retained normally.
+
 */
 
 // Every time you add a new item here, please add getters, setters and to blankcheck method
@@ -359,6 +368,10 @@ type BackendConfig struct {
 	MaxInboundPageSizeKb                    uint
 	NeighbourCount                          uint
 	MaxAddressTableSize                     uint
+	MaxInboundConns                         uint
+	MaxDbSizeMb                             uint
+	VotesMemoryDays                         uint // 14
+	EventHorizonTimestamp                   uint64
 }
 
 // GETTERS AND SETTERS
@@ -964,6 +977,54 @@ func (config *BackendConfig) GetMaxAddressTableSize() int {
 		return int(config.MaxAddressTableSize)
 	} else {
 		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.MaxAddressTableSize) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *BackendConfig) GetMaxInboundConns() int {
+	config.InitCheck()
+	if config.MaxInboundConns < maxInt32 &&
+		config.MaxInboundConns > 0 {
+		return int(config.MaxInboundConns)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.MaxInboundConns) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *BackendConfig) GetMaxDbSizeMb() int {
+	config.InitCheck()
+	if config.MaxDbSizeMb < maxInt64 &&
+		config.MaxDbSizeMb > 0 {
+		return int(config.MaxDbSizeMb)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.MaxDbSizeMb) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *BackendConfig) GetVotesMemoryDays() int {
+	config.InitCheck()
+	if config.VotesMemoryDays < maxInt64 &&
+		config.VotesMemoryDays > 0 {
+		return int(config.VotesMemoryDays)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.VotesMemoryDays) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *BackendConfig) GetEventHorizonTimestamp() int64 {
+	config.InitCheck()
+	if config.EventHorizonTimestamp < maxInt64 &&
+		config.EventHorizonTimestamp > 0 {
+		return int64(config.EventHorizonTimestamp)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.EventHorizonTimestamp) + " Trace: " + toolbox.Trace()))
 	}
 	log.Fatal("This should never happen." + toolbox.Trace())
 	return 0
@@ -1760,6 +1821,68 @@ func (config *BackendConfig) SetMaxAddressTableSize(val int) error {
 	return nil
 }
 
+func (config *BackendConfig) SetMaxInboundConns(val int) error {
+	config.InitCheck()
+	if val >= 0 {
+		config.MaxInboundConns = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *BackendConfig) SetMaxDbSizeMb(val int) error {
+	config.InitCheck()
+	if val >= 0 {
+		config.MaxDbSizeMb = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+func (config *BackendConfig) SetVotesMemoryDays(val int) error {
+	config.InitCheck()
+	if val >= 0 {
+		config.VotesMemoryDays = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+func (config *BackendConfig) SetEventHorizonTimestamp(val int64) error {
+	config.InitCheck()
+	if val > 0 {
+		config.EventHorizonTimestamp = uint64(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
 /*****************************************************************************/
 
 // BlankCheck looks at all variables and if it finds they're at their zero value, sets the default value for it. This is a guard against a new item being added to the config store as a result of a version update, but it being zero value. If a zero'd value is found, we change it to its default before anything else happens. This also effectively runs at the first pass to set the defaults.
@@ -1954,6 +2077,19 @@ func (config *BackendConfig) BlankCheck() {
 	if config.MaxAddressTableSize == 0 {
 		config.SetMaxAddressTableSize(defaultMaxAddressTableSize)
 	}
+	if config.MaxInboundConns == 0 {
+		config.SetMaxInboundConns(defaultMaxInboundConns)
+	}
+	if config.MaxDbSizeMb == 0 {
+		config.SetMaxDbSizeMb(defaultMaxDbSizeMb)
+	}
+	if config.VotesMemoryDays == 0 {
+		config.SetVotesMemoryDays(defaultVotesMemoryDays)
+	}
+	if config.EventHorizonTimestamp == 0 {
+		localMemCutoff := time.Now().Add(-(time.Duration(config.LocalMemoryDays) * time.Hour * time.Duration(24))).Unix()
+		config.SetEventHorizonTimestamp(localMemCutoff)
+	}
 }
 
 /*
@@ -2008,6 +2144,10 @@ func (config *BackendConfig) SanityCheck() {
 		config.GetMaxInboundPageSizeKb()
 		config.GetNeighbourCount()
 		config.GetMaxAddressTableSize()
+		config.GetMaxInboundConns()
+		config.GetMaxDbSizeMb()
+		config.GetVotesMemoryDays()
+		config.GetEventHorizonTimestamp()
 	}
 }
 

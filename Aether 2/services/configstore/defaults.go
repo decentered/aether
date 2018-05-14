@@ -38,17 +38,20 @@ const (
 	defaultDbPassword                              = "exventoveritas"
 	defaultNeighbourCount                          = 100
 	defaultMaxAddressTableSize                     = 1000
+	defaultMaxInboundConns                         = 10
+	defaultMaxDbSizeMb                             = 10000
+	defaultVotesMemoryDays                         = 14
 )
 
 // Default entity page sizes
 
 const (
-	defaultBoardsPageSize      = 2000  // 0.2x
+	defaultBoardsPageSize      = 2000  // 0.2x // todo reduce this to 1000 / actually these are all compressed.. maybe not needed
 	defaultThreadsPageSize     = 400   // 1x
 	defaultPostsPageSize       = 400   // 1x
 	defaultVotesPageSize       = 2000  // 0.2x 2000
 	defaultKeysPageSize        = 2000  // 0.2x
-	defaultTruststatesPageSize = 6000  // 0.025x
+	defaultTruststatesPageSize = 3000  // 0.025x
 	defaultAddressesPageSize   = 16000 // 0.025x
 
 	defaultBoardIndexesPageSize      = 8000  // 0.025x

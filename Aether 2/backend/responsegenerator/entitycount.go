@@ -84,14 +84,21 @@ func countEntities(r *api.Response) *[]api.EntityCount {
 }
 
 // mergeCounts merges one configstore entity count into a list of api entitycounts.
-func mergeCounts(entityCount *[]api.EntityCount, csEntityCount configstore.EntityCount) *[]api.EntityCount {
-	for i, _ := range *entityCount {
-		if (*entityCount)[i].Name == csEntityCount.Name {
-			(*entityCount)[i].Count = (*entityCount)[i].Count + csEntityCount.Count
-		}
-		break
+func mergeCounts(entityCount *[]api.EntityCount, csEntityCount configstore.EntityCount) []api.EntityCount {
+	ec := []api.EntityCount{}
+	for _, val := range *entityCount {
+		ec = append(ec, val)
 	}
-	return entityCount
+	if csEntityCount.Count == 0 {
+		return ec
+	}
+	// ec := *entityCount // create a copy, don't manipulate the original
+	for i, _ := range ec {
+		if ec[i].Name == csEntityCount.Name {
+			ec[i].Count = ec[i].Count + csEntityCount.Count
+		}
+	}
+	return ec
 }
 
 // convertToConfigStoreEntityCount converts an api entity count slice to a configstore entity count slice.

@@ -11,12 +11,14 @@ import (
 	"google.golang.org/grpc/reflection"
 	"log"
 	"net"
+	"os"
 	"time"
 )
 
 var Buf map[int64][]pb.Metrics // There can be multiple metrics pages arriving in the same UNIX timestamp, hence the []slice.
 
 var ConnStateBuf []pb.ConnState
+var DbStateBuf []pb.DbState
 
 type server struct{}
 
@@ -40,6 +42,13 @@ func (s *server) SendConnectionState(ctx context.Context, connState *pb.ConnStat
 	// fmt.Println("We received a connection state.")
 	// fmt.Println(connState)
 	ConnStateBuf = append(ConnStateBuf, *connState)
+	return &pb.MetricsDeliveryResponse{}, nil
+}
+
+func (s *server) SendDbState(ctx context.Context, dbState *pb.DbState) (*pb.MetricsDeliveryResponse, error) {
+	// fmt.Println("We received a connection state.")
+	// fmt.Println(connState)
+	DbStateBuf = append(DbStateBuf, *dbState)
 	return &pb.MetricsDeliveryResponse{}, nil
 }
 
@@ -145,12 +154,15 @@ func structureBufData(rawBuf map[int64][]pb.Metrics) *StructuredBuffer {
 // CONN STATE MANIPULATION
 
 type CSFinalData struct {
-	TotalTestTimeSeconds      int64
-	NetworkReachedEquilibrium bool
-	TimeToEquilibriumSeconds  int64
-	NumberOfNodes             int
-	EquilibriumTime           string
-	Nodes                     []CSNode
+	TotalTestTimeSeconds            int64
+	NetworkReachedEquilibrium       bool
+	NetworkReachedDBSizeEquilibrium bool
+	EndDbSizeMb                     int64
+	TimeToEquilibriumSeconds        int64
+	NumberOfNodes                   int
+	EquilibriumTime                 string
+	Nodes                           []CSNode
+	DbStates                        []pb.DbState
 }
 
 func (f *CSFinalData) AddNode(n CSNode) {
@@ -174,6 +186,7 @@ func (f *CSFinalData) indexOfNode(n CSNode) int {
 type CSNode struct {
 	Name                 string `json:",omitempty"`
 	ReachedEquilibrium   bool
+	EndDbSizeMb          int64
 	EquilibriumTime      string   `json:",omitempty"`
 	EquilibriumTimestamp int64    `json:",omitempty"`
 	FirstSyncCount       int      `json:",omitempty"`
@@ -187,6 +200,26 @@ type CSConn struct {
 	State      bool   `json:",omitempty"`
 	Timestamp  int64  `json:",omitempty"`
 	StartTime  string `json:",omitempty"`
+	// Objects    CSObjects `json:",omitempty"`
+	Receipt     string `json:",omitempty"`
+	DbSizeAtEnd int    `json:",omitempty"`
+	Diff        int
+}
+
+// type CSObjects struct {
+// 	Boards      int64 `json:",omitempty"`
+// 	Threads     int64 `json:",omitempty"`
+// 	Posts       int64 `json:",omitempty"`
+// 	Votes       int64 `json:",omitempty"`
+// 	Keys        int64 `json:",omitempty"`
+// 	Truststates int64 `json:",omitempty"`
+// 	Addresses   int64 `json:",omitempty"`
+// }
+
+func generateReceipt(obj pb.Objects) string {
+	return fmt.Sprintf(
+		"B: %d, T: %d, P: %d, V: %d, K: %d, TS: %d, A: %d",
+		obj.Boards, obj.Threads, obj.Posts, obj.Votes, obj.Keys, obj.Truststates, obj.Addresses)
 }
 
 func connConvert(rawConn pb.OrchestrateConn) CSConn {
@@ -195,13 +228,26 @@ func connConvert(rawConn pb.OrchestrateConn) CSConn {
 	c.State = rawConn.State
 	c.Timestamp = rawConn.Timestamp
 	c.FirstSync = rawConn.FirstSync
+	c.Receipt = generateReceipt(*rawConn.Objects)
+	c.DbSizeAtEnd = int(rawConn.CurrentDbSizeMb)
+	// obj := CSObjects{}
+	// obj.Boards = rawConn.Objects.Boards
+	// obj.Threads = rawConn.Objects.Threads
+	// obj.Posts = rawConn.Objects.Posts
+	// obj.Votes = rawConn.Objects.Votes
+	// obj.Keys = rawConn.Objects.Keys
+	// obj.Truststates = rawConn.Objects.Truststates
+	// obj.Addresses = rawConn.Objects.Addresses
+	// c.Objects = obj
 	return c
 }
 
-func ProcessConnectionStates(rawData []pb.ConnState, startTs int64) CSFinalData {
+func ProcessConnectionStates(rawData []pb.ConnState, rawDbStateData []pb.DbState, startTs int64) CSFinalData {
 	endTs := int64(time.Now().Unix())
 	finalData := CSFinalData{}
 	finalData.NetworkReachedEquilibrium = true
+	finalData.NetworkReachedDBSizeEquilibrium = true
+	var dbSize int64
 	var lastEqTimestamp int64
 	for _, val := range rawData {
 		n := CSNode{Name: val.Machine.Client.Name}
@@ -209,6 +255,11 @@ func ProcessConnectionStates(rawData []pb.ConnState, startTs int64) CSFinalData 
 		finalData.AddNode(n)
 	}
 	for key, _ := range finalData.Nodes {
+		// Get Db Size.
+		fi, _ := os.Stat(fmt.Sprintf("%s/%s/AetherDB.db", "/Users/Helios/Library/Application Support/Air Labs", finalData.Nodes[key].Name))
+		// get the size
+		size := fi.Size() / 1000000
+		finalData.Nodes[key].EndDbSizeMb = size
 		finalconns := processCSConns(finalData.Nodes[key].Connections)
 		finalData.Nodes[key].Connections = finalconns
 		eq, tStr, fsc := calcCSNodeEquilibriumState(len(finalData.Nodes), finalconns)
@@ -223,13 +274,27 @@ func ProcessConnectionStates(rawData []pb.ConnState, startTs int64) CSFinalData 
 				lastEqTimestamp = tStr
 			}
 		}
+		// Db size equilibrium calculation.
+		if dbSize == 0 {
+			dbSize = finalData.Nodes[key].EndDbSizeMb
+		}
+		if !(dbSize+1 >= finalData.Nodes[key].EndDbSizeMb &&
+			dbSize-1 <= finalData.Nodes[key].EndDbSizeMb) {
+			// If not in the +1 to -1 range, fail.
+			finalData.NetworkReachedDBSizeEquilibrium = false
+		}
 	}
 	if finalData.NetworkReachedEquilibrium {
 		finalData.EquilibriumTime = time.Unix(lastEqTimestamp, 0).String()
 	}
+	if finalData.NetworkReachedDBSizeEquilibrium {
+		finalData.EndDbSizeMb = dbSize
+	}
 	finalData.NumberOfNodes = len(finalData.Nodes)
 	finalData.TotalTestTimeSeconds = endTs - startTs
 	finalData.TimeToEquilibriumSeconds = lastEqTimestamp - startTs
+	// finalData.DbStates = processDbStateData(rawDbStateData)
+	finalData.DbStates = rawDbStateData
 	return finalData
 }
 
@@ -292,5 +357,8 @@ func merge(o, cl CSConn) CSConn {
 	o.Duration = time.Duration(time.Duration(cl.Timestamp-o.Timestamp) * time.Second).String()
 	o.State = false
 	o.StartTime = time.Unix(o.Timestamp, 0).String()
+	o.Receipt = cl.Receipt
+	o.Diff = cl.DbSizeAtEnd - o.DbSizeAtEnd
+	o.DbSizeAtEnd = cl.DbSizeAtEnd
 	return o
 }

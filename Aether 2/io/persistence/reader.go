@@ -866,7 +866,7 @@ func readAddressContainerResponse(beg, end api.Timestamp, addrType uint8, limit 
 		results = append(results, a)
 	}
 	r.Close()
-	logging.Logf(1, "Addr Response generated to serve in POST: %#v", Dbg_convertAddrSliceToNameSlice(results))
+	logging.Logf(2, "Addr Response generated to serve in POST: %#v", Dbg_convertAddrSliceToNameSlice(results))
 	return &results, nil
 }
 
@@ -1263,4 +1263,26 @@ func Dbg_convertAddrSliceToNameSlice(nodes []DbAddress) []string {
 		names = append(names, val.ClientName)
 	}
 	return names
+}
+
+type dbCounts struct {
+	Boards      int32
+	Threads     int32
+	Posts       int32
+	Votes       int32
+	Keys        int32
+	Truststates int32
+	Addresses   int32
+}
+
+func Dbg_ReadDatabaseCounts() dbCounts {
+	b, t, p, v, k, ts, a := 0, 0, 0, 0, 0, 0, 0
+	globals.DbInstance.Get(&b, "SELECT count(Fingerprint) FROM Boards")
+	globals.DbInstance.Get(&t, "SELECT count(Fingerprint) FROM Threads")
+	globals.DbInstance.Get(&p, "SELECT count(Fingerprint) FROM Posts")
+	globals.DbInstance.Get(&v, "SELECT count(Fingerprint) FROM Votes")
+	globals.DbInstance.Get(&k, "SELECT count(Fingerprint) FROM PublicKeys")
+	globals.DbInstance.Get(&ts, "SELECT count(Fingerprint) FROM Truststates")
+	globals.DbInstance.Get(&a, "SELECT count(Location) FROM Addresses")
+	return dbCounts{int32(b), int32(t), int32(p), int32(v), int32(k), int32(ts), int32(a)}
 }

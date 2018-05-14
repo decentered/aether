@@ -58,8 +58,8 @@ var settings settingsStruct
 
 func setDefaults() {
 	toolbox.CreatePath("Runtime-Generated-Files")
-	settings.swarmsize = 10
-	settings.testdurationsec = 1200
+	settings.swarmsize = 3
+	settings.testdurationsec = 180 //5/450 is the test
 	// xs (20k obj per node), s (0.5m obj/n), m
 	settings.dbsize = "xs"
 	settings.staticnodeloc = "Runtime-Generated-Files/temp_generated_data"
@@ -304,7 +304,7 @@ func generateCacheGenRequest(appname string, triggerAfter int) PlanCommand {
 func collectAndSaveResults(startTs int64) {
 	// At the end of the test, save the data into a JSON file so it can be replayed.
 	// structuredBuf := sms.structureBufData(sms.Buf)
-	strBuf := sms.ProcessConnectionStates(sms.ConnStateBuf, startTs)
+	strBuf := sms.ProcessConnectionStates(sms.ConnStateBuf, sms.DbStateBuf, startTs)
 	bufAsByte, err := json.MarshalIndent(strBuf, "", "    ")
 	if err != nil {
 		log.Fatal(err)

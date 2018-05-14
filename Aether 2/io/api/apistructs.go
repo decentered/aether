@@ -202,8 +202,8 @@ type Address struct { // Mutables: None
 	LocationType       uint8       `json:"location_type"`
 	Port               uint16      `json:"port"`
 	Type               uint8       `json:"type"`
-	LastSuccessfulPing Timestamp   `json:"last_successful_ping"`
-	LastSuccessfulSync Timestamp   `json:"last_successful_sync"`
+	LastSuccessfulPing Timestamp   `json:"-"`
+	LastSuccessfulSync Timestamp   `json:"-"`
 	Protocol           Protocol    `json:"protocol"`
 	Client             Client      `json:"client"`
 	EntityVersion      int         `json:"entity_version"`

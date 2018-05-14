@@ -17,13 +17,29 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	// "strconv"
 	"time"
 )
+
+// Bouncer gate.
+func isAllowed(r *http.Request) bool {
+	hostAsString, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	// p, _ := strconv.Atoi(portAsString)
+	return globals.BackendTransientConfig.Bouncer.RequestInboundLease(hostAsString, "", 0) // We aren't using Port.
+}
 
 // Server responds to GETs with the caches and to POSTS with the live data from the database.
 func Serve() {
 	handlerFunc := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
+			// Check with bouncer if this request is allowed. If not, return too busy.
+			if !isAllowed(r) {
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
 			dir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), r.URL.Path)
 			w.Header().Set("Content-Type", "application/json")
 			http.ServeFile(w, r, dir)
@@ -34,6 +50,11 @@ func Serve() {
 	gzippedHandler := gziphandler.GzipHandler(handlerFunc)
 	http.Handle("/v0/responses/", gzippedHandler)
 	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check with bouncer if this request is allowed. If not, return too busy.
+		if !isAllowed(r) {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
 		// Force the content type to application/json, so even in the case of malicious file serving, it won't be executed by default.
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == "GET" {
@@ -221,7 +242,7 @@ func insertLocallySourcedRemoteAddressDetails(r *http.Request, req *api.ApiRespo
 	if len(host) == 0 {
 		return errors.New(fmt.Sprintf("The address from which the remote is connecting seems to be empty. Remote Address: %#v. %#v", r.RemoteAddr, err))
 	}
-	// TODO: Decide whether making a DNS request (ParseIP makes a DNS request) below is a risk (probably not).
+	// TODO: Decide whether making a DNS request (ParseIP makes a DNS request) below is a risk (probably not). (Actually it doesn't seem to make a DNS request - just checked the Go source code)
 	ipAddrAsIP := net.ParseIP(host)
 	ipV4Test := ipAddrAsIP.To4()
 	if ipV4Test == nil {

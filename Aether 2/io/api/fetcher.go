@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jmoiron/sqlx"
+	// "github.com/jmoiron/sqlx"
 	"io"
 	"io/ioutil"
 	"net"
@@ -23,6 +23,7 @@ import (
 
 // Exists checks whether a given item exists in the current DB. This is here because we cannot import persistence due to import cycle being formed, and this is the only place this is being used.
 func ExistsInDB(entityType string, fp Fingerprint, lu Timestamp) bool {
+	// return false // todo remove
 	var tableName string
 	var result bool
 	if entityType == "board" {
@@ -41,12 +42,8 @@ func ExistsInDB(entityType string, fp Fingerprint, lu Timestamp) bool {
 		logging.Log(1, fmt.Sprintf("ExistsInDB does not support the entity type you provided. You provided: %s", entityType))
 		return false
 	}
-	query, args, err := sqlx.In(fmt.Sprintf("SELECT count(1) FROM %s WHERE Fingerprint IN (?) AND LastUpdate >= (?);", tableName), fp, lu)
-	if err != nil {
-		logging.Log(1, fmt.Sprintf("ExistsInDB errored out. Error: %s", err))
-		return false
-	}
-	rows, err := globals.DbInstance.Queryx(query, args...)
+	qStr := fmt.Sprintf("SELECT count(1) FROM %s WHERE (Fingerprint = ? AND LastUpdate = ?)", tableName)
+	rows, err := globals.DbInstance.Queryx(qStr, fp, lu)
 	defer rows.Close() // In case of premature exit.
 	if err != nil {
 		logging.Log(1, fmt.Sprintf("ExistsInDB errored out. Error: %s\n", err))
@@ -198,7 +195,7 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 		fullLink = fmt.Sprint(
 			"http://", host, ":", strconv.Itoa(int(port)), "/v0/", location) // TODO: Move to HTTPS after that portion goes live.
 	}
-	logging.Log(2, fmt.Sprintf("Fetch is being called for the URL: %s", fullLink))
+	logging.Log(3, fmt.Sprintf("Fetch is being called for the URL: %s", fullLink))
 	// TODO: When we have the local profile, the v0 should be coming from the appropriate version number. Constant for the time being.
 	var err error
 	var resp *http.Response
@@ -353,78 +350,105 @@ func GetPage(host string, subhost string, port uint16, location string, method s
 	return response, elapsed, nil // elapsed potentially unset.
 }
 
+func countManifests(resp Response) {
+	b, t, p, v, k, ts, a := 0, 0, 0, 0, 0, 0, 0
+	for _, val := range resp.BoardManifests {
+		b = b + len(val.Entities)
+	}
+	for _, val := range resp.ThreadManifests {
+		t = t + len(val.Entities)
+	}
+	for _, val := range resp.PostManifests {
+		p = p + len(val.Entities)
+	}
+	for _, val := range resp.VoteManifests {
+		v = v + len(val.Entities)
+	}
+	for _, val := range resp.KeyManifests {
+		k = k + len(val.Entities)
+	}
+	for _, val := range resp.TruststateManifests {
+		ts = ts + len(val.Entities)
+	}
+	for _, val := range resp.AddressManifests {
+		a = a + len(val.Entities)
+	}
+	logging.Logf(1, "generateHitlist manifestResponse result returned these: \nB: %v, T: %v, P: %v, V: %v, K: %v, TS: %v, A: %v", b, t, p, v, k, ts, a)
+}
+
 func generateHitlist(host string, subhost string, port uint16, location string) (map[int]bool, error) {
+	start := time.Now()
 	manifestResponse, err := getManifestOfCache(host, subhost, port, location)
+	// logging.Logf(1, "Manifest Response: %#v", manifestResponse)
 	if err != nil {
 		return make(map[int]bool), errors.New(fmt.Sprintf("Error raised from GetManifestOfCache inside generateHitlist. Error: %s", err))
 	}
+	countManifests(manifestResponse)
+
 	// Look at everything in the index and find the things that we want to pull. Page Number : bool pairs help us find which pages to hit.
 	allPgs := make(map[int]bool)
-	if len(manifestResponse.BoardManifests) > 0 {
-		for key, _ := range manifestResponse.BoardManifests {
-			for _, val := range manifestResponse.BoardManifests[key].Entities {
-				if !ExistsInDB("board", val.Fingerprint, val.LastUpdate) {
-					// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
-					allPgs[int(manifestResponse.BoardManifests[key].Page)] = true
-				}
+BoardLoop:
+	for key, _ := range manifestResponse.BoardManifests {
+		for _, val := range manifestResponse.BoardManifests[key].Entities {
+			if !ExistsInDB("board", val.Fingerprint, val.LastUpdate) {
+				// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
+				allPgs[int(manifestResponse.BoardManifests[key].Page)] = true
+				continue BoardLoop
 			}
 		}
 	}
-
-	if len(manifestResponse.ThreadManifests) > 0 {
-		for key, _ := range manifestResponse.ThreadManifests {
-			for _, val := range manifestResponse.ThreadManifests[key].Entities {
-				if !ExistsInDB("thread", val.Fingerprint, val.LastUpdate) {
-					// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
-					allPgs[int(manifestResponse.ThreadManifests[key].Page)] = true
-				}
+ThreadLoop:
+	for key, _ := range manifestResponse.ThreadManifests {
+		for _, val := range manifestResponse.ThreadManifests[key].Entities {
+			if !ExistsInDB("thread", val.Fingerprint, val.LastUpdate) {
+				// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
+				allPgs[int(manifestResponse.ThreadManifests[key].Page)] = true
+				continue ThreadLoop
 			}
 		}
 	}
-
-	if len(manifestResponse.PostManifests) > 0 {
-		for key, _ := range manifestResponse.PostManifests {
-			for _, val := range manifestResponse.PostManifests[key].Entities {
-				if !ExistsInDB("post", val.Fingerprint, val.LastUpdate) {
-					// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
-					allPgs[int(manifestResponse.PostManifests[key].Page)] = true
-				}
+PostLoop:
+	for key, _ := range manifestResponse.PostManifests {
+		for _, val := range manifestResponse.PostManifests[key].Entities {
+			if !ExistsInDB("post", val.Fingerprint, val.LastUpdate) {
+				// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
+				allPgs[int(manifestResponse.PostManifests[key].Page)] = true
+				continue PostLoop
 			}
 		}
 	}
-
-	if len(manifestResponse.VoteManifests) > 0 {
-		for key, _ := range manifestResponse.VoteManifests {
-			for _, val := range manifestResponse.VoteManifests[key].Entities {
-				if !ExistsInDB("vote", val.Fingerprint, val.LastUpdate) {
-					// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
-					allPgs[int(manifestResponse.VoteManifests[key].Page)] = true
-				}
+VoteLoop:
+	for key, _ := range manifestResponse.VoteManifests {
+		for _, val := range manifestResponse.VoteManifests[key].Entities {
+			if !ExistsInDB("vote", val.Fingerprint, val.LastUpdate) {
+				// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
+				allPgs[int(manifestResponse.VoteManifests[key].Page)] = true
+				continue VoteLoop
 			}
 		}
 	}
-
-	if len(manifestResponse.KeyManifests) > 0 {
-		for key, _ := range manifestResponse.KeyManifests {
-			for _, val := range manifestResponse.KeyManifests[key].Entities {
-				if !ExistsInDB("key", val.Fingerprint, val.LastUpdate) {
-					// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
-					allPgs[int(manifestResponse.KeyManifests[key].Page)] = true
-				}
+KeyLoop:
+	for key, _ := range manifestResponse.KeyManifests {
+		for _, val := range manifestResponse.KeyManifests[key].Entities {
+			if !ExistsInDB("key", val.Fingerprint, val.LastUpdate) {
+				// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
+				allPgs[int(manifestResponse.KeyManifests[key].Page)] = true
+				continue KeyLoop
 			}
 		}
 	}
-
-	if len(manifestResponse.TruststateManifests) > 0 {
-		for key, _ := range manifestResponse.TruststateManifests {
-			for _, val := range manifestResponse.TruststateManifests[key].Entities {
-				if !ExistsInDB("truststate", val.Fingerprint, val.LastUpdate) {
-					// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
-					allPgs[int(manifestResponse.TruststateManifests[key].Page)] = true
-				}
+TruststateLoop:
+	for key, _ := range manifestResponse.TruststateManifests {
+		for _, val := range manifestResponse.TruststateManifests[key].Entities {
+			if !ExistsInDB("truststate", val.Fingerprint, val.LastUpdate) {
+				// Grab the whole page and insert into to-be-fetched queue, DB will remove useless stuff.
+				allPgs[int(manifestResponse.TruststateManifests[key].Page)] = true
+				continue TruststateLoop
 			}
 		}
 	}
+	elapsed := time.Since(start)
+	logging.Logf(1, "GenerateHitlist V1 time spent: %#v.", elapsed.String())
 	return allPgs, nil
 }
 
@@ -512,6 +536,7 @@ func mapEndpointToEndpointAddress(endpoint string) string {
 
 // GetManifestGatedCache hits the manifests of the cache to determine which pages of the cache this computer needs to hit. This is useful in the case where you expect less than 50% of the cache will be downloaded. Mind that this adds a database check dependency (to know which one of these things we have at hand) and it will have to download the manifests for that cache, so it's a tradeoff.
 func GetManifestGatedCache(host string, subhost string, port uint16, location string, endpoint string) (Response, error) {
+	start := time.Now()
 	allPgs, err := generateHitlist(host, subhost, port, location)
 	if err != nil && strings.Contains(err.Error(), "Non-200 status code returned from Fetch") {
 		// Manifest doesn't exist for this cache.
@@ -535,6 +560,8 @@ func GetManifestGatedCache(host string, subhost string, port uint16, location st
 		}
 		mainResp = concatResponses(mainResp, resp)
 	}
+	elapsed := time.Since(start)
+	logging.Logf(1, "GetManifestGatedCache V1 took this long: %v", elapsed.String())
 	return mainResp, nil
 }
 
@@ -679,24 +706,36 @@ func GetPOSTEndpoint(host string, subhost string, port uint16, endpoint string, 
 	if err7 != nil {
 		return Response{}, respDuration, errors.New(fmt.Sprintf("Getting POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", endpoint, err7))
 	}
+	presp := dbg_CheckIfExistsInDb(postResp)
 	allResults := Response{}
 	// Add entities embedded directly into the response to our response container, if any. A response can have both.
 	// allResults = concatResponses(allResults, postResp)
-	allResults.Insert(&postResp)
+	// allResults.Insert(&postResp)
+	allResults.Insert(&presp)
 	// If there are any cache links, one or multiple, read all of them, and insert.
 	// Address-specific. We'll build the structure out if we need to do this for anything other than addresses.
 	if endpoint == "addresses" && len(allResults.Addresses) >= 100 {
 		return allResults, respDuration, nil
 	}
+	logging.Logf(1, "We received these cache links from the remote to download. %v", postResp.CacheLinks)
 	for _, clink := range postResp.CacheLinks {
-		if clink.EndsAt > lastCheckin {
+		// if clink.EndsAt > lastCheckin { // todo - test
+		if true {
 			// This cache ends after we have our sync timestamp with this remote. We can benefit from downloading this cachelink.
-			fmt.Printf("Downloading %s\n", clink.ResponseUrl)
-			postCacheResp, err8 := GetManifestGatedCache(host, subhost, port, fmt.Sprintf("responses/%s", postResp.CacheLinks[0].ResponseUrl), endpoint)
+			logging.Logf(2, "Downloading %s from %s:%d", clink.ResponseUrl, host, port)
+			postCacheResp, err8 := GetManifestGatedCache(host, subhost, port, fmt.Sprintf("responses/%s", clink.ResponseUrl), endpoint)
 			// We're adding /responses/ because that's where the singular responses will be.
 			if err8 != nil {
 				return allResults, respDuration, errors.New(fmt.Sprintf("Getting Multi page POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", endpoint, err8))
 			}
+			logging.Logf(2, "postCacheResp counts at Get POST endpoint: \nB: %v, T: %v, P: %v, V: %v, K: %v, TS: %v, A: %v",
+				len(postCacheResp.Boards),
+				len(postCacheResp.Threads),
+				len(postCacheResp.Posts),
+				len(postCacheResp.Votes),
+				len(postCacheResp.Keys),
+				len(postCacheResp.Truststates),
+				len(postCacheResp.Addresses))
 			// Ends here, since we don't want to capture DB time.
 			// allResults = concatResponses(allResults, postCacheResp)
 			allResults.Insert(&postCacheResp)
@@ -705,9 +744,17 @@ func GetPOSTEndpoint(host string, subhost string, port uint16, endpoint string, 
 				return allResults, respDuration, nil
 			}
 		} else {
-			fmt.Printf("%s was skipped because this container's end is older than our last sync with this node.", clink.ResponseUrl)
+			logging.Logf(1, "%s was skipped because this container's end is older than our last sync with this node.", clink.ResponseUrl)
 		}
 	}
+	logging.Logf(2, "AllResults counts at the end of Get POST endpoint: \nB: %v, T: %v, P: %v, V: %v, K: %v, TS: %v, A: %v",
+		len(allResults.Boards),
+		len(allResults.Threads),
+		len(allResults.Posts),
+		len(allResults.Votes),
+		len(allResults.Keys),
+		len(allResults.Truststates),
+		len(allResults.Addresses))
 	return allResults, respDuration, nil
 }
 
@@ -727,9 +774,55 @@ func GetRemoteNode(host string, subhost string, port uint16) (Response, error) {
 	return response, nil // It won't communicate out any errors.
 }
 
+// This function normally does not run on single page responses, but we've added this for debugging purposes. This does have a performance penalty, but makes it so that the numbers visible at the log output are accurate numbers which go into the database.
+func dbg_CheckIfExistsInDb(postResp Response) Response {
+	t := time.Now()
+	r := Response{}
+	for _, val := range postResp.Boards {
+		if !ExistsInDB("board", val.Fingerprint, val.LastUpdate) {
+			r.Boards = append(r.Boards, val)
+		}
+	}
+	for _, val := range postResp.Threads {
+		if !ExistsInDB("thread", val.Fingerprint, val.LastUpdate) {
+			r.Threads = append(r.Threads, val)
+		}
+	}
+	for _, val := range postResp.Posts {
+		if !ExistsInDB("post", val.Fingerprint, val.LastUpdate) {
+			r.Posts = append(r.Posts, val)
+		}
+	}
+	for _, val := range postResp.Votes {
+		if !ExistsInDB("vote", val.Fingerprint, val.LastUpdate) {
+			r.Votes = append(r.Votes, val)
+		}
+	}
+	for _, val := range postResp.Keys {
+		if !ExistsInDB("key", val.Fingerprint, val.LastUpdate) {
+			r.Keys = append(r.Keys, val)
+		}
+	}
+	for _, val := range postResp.Truststates {
+		if !ExistsInDB("truststate", val.Fingerprint, val.LastUpdate) {
+			r.Truststates = append(r.Truststates, val)
+		}
+	}
+	postResp.Boards = r.Boards
+	postResp.Threads = r.Threads
+	postResp.Posts = r.Posts
+	postResp.Votes = r.Votes
+	postResp.Keys = r.Keys
+	postResp.Truststates = r.Truststates
+	elapsed := time.Since(t)
+	logging.Logf(1, "dbg_CheckIfExistsInDb time spent: %#v.", elapsed.String())
+	return postResp
+}
+
 // getManifestOfCache gets the manifest of a cache. Location is the url up to cache name.
 func getManifestOfCache(
 	host string, subhost string, port uint16, location string) (Response, error) {
+	logging.Log(2, fmt.Sprintf("Making a request to %s\n", fmt.Sprint(location, "/manifest/0.json")))
 	firstManifestPage, err := GetPageRaw(
 		host, subhost, port, fmt.Sprint(location, "/manifest/0.json"), "GET", []byte{})
 	if err != nil {
@@ -739,6 +832,7 @@ func getManifestOfCache(
 	resp = InsertApiResponseToResponse(resp, firstManifestPage)
 	if firstManifestPage.Pagination.Pages > 0 {
 		for i := uint64(1); i <= firstManifestPage.Pagination.Pages; i++ {
+			logging.Log(2, fmt.Sprintf("Making a request to %s\n", fmt.Sprint(location, "/manifest/", i, ".json")))
 			page, err := GetPageRaw(host, subhost, port,
 				fmt.Sprint(location, "/manifest/", i, ".json"), "GET", []byte{})
 			if err != nil {

@@ -207,7 +207,7 @@ func CreateNewCache(respType string, start api.Timestamp, end api.Timestamp, all
 	startAsString := strconv.FormatInt(int64(cacheData.start), 10)
 	endAsString := strconv.FormatInt(int64(cacheData.end), 10)
 	filter := api.Filter{Type: "timestamp", Values: []string{startAsString, endAsString}}
-	generateContainer(ePagesApiresp, iPagesApiresp, mPagesApiresp, cacheData.counts, &[]api.Filter{filter}, cacheData.cacheName, false, respType)
+	generateContainer(ePagesApiresp, iPagesApiresp, mPagesApiresp, cacheData.counts, &[]api.Filter{filter}, cacheData.cacheName, false, respType, api.Timestamp(cacheData.start))
 	// Generate endpoint index.
 	epd, err := generateEndpointDir(respType)
 	if err != nil {

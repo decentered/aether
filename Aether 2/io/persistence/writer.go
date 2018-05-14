@@ -103,7 +103,7 @@ func AddrTrustedInsert(a *[]api.Address) error {
 	}
 	for key, _ := range *a {
 		(*a)[key].SetVerified(true)
-		aPkIface, err := APItoDB((*a)[key])
+		aPkIface, err := APItoDB((*a)[key], time.Now())
 		if err != nil {
 			// return errors.Wrap(err, "AddrTrustedInsert encountered an error in using APItoDB.")
 			logging.Log(1, fmt.Sprintf("AddrTrustedInsert encountered an error in using APItoDB. Error: %#v", err))
@@ -161,36 +161,6 @@ func InsertOrUpdateAddresses(a *[]api.Address) []error {
 		return []error{err}
 	}
 	return []error{}
-	// addresses := *a
-	// errs := []error{}
-	// logging.Log(2, fmt.Sprintf("We got an insert or update address request for these addresses: %#v", addresses))
-	// for i, _ := range addresses {
-	// 	err := insertOrUpdateAddress(addresses[i])
-	// 	if err != nil {
-	// 		logging.Log(1, err)
-	// 		if strings.Contains(err.Error(), "Database was locked") {
-	// 			logging.Log(1, "This transaction was not committed because database was locked. We'll wait 10 seconds and retry the transaction.")
-	// 			time.Sleep(10 * time.Second)
-	// 			logging.Log(1, "Retrying the previously failed InsertOrUpdateAddresses transaction.")
-	// 			err2 := insertOrUpdateAddress(addresses[i])
-	// 			if err2 != nil {
-	// 				fmt.Println(err2)
-	// 				logging.Log(1, err2)
-	// 				if strings.Contains(err.Error(), "Database was locked") {
-	// 					logging.LogCrash(fmt.Sprintf("The second attempt to commit this data to the database failed. The first attempt had failed because the database was locked. The second attempt failed with the error: %s This database is corrupted. Quitting.", err2))
-	// 				} else { // err2 != nil, but it's not "DB is locked".
-	// 					errs = append(errs, err2)
-	// 				}
-	// 			} else { // err2 = nil (reattempted locked transaction succeeded.)
-	// 				logging.Log(1, "The retry attempt of the failed transaction succeeded.")
-	// 			}
-	// 		} else { // err != nil, but it's not "DB is locked".
-	// 			errs = append(errs, err)
-	// 		}
-	// 	}
-	// }
-	// // We collect non-transient errors into a bucket and send it back.
-	// return errs
 }
 
 func enforceNoEmptyTrustedAddressRequiredFields(obj AddressPack) error {
@@ -213,7 +183,7 @@ func enforceNoEmptyTrustedAddressRequiredFields(obj AddressPack) error {
 func insertOrUpdateAddress(a api.Address) error {
 	// Because this address pack is constructed by the local machine based on the inbound TCP connection, we are marking this as trusted.
 	a.SetVerified(true)
-	addressPackAsInterface, err := APItoDB(a)
+	addressPackAsInterface, err := APItoDB(a, time.Now())
 	if err != nil {
 		return errors.New(fmt.Sprint(
 			"Error raised from APItoDB function used in Batch insert. Error: ", err))
@@ -383,11 +353,12 @@ func batchInsert(apiObjectsPtr *[]interface{}) (InsertMetrics, error) {
 	numberOfObjectsCommitted := len(apiObjects)
 	logging.Log(2, fmt.Sprintf("%v objects are being committed.", numberOfObjectsCommitted))
 	start := time.Now()
+	insertTimestamp := time.Now() // This is used so that all entities inserted in this insert will have same LocalArrival, LastReferenced, etc. This makes our inserts atomic, single instants in time. This is to prevent the case where another node connects to you with a first sync timestamp acquired while you were inserting from another node.
 	bb := batchBucket{}
 	// For each API object, convert to DB object and add to transaction.
 	for _, apiObject := range apiObjects {
 		// apiObject: API type, dbObj: DB type.
-		dbo, err := APItoDB(apiObject) // does not hit DB
+		dbo, err := APItoDB(apiObject, insertTimestamp) // does not hit DB
 		if err != nil {
 			logging.Log(1,
 				fmt.Sprint("Error raised from APItoDB function used in Batch insert. Error: ", err))

@@ -8,6 +8,7 @@ service MetricsService {
   rpc RequestMetricsToken(Machine) returns (Machine.MetricsToken) {}
   rpc UploadMetrics(Metrics) returns (MetricsDeliveryResponse) {}
   rpc SendConnectionState(ConnState) returns (MetricsDeliveryResponse) {}
+  rpc SendDbState(DbState) returns (MetricsDeliveryResponse) {}
 }
 
 // Empty responses
@@ -180,4 +181,20 @@ message OrchestrateConn {
   int64 Timestamp = 5;
   Objects objects = 6;
   bool FirstSync = 7;
+  int32 CurrentDbSizeMb = 8;
+}
+
+// DB State
+
+message DbState {
+  string SwarmNodeName = 1;
+  int64 Timestamp = 2;
+  string Time = 10;
+  int32 BoardsCount = 3;
+  int32 ThreadsCount = 4;
+  int32 PostsCount = 5;
+  int32 VotesCount = 6;
+  int32 KeysCount = 7;
+  int32 TruststatesCount = 8;
+  int32 AddressesCount = 9;
 }

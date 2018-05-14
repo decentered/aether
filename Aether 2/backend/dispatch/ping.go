@@ -57,7 +57,7 @@ func Pinger(fullAddressesSlice []api.Address) []api.Address {
 			if globals.BackendTransientConfig.ShutdownInitiated {
 				break // Stop processing and return
 			}
-			logging.Log(2, fmt.Sprintf("Pinging the address at %#v:%d", addrs[j].Location, addrs[j].Port))
+			logging.Log(3, fmt.Sprintf("Pinging the address at %#v:%d", addrs[j].Location, addrs[j].Port))
 			go Ping(addrs[j], outputChan)
 		}
 		var updatedAddresses []api.Address
@@ -85,11 +85,11 @@ func Pinger(fullAddressesSlice []api.Address) []api.Address {
 
 // Ping runs a Check and returns the result. If there is an error, it returns a blank address.
 func Ping(addr api.Address, processedAddresses chan<- api.Address) {
-	logging.Log(2, fmt.Sprintf("Connection attempt started: %v:%v", addr.Location, addr.Port))
+	logging.Log(3, fmt.Sprintf("Connection attempt started: %v:%v", addr.Location, addr.Port))
 	var blankAddr api.Address
 	if addr.LastSuccessfulPing > api.Timestamp(time.Now().Add(time.Duration(-2)*time.Minute).Unix()) {
 		// If it's been less than 2 minutes since we last pinged this address. We'll just pass this ping to not create excessive traffic.
-		logging.Logf(1, "We pinged this address already in the last 2 minutes. Skipping this ping and using the past result. Address: %s/%s:%d", addr.Location, addr.Sublocation, addr.Port)
+		logging.Logf(2, "We pinged this address already in the last 2 minutes. Skipping this ping and using the past result. Address: %s/%s:%d", addr.Location, addr.Sublocation, addr.Port)
 		// Mark it timestamped as now, and send it back.
 		addr.LastSuccessfulPing = api.Timestamp(time.Now().Unix())
 		processedAddresses <- addr
@@ -98,7 +98,7 @@ func Ping(addr api.Address, processedAddresses chan<- api.Address) {
 	updatedAddr, _, _, err := Check(addr)
 	if err != nil {
 		updatedAddr = blankAddr
-		logging.Log(2, err)
+		logging.Log(3, err)
 	}
 	processedAddresses <- updatedAddr
 }

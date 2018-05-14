@@ -269,9 +269,9 @@ func createDatabase() error {
             ThreadsLastCheckin BIGINT NOT NULL,
             PostsLastCheckin BIGINT NOT NULL,
             VotesLastCheckin BIGINT NOT NULL,
-            AddressesLastCheckin BIGINT NOT NULL,
             KeysLastCheckin BIGINT NOT NULL,
-            TruststatesLastCheckin BIGINT NOT NULL
+            TruststatesLastCheckin BIGINT NOT NULL,
+            AddressesLastCheckin BIGINT NOT NULL
           )ROW_FORMAT=COMPRESSED;
         `
 		schema11 = `
@@ -296,6 +296,9 @@ func createDatabase() error {
             DbRoundtripTestField BIGINT PRIMARY KEY NOT NULL
           )ROW_FORMAT=COMPRESSED;`
 	} else if globals.BackendConfig.DbEngine == "sqlite" {
+		schemaPrep1 = `
+    PRAGMA auto_vacuum = FULL;
+    `
 		schema1 = `
         CREATE TABLE IF NOT EXISTS "BoardOwners" (
           "BoardFingerprint" varchar(64) NOT NULL
@@ -467,9 +470,9 @@ func createDatabase() error {
           ,  "ThreadsLastCheckin" integer NOT NULL
           ,  "PostsLastCheckin" integer NOT NULL
           ,  "VotesLastCheckin" integer NOT NULL
-          ,  "AddressesLastCheckin" integer NOT NULL
           ,  "KeysLastCheckin" integer NOT NULL
           ,  "TruststatesLastCheckin" integer NOT NULL
+          ,  "AddressesLastCheckin" integer NOT NULL
           ,  PRIMARY KEY ("Fingerprint")
           );`
 		schema11 = `
@@ -537,6 +540,7 @@ func createDatabase() error {
 
 	var creationSchemas []string
 	if globals.BackendConfig.GetDbEngine() == "sqlite" {
+		creationSchemas = append(creationSchemas, schemaPrep1)
 		creationSchemas = append(creationSchemas, schema1)
 		creationSchemas = append(creationSchemas, schema3)
 		creationSchemas = append(creationSchemas, schema4)
@@ -643,16 +647,30 @@ func CheckDatabaseReady() {
 
 // Insertion SQL code used by the writer.
 
+// var nodeInsert = `
+// REPLACE INTO Nodes
+// (
+//   Fingerprint, BoardsLastCheckin, ThreadsLastCheckin, PostsLastCheckin, VotesLastCheckin, KeysLastCheckin, TruststatesLastCheckin, AddressesLastCheckin
+// ) VALUES (
+//   :Fingerprint,
+//   MAX(:BoardsLastCheckin, IFNULL((SELECT BoardsLastCheckin FROM Nodes WHERE Fingerprint = :Fingerprint), 0)),
+//   MAX(:ThreadsLastCheckin, IFNULL((SELECT ThreadsLastCheckin FROM Nodes WHERE Fingerprint = :Fingerprint), 0)),
+//   MAX(:PostsLastCheckin, IFNULL((SELECT PostsLastCheckin FROM Nodes WHERE Fingerprint = :Fingerprint), 0)),
+//   MAX(:VotesLastCheckin, IFNULL((SELECT VotesLastCheckin FROM Nodes WHERE Fingerprint = :Fingerprint), 0)),
+//   MAX(:KeysLastCheckin, IFNULL((SELECT KeysLastCheckin FROM Nodes WHERE Fingerprint = :Fingerprint), 0)),
+//   MAX(:TruststatesLastCheckin, IFNULL((SELECT TruststatesLastCheckin FROM Nodes WHERE Fingerprint = :Fingerprint), 0)),
+//   MAX(:AddressesLastCheckin, IFNULL((SELECT AddressesLastCheckin FROM Nodes WHERE Fingerprint = :Fingerprint), 0))
+// )
+// `
+
 // NodeInsert just inserts the Node details into the entry. This is mutable.
 var nodeInsert = `REPLACE INTO Nodes
 (
   Fingerprint, BoardsLastCheckin, ThreadsLastCheckin, PostsLastCheckin,
-  VotesLastCheckin, AddressesLastCheckin, KeysLastCheckin,
-  TruststatesLastCheckin
+  VotesLastCheckin, KeysLastCheckin, TruststatesLastCheckin, AddressesLastCheckin
 ) VALUES (
   :Fingerprint, :BoardsLastCheckin, :ThreadsLastCheckin, :PostsLastCheckin,
-  :VotesLastCheckin, :AddressesLastCheckin, :KeysLastCheckin,
-  :TruststatesLastCheckin
+  :VotesLastCheckin, :KeysLastCheckin, :TruststatesLastCheckin, :AddressesLastCheckin
 )`
 
 /*

@@ -19,7 +19,7 @@ import (
 	// "github.com/davecgh/go-spew/spew"
 	// "io/ioutil"
 	// "os"
-	// "strconv"
+	"strconv"
 	// "strings"
 	"time"
 )
@@ -67,6 +67,8 @@ func bakeEntityPages(resultPages *[]api.ApiResponse, entityCounts *[]api.EntityC
 		saveFileToDisk(jsonResp, responsedir, name)
 	}
 	if isPOST {
-		insertIntoPOSTResponseReuseTracker(&(*resultPages)[0], foldername)
+		start, _ := strconv.Atoi((*filters)[0].Values[0])
+		dbReadStartLoc := api.Timestamp(start)
+		insertIntoPOSTResponseReuseTracker(&(*resultPages)[0], foldername, dbReadStartLoc)
 	}
 }

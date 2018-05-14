@@ -196,9 +196,29 @@ func calculateResultTimeRange(res []api.ResultCache) resultTimeRange {
 }
 
 // generateContainer always creates a container from the given data (can be a post response or a cache response) and it saves it to the disk. It does not care about how many pages the result is.
-func generateContainer(entityPages *[]api.ApiResponse, indexPages *[]api.ApiResponse, manifestPages *[]api.ApiResponse, entityCounts *[]api.EntityCount, filters *[]api.Filter, dirname string, isPOST bool, respType string) {
+func generateContainer(
+	entityPages *[]api.ApiResponse,
+	indexPages *[]api.ApiResponse,
+	manifestPages *[]api.ApiResponse,
+	entityCounts *[]api.EntityCount,
+	filters *[]api.Filter,
+	dirname string,
+	isPOST bool,
+	respType string,
+	dbReadStartLoc api.Timestamp,
+) {
 	foldername := ""
-
+	// Gate the filter in such a way that the beginning of the range will be the beginning of the DB read that this container will hold, NOT the beginning of the scan range. Scan range can include the chain with other reused responses, but dbReadStartLoc is the range of the DB read only.
+	flt := *filters
+	if flt[0].Type == "timestamp" {
+		rangeBeg := flt[0].Values[0]
+		rangeEnd := flt[0].Values[1]
+		if rangeBeg > rangeEnd {
+			rangeBeg, rangeEnd = rangeEnd, rangeBeg
+		}
+		flt[0].Values[0] = strconv.Itoa(int(dbReadStartLoc))
+		flt[0].Values[1] = rangeEnd
+	}
 	if isPOST {
 		foldername = fmt.Sprint("post_", dirname)
 	} else {
@@ -209,20 +229,18 @@ func generateContainer(entityPages *[]api.ApiResponse, indexPages *[]api.ApiResp
 	fmt.Println(entityType)
 	// Create the index and manifest pages.
 	if indexPages != nil {
-		bakeIndexes(indexPages, entityCounts, filters, foldername, isPOST, respType, entityType)
+		bakeIndexes(indexPages, entityCounts, &flt, foldername, isPOST, respType, entityType)
 	}
 	if manifestPages != nil {
-		bakeManifests(manifestPages, entityCounts, filters, foldername, isPOST, respType, entityType)
+		bakeManifests(manifestPages, entityCounts, &flt, foldername, isPOST, respType, entityType)
 	}
 	// Bake the main entity pages.
-	bakeEntityPages(entityPages, entityCounts, filters, foldername, isPOST, respType, entityType)
+	bakeEntityPages(entityPages, entityCounts, &flt, foldername, isPOST, respType, entityType)
 }
 
 func constructResultCache(beg api.Timestamp, end api.Timestamp, url string) api.ResultCache {
 	if beg > end {
-		temp := end
-		end = beg
-		beg = temp
+		beg, end = end, beg
 	}
 	return api.ResultCache{StartsFrom: beg, EndsAt: end, ResponseUrl: url}
 }

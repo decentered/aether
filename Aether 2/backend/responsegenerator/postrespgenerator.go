@@ -5,6 +5,7 @@ package responsegenerator
 
 import (
 	// "fmt"
+	"aether-core/backend/metrics"
 	"aether-core/io/api"
 	"aether-core/io/persistence"
 	"aether-core/services/configstore"
@@ -44,17 +45,23 @@ func generatePostFaceResponse(
 	*/
 	chain := generateResultCachesFromPostRespChain(*reusedPostResponses)
 	resp.Results = append(resp.Results, chain...)
+	// From this point on, our chain is added. These refer to the container being generated right now, or the page generated right now.
+	var b int64
+	var e int64
+	if (*filters)[0].Type == "timestamp" {
+		b, _ = strconv.ParseInt((*filters)[0].Values[0], 10, 64)
+		e, _ = strconv.ParseInt((*filters)[0].Values[1], 10, 64)
+	}
+	start := api.Timestamp(b)
+	end := api.Timestamp(e)
+	if start > end {
+		start, end = end, start
+	}
 	if len(*resultPages) > 1 { // multiple page response: create a container, save it to disk, and return a resultcache[] in the face response.
 		// For the time being, we're only generating ONE result cache for POST responses.
 		var c api.ResultCache
 		// What's below looks like a regeneration of filters for a second time. It is not. We need this to add these values to the resultcache.
-		if (*filters)[0].Type == "timestamp" {
-			b, _ := strconv.ParseInt((*filters)[0].Values[0], 10, 64)
-			e, _ := strconv.ParseInt((*filters)[0].Values[1], 10, 64)
-			start := api.Timestamp(b)
-			end := api.Timestamp(e)
-			c = constructResultCache(start, end, "")
-		}
+		c = constructResultCache(start, end, "")
 		foldername := fmt.Sprint("post_", dirname)
 		c.ResponseUrl = foldername
 		resp.Results = append(resp.Results, c)
@@ -71,7 +78,9 @@ func generatePostFaceResponse(
 	}
 	resultsTimeRange := calculateResultTimeRange(resp.Results)
 	resp.StartsFrom = resultsTimeRange.Start
-	resp.EndsAt = resultsTimeRange.End
+	// resp.EndsAt = resultsTimeRange.End
+	resp.EndsAt = end // we do not want to return the result time range end - if you had data from t1 to t3 but you were making a call at t5 and no data for t3-t5 range, the timestamp should be t5, not t3.
+
 	// fmt.Println("Outbound POST ApiResponse Results:")
 	// fmt.Printf("%#v\n", resp.Results)
 	// fmt.Println("Outbound POST ApiResponse ResponseBody lengths:")
@@ -89,6 +98,7 @@ func generatePostFaceResponse(
 	// if len(resp.Results) > 1 {
 	// 	fmt.Println("TWO RESULTS")
 	// }
+	logging.LogObj(1, "ResultCaches returning:", resp.Results)
 	return &resp
 }
 
@@ -102,14 +112,34 @@ func bakeFinalPOSTApiResponse(
 	dirname string,
 	mergedEntityCounts *[]api.EntityCount,
 	reusedPostResponses *[]configstore.POSTResponseEntry,
+	dbReadStartLoc api.Timestamp, // This is needed in the case of container generation.
 ) (*api.ApiResponse, error) {
 	if len(*resultPages) > 1 {
-		generateContainer(resultPages, indexPages, manifestPages, entityCounts, filters, dirname, true, "") // this will save to disk, doesn't return anything.
+		logging.Logf(1, "This result is still more than one page after the chain addition. We are generating the container %s", dirname)
+		generateContainer(resultPages, indexPages, manifestPages, entityCounts, filters, dirname, true, "", dbReadStartLoc) // this will save to disk, doesn't return anything.
+		// Generate container needs to generate its own entity
 		resp := generatePostFaceResponse(resultPages, mergedEntityCounts, filters, dirname, reusedPostResponses)
 		return resp, nil
 	} else if len(*resultPages) == 1 {
+		logging.Logf(1, "This result is one page after the chain addition. We are not generating a container")
+		logging.Logf(1, "This result that is being sent as single page has these items: \nB: %v, T: %v, P: %v, V: %v, K: %v, TS: %v, A: %v",
+			len((*resultPages)[0].ResponseBody.Boards),
+			len((*resultPages)[0].ResponseBody.Threads),
+			len((*resultPages)[0].ResponseBody.Posts),
+			len((*resultPages)[0].ResponseBody.Votes),
+			len((*resultPages)[0].ResponseBody.Keys),
+			len((*resultPages)[0].ResponseBody.Truststates),
+			len((*resultPages)[0].ResponseBody.Addresses))
 		// Has no container, will be directly served across.
 		resp := generatePostFaceResponse(resultPages, mergedEntityCounts, filters, dirname, reusedPostResponses)
+		logging.Logf(1, "GeneratePostFaceResponse for the single page result returned these: \nB: %v, T: %v, P: %v, V: %v, K: %v, TS: %v, A: %v",
+			len(resp.ResponseBody.Boards),
+			len(resp.ResponseBody.Threads),
+			len(resp.ResponseBody.Posts),
+			len(resp.ResponseBody.Votes),
+			len(resp.ResponseBody.Keys),
+			len(resp.ResponseBody.Truststates),
+			len(resp.ResponseBody.Addresses))
 		return resp, nil
 	} else {
 		logging.LogCrash(fmt.Sprintf("This post request produced both no results and no resulting apiResponses. []ApiResponse: %#v", *resultPages))
@@ -119,11 +149,15 @@ func bakeFinalPOSTApiResponse(
 
 // GeneratePOSTResponse creates a response that is directly returned to a custom request by the remote.
 func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) {
+	metrics.SendDbState()
 	var resp api.ApiResponse
 	resp.Prefill()
 	// Look at filterset to figure out what is being requested
+	logging.Logf(2, "Filters received raw: %#v", req.Filters)
 	filterset := processFilters(&req)
+	logging.Logf(2, "Filters processed: %#v", filterset)
 	filter := reconstructFilters(filterset)
+	logging.Logf(2, "Filters reconstructed: %#v", filter)
 	filters := []api.Filter{filter}
 	// Create a random SHA256 hash as folder name to use in the case the response has more than one page.
 	dirname, err := randomhashgen.GenerateRandomHash()
@@ -140,17 +174,20 @@ func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) 
 		// Check our post response repo to check if there are any suitable post responses that we can reuse.
 		start := configstore.Timestamp(filterset.TimeStart)
 		end := configstore.Timestamp(filterset.TimeEnd)
-		// fmt.Printf("Filter request received from the remote, start: %#v, end: %#v", start, end)
 		chain, _, chainEnd, chainCount := globals.BackendTransientConfig.POSTResponseRepo.GetPostResponseChain(start, end, respType)
-		// fmt.Printf("requested a chain for %#v, this is what we got: %#v\n", respType, chain)
 		dbReadStartLoc := api.Timestamp(0)
 		if len(*chain) == 0 {
 			dbReadStartLoc = filterset.TimeStart
+			logging.Logf(2, "Chain count is zero, therefore dbReadStartLoc is filterset.Timestart, which is %#v", dbReadStartLoc)
 		} else {
 			dbReadStartLoc = api.Timestamp(chainEnd)
+			logging.Logf(2, "Chain count is NOT zero, therefore dbReadStartLoc is chainEnd, which is %#v", dbReadStartLoc)
 		}
-		// fmt.Println(chain, chainStart, chainEnd)
+		// test end
+		logging.Logf(2, "Chain: %#v, Start: %v, End: %v Chain Count: %#v Time: %s", chain, start, chainEnd, chainCount, time.Now())
+		logging.Logf(2, "These are the values being fed to the persistence.Read. RespType: %s, filterset.Fingerprints: %v, filterset.Embeds: %v, dbReadStartLoc: %v, filterset.TimeEnd: %v", respType, filterset.Fingerprints, filterset.Embeds, dbReadStartLoc, filterset.TimeEnd)
 		localData, dbError := persistence.Read(respType, filterset.Fingerprints, filterset.Embeds, dbReadStartLoc, filterset.TimeEnd)
+
 		if dbError != nil {
 			return []byte{}, errors.New(fmt.Sprintf("The query coming from the remote caused an error in the local database while trying to respond to this request. Error: %#v\n, Request: %#v\n", dbError, req))
 		}
@@ -181,14 +218,13 @@ func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) 
 			(*manifestApiResponse)[key].Endpoint = "manifest_post"
 		}
 		// bakeFinalPOSTApiResponse wraps the data up and assigns proper metadata. It does not pull any further data in.
-		finalResponse, err := bakeFinalPOSTApiResponse(pagesAsApiResponses, indexApiResponse, manifestApiResponse, entityCounts, &filters, dirname, mergedEntityCounts, chain)
+		finalResponse, err := bakeFinalPOSTApiResponse(pagesAsApiResponses, indexApiResponse, manifestApiResponse, entityCounts, &filters, dirname, &mergedEntityCounts, chain, dbReadStartLoc)
 		// fmt.Printf("%#v", finalResponse)
 		if err != nil {
 			return []byte{}, errors.New(fmt.Sprintf("An error was encountered while trying to finalise the API response. Error: %#v\n, Request: %#v\n", err, req))
 		}
 		resp = *finalResponse
-		// resp.Endpoint = "entity"
-	case "addresses": // Addresses can't do address search by loc/subloc/port. Only time search is available, since addresses don't have fingerprints defined.
+	case "addresses": // Addresses can't do address search by loc/subloc/port. Only time search is available, since adresses don't have fingerprints defined.
 		/*
 		   An addresses POST response returns results within the time boundary that has been seen online first-person by the remote. It does not communicate addresses that the remote has not connected to.
 		*/
@@ -219,7 +255,7 @@ func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) 
 		entityCounts := countEntities(&localData)
 		// mergedEntityCounts should be used ONLY by the post face response.
 		mergedEntityCounts := mergeCounts(entityCounts, chainCount)
-		finalResponse, err := bakeFinalPOSTApiResponse(pagesAsApiResponses, nil, nil, entityCounts, &filters, dirname, mergedEntityCounts, chain)
+		finalResponse, err := bakeFinalPOSTApiResponse(pagesAsApiResponses, nil, nil, entityCounts, &filters, dirname, &mergedEntityCounts, chain, dbReadStartLoc)
 		if err != nil {
 			return []byte{}, errors.New(fmt.Sprintf("An error was encountered while trying to finalise the API response. Error: %#v\n, Request: %#v\n", err, req))
 		}
@@ -243,7 +279,7 @@ func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) 
 }
 
 // insertIntoPOSTResponseTracker checks some conditions to determine whether this post response is eligible for reuse. If that is the case, it will insert it to the queue to render it eligible.
-func insertIntoPOSTResponseReuseTracker(resultPage *api.ApiResponse, foldername string) {
+func insertIntoPOSTResponseReuseTracker(resultPage *api.ApiResponse, foldername string, dbReadStartLoc api.Timestamp) {
 	pg := *resultPage // we can take a look at only one page because we know all are the same.
 	// Rules: A reusable response can only have a time range filter (timestamp) and it can only have one single entity type (represented by entity counts). If those are true, then we can reuse this.
 	if len(pg.Caching.EntityCounts) == 1 &&
@@ -255,13 +291,11 @@ func insertIntoPOSTResponseReuseTracker(resultPage *api.ApiResponse, foldername 
 		start := configstore.Timestamp(s)
 		end := configstore.Timestamp(e)
 		if start > end {
-			tmp := start
-			start = end
-			end = tmp
+			start, end = end, start
 		}
 		creation := configstore.Timestamp(pg.Timestamp)
 		counts := convertToConfigStoreEntityCount(pg.Caching.EntityCounts)
-		globals.BackendTransientConfig.POSTResponseRepo.Add(foldername, start, end, creation, &counts)
+		globals.BackendTransientConfig.POSTResponseRepo.Add(foldername, configstore.Timestamp(dbReadStartLoc), end, creation, &counts) // not start, but dbReadStartLoc. Because start is the start of the entire response, not the container we just generated. This is related to the container that we generated, so we use the dbReadStartLoc.
 	}
 }
 

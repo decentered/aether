@@ -138,6 +138,9 @@ This is the repository that we keep our post responses in, so that they can be r
 
 # NeighboursList
 Our list of neighbours that we are checking in with at given intervals.
+
+# Bouncer
+Bouncer controls the inbound and outbound connections. This is the library that starts to refuse connections if the node gets too busy.
 */
 
 type BackendTransientConfig struct {
@@ -169,6 +172,7 @@ type BackendTransientConfig struct {
 	EntityVersions            EntityVersions
 	POSTResponseRepo          POSTResponseRepo // empty at start, empty at every app start
 	NeighboursList            NeighboursList
+	Bouncer                   Bouncer
 }
 
 // Set transient backend config defaults. Only need to set defaults that are not the type default.

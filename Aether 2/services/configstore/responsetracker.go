@@ -22,12 +22,17 @@ package configstore
 import (
 	"aether-core/services/toolbox"
 	"fmt"
+	"sync"
 	"time"
 )
 
 // Basic types
 
 type Timestamp int64
+
+func (t Timestamp) String() string {
+	return time.Unix(int64(t), 0).String()
+}
 
 type EntityCount struct {
 	Protocol string `json:"protocol"`
@@ -45,6 +50,7 @@ type POSTResponseEntry struct {
 
 // In case we need to add some more fields in the future.
 type POSTResponseRepo struct {
+	lock      sync.Mutex
 	Responses []POSTResponseEntry
 }
 
@@ -73,7 +79,7 @@ func collectCounts(pres []POSTResponseEntry) EntityCount {
 // Basic entry actions
 
 // Eligible checks whether this post response entry is eligible for inclusion into a chain.
-func (e *POSTResponseEntry) Eligible() bool {
+func (e *POSTResponseEntry) eligible() bool {
 	expiryDur := time.Duration(bc.GetPOSTResponseExpiryMinutes()) * time.Minute
 	ineligibilityDur := time.Duration(bc.GetPOSTResponseIneligibilityMinutes()) * time.Minute
 	eligibleDur := expiryDur - ineligibilityDur
@@ -102,6 +108,8 @@ func (r *POSTResponseRepo) deleteFromRepo(i int) {
 }
 
 func (r *POSTResponseRepo) Add(url string, startsFrom Timestamp, endsAt Timestamp, creation Timestamp, entityCounts *[]EntityCount) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
 	pre := POSTResponseEntry{ResponseUrl: url, StartsFrom: startsFrom, EndsAt: endsAt, Creation: creation}
 	pre.EntityCounts = *entityCounts
 	r.Responses = append(r.Responses, pre)
@@ -117,9 +125,9 @@ func (r *POSTResponseRepo) Remove(url string) {
 }
 
 // Flush deletes all post response entries and their representations on the disk up to the given timestamp. We count reverse because deleting from a list you're iterating on forwards will make the index number shift.
-func (r *POSTResponseRepo) Flush(cutoff Timestamp) {
+func (r *POSTResponseRepo) flush(cutoff Timestamp) {
 	for i := len(r.Responses) - 1; i >= 0; i-- {
-		fmt.Println(i)
+		// fmt.Println(i)
 		if r.Responses[i].EndsAt < cutoff {
 			r.deleteFromRepo(i)
 		}
@@ -134,7 +142,7 @@ func (r *POSTResponseRepo) getLongestUniqueTimespan(t Timestamp, entityName stri
 	for i, _ := range r.Responses {
 		only1Ec := len(r.Responses[i].EntityCounts) == 1
 		entityNameMatches := r.Responses[i].EntityCounts[0].Name == entityName
-		hasEnoughTime := r.Responses[i].Eligible()
+		hasEnoughTime := r.Responses[i].eligible()
 		if !only1Ec || !entityNameMatches || !hasEnoughTime {
 			// fmt.Printf("This post response was ineligible: Why: only1Ec: %#v, entityNameMatches: %#v, hasEnoughTime: %#v, Resp:%#v\n", only1Ec, entityNameMatches, hasEnoughTime, r.Responses[i])
 			continue
@@ -158,6 +166,11 @@ func (r *POSTResponseRepo) getLongestUniqueTimespan(t Timestamp, entityName stri
 
 // GetPostResponseChain constructs a POST response chain from generated post responses from prior that starts from before the given timeline and ends after the given end, with as few responses as possible.
 func (r *POSTResponseRepo) GetPostResponseChain(start Timestamp, end Timestamp, entityName string) (*[]POSTResponseEntry, Timestamp, Timestamp, EntityCount) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	// fmt.Printf("This is all post responses available for chaining: %#v\n", r)
+	// return &[]POSTResponseEntry{}, Timestamp(0), Timestamp(0), EntityCount{}
+	// disabling this temporarily TODO
 	chain := []POSTResponseEntry{}
 	linkStart := start
 	firstLinkStartsFrom := Timestamp(0)
@@ -184,13 +197,16 @@ func (r *POSTResponseRepo) GetPostResponseChain(start Timestamp, end Timestamp, 
 		}
 	}
 	count := collectCounts(chain)
+	fmt.Printf("This is the chain count we've found. Chain: %v, Count: %v\n", chain, count)
 	return &chain, firstLinkStartsFrom, lastLinkEndsAt, count
 }
 
 func (r *POSTResponseRepo) Maintain() {
+	r.lock.Lock()
+	defer r.lock.Unlock()
 	expiryDur := time.Duration(bc.GetPOSTResponseExpiryMinutes()) * time.Minute
 	expiryThreshold := Timestamp(time.Now().Add(-expiryDur).Unix())
-	r.Flush(expiryThreshold)
+	r.flush(expiryThreshold)
 }
 
 func (r *POSTResponseRepo) DeleteAllFromDisk() {

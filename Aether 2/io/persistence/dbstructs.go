@@ -194,9 +194,9 @@ type DbNode struct {
 	ThreadsLastCheckin     api.Timestamp   `db:"ThreadsLastCheckin"`
 	PostsLastCheckin       api.Timestamp   `db:"PostsLastCheckin"`
 	VotesLastCheckin       api.Timestamp   `db:"VotesLastCheckin"`
-	AddressesLastCheckin   api.Timestamp   `db:"AddressesLastCheckin"`
 	KeysLastCheckin        api.Timestamp   `db:"KeysLastCheckin"`
 	TruststatesLastCheckin api.Timestamp   `db:"TruststatesLastCheckin"`
+	AddressesLastCheckin   api.Timestamp   `db:"AddressesLastCheckin"`
 }
 
 // Return types of APIToDB. This is necessary because some API objects, when converted to their DB form, return more than one DB object.
@@ -213,7 +213,8 @@ type AddressPack struct {
 }
 
 // APItoDB translates structs of API objects into structs of DB objects. It also checks whether the objects are verified or not, and if not, it prevents them entry into the database layer.
-func APItoDB(object interface{}) (interface{}, error) {
+func APItoDB(object interface{}, ts time.Time) (interface{}, error) {
+	now := ts.Unix()
 	switch obj := object.(type) {
 	// obj: typed API object.
 	case api.Board:
@@ -227,7 +228,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Owner = obj.Owner
 		dbObj.OwnerPublicKey = obj.OwnerPublicKey
 		dbObj.Description = obj.Description
-		now := time.Now().Unix()
+		// now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		dbObj.LastReferenced = api.Timestamp(now)
 		dbObj.EntityVersion = obj.EntityVersion
@@ -271,7 +272,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Link = obj.Link
 		dbObj.Owner = obj.Owner
 		dbObj.OwnerPublicKey = obj.OwnerPublicKey
-		now := time.Now().Unix()
+		// now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		dbObj.LastReferenced = api.Timestamp(now)
 		dbObj.EntityVersion = obj.EntityVersion
@@ -305,7 +306,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Body = obj.Body
 		dbObj.Owner = obj.Owner
 		dbObj.OwnerPublicKey = obj.OwnerPublicKey
-		now := time.Now().Unix()
+		// now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		dbObj.LastReferenced = api.Timestamp(now)
 		dbObj.EntityVersion = obj.EntityVersion
@@ -334,7 +335,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Owner = obj.Owner
 		dbObj.OwnerPublicKey = obj.OwnerPublicKey
 		dbObj.Type = obj.Type
-		now := time.Now().Unix()
+		// now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		dbObj.LastReferenced = api.Timestamp(now)
 		dbObj.EntityVersion = obj.EntityVersion
@@ -369,7 +370,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.ClientVersionMinor = obj.Client.VersionMinor
 		dbObj.ClientVersionPatch = obj.Client.VersionPatch
 		dbObj.ClientName = obj.Client.ClientName
-		now := time.Now().Unix()
+		// now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		// dbObj.LastReferenced = api.Timestamp(now)
 		dbObj.EntityVersion = obj.EntityVersion
@@ -413,7 +414,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.Expiry = obj.Expiry
 		dbObj.Name = obj.Name
 		dbObj.Info = obj.Info
-		now := time.Now().Unix()
+		// now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		dbObj.LastReferenced = api.Timestamp(now)
 		dbObj.EntityVersion = obj.EntityVersion
@@ -442,7 +443,7 @@ func APItoDB(object interface{}) (interface{}, error) {
 		dbObj.OwnerPublicKey = obj.OwnerPublicKey
 		dbObj.Type = obj.Type
 		dbObj.Expiry = obj.Expiry
-		now := time.Now().Unix()
+		// now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
 		dbObj.LastReferenced = api.Timestamp(now)
 		dbObj.EntityVersion = obj.EntityVersion

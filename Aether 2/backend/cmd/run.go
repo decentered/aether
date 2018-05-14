@@ -83,6 +83,8 @@ func shutdown() {
 	globals.BackendTransientConfig.StopAddressScannerCycle <- true
 	// globals.BackendTransientConfig.StopUPNPCycle <- true // upnp is disabled, reenable both when it's back
 	globals.BackendTransientConfig.StopCacheGenerationCycle <- true
+	logging.Log(1, "Waiting 5 seconds to let DB close gracefully...")
+	time.Sleep(time.Duration(5) * time.Second) // Wait 5 seconds to let DB tasks complete.
 	globals.DbInstance.Close()
 	defer func() {
 		// The functions that access DB can panic after the DB is closed. But after DB is closed, we don't care - the DB is out of harm's way and the only state that remains at this phase is the transient state, and that's going to be wiped out a few nanoseconds later. Recover from any panics.

@@ -54,3 +54,7 @@ func LogCrash(input interface{}) {
 	log.Println(toolbox.DumpStack())
 	log.Fatal(input)
 }
+
+func LogObj(level int, objName string, input interface{}) {
+	Logf(level, "%s: %#v", objName, input)
+}

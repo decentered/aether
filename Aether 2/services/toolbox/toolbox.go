@@ -84,6 +84,7 @@ func Trace() string {
 }
 
 func DeleteFromDisk(path string) {
+	return
 	fmt.Printf("DeleteFromDisk called for the path %#v\n", path)
 	err := os.RemoveAll(path)
 	if err != nil {

@@ -70,8 +70,10 @@ func Sync(a api.Address) error {
 	firstSync := false
 	if n.AddressesLastCheckin == 0 {
 		firstSync = true
+	} else {
+		logging.Logf(2, "This is not a first sync. Addresses Last Checkin: %#v, Node data: %#v", n.AddressesLastCheckin, n)
 	}
-	metrics.SendConnState(addr, true, firstSync)
+	metrics.SendConnState(addr, true, firstSync, nil)
 	// metrics server end for conn state
 	c := startMetricsContainer(apiResp, a, n)
 	openClr := color.New(color.FgWhite, color.BgYellow)
@@ -252,12 +254,12 @@ func Sync(a api.Address) error {
 		logging.Log(1, abortClr.Sprintf("SYNC ABORTED. Err: %s", err))
 		return err
 	}
-	fmt.Println("Inserted the last successful sync stamp at the end of the sync.")
+	logging.Log(2, "Inserted the last successful sync stamp at the end of the sync.")
 	logging.Log(2, fmt.Sprintf("SYNC COMPLETE with node: %s:%d. It took %d seconds", a.Location, a.Port, int(time.Since(start).Seconds())))
 	closeClr := color.New(color.FgBlack, color.BgWhite)
 	logging.Log(1, generateCloseMessage(c, closeClr, &ims, int(time.Since(start).Seconds()), true))
 	// Send the connection state to the metrics server.
-	metrics.SendConnState(addr, false, firstSync)
+	metrics.SendConnState(addr, false, firstSync, &ims)
 	return nil
 }
 

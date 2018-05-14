@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 	// "log"
 	"aether-core/io/api"
+	"aether-core/io/persistence"
 	// "github.com/davecgh/go-spew/spew"
 	"strconv"
 	"time"
@@ -215,7 +216,7 @@ func SendMetrics(client pb.MetricsServiceClient) *pb.MetricsDeliveryResponse {
 	return result
 }
 
-func SendConnState(remote api.Address, isOpen bool, firstSync bool) {
+func SendConnState(remote api.Address, isOpen bool, firstSync bool, ims *[]persistence.InsertMetrics) {
 	client, conn := StartConnection()
 	defer conn.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -231,9 +232,54 @@ func SendConnState(remote api.Address, isOpen bool, firstSync bool) {
 	oConn.ToNodeName = remote.Client.ClientName
 	oConn.Timestamp = int64(time.Now().Unix())
 	oConn.FirstSync = firstSync
+	// Handle InsertMetrics to generate a receipt.
+	receipt := generateReceipts(ims)
+	oConn.Objects = &receipt
+	oConn.CurrentDbSizeMb = int32(globals.GetDbSize())
 	connState.Connection = &oConn
 	_, err := client.SendConnectionState(ctx, &connState)
 	if err != nil {
 		logging.Log(1, fmt.Sprintf("Could not deliver ConnState: %v", err))
 	}
+}
+
+func generateReceipts(ims *[]persistence.InsertMetrics) pb.Objects {
+	receipt := pb.Objects{}
+	im := persistence.InsertMetrics{}
+	if ims != nil {
+		for _, val := range *ims {
+			im.Add(val)
+		}
+	}
+	receipt.Boards = int64(im.BoardsReceived)
+	receipt.Threads = int64(im.ThreadsReceived)
+	receipt.Posts = int64(im.PostsReceived)
+	receipt.Votes = int64(im.VotesReceived)
+	receipt.Keys = int64(im.KeysReceived)
+	receipt.Truststates = int64(im.TruststatesReceived)
+	receipt.Addresses = int64(im.AddressesReceived)
+	// logging.Logf(1, "%#v", receipt)
+	return receipt
+}
+
+// SendDbState sends the counts of all DB entities to the metrics server for debugging purposes. This should be only used for testing, not on prod instances.
+func SendDbState() {
+	client, conn := StartConnection()
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	dbc := persistence.Dbg_ReadDatabaseCounts()
+	var dbState pb.DbState
+	dbState.SwarmNodeName = globals.BackendConfig.GetClientName()
+	t := time.Now()
+	dbState.Timestamp = t.Unix()
+	dbState.Time = time.Unix(dbState.Timestamp, 0).String() // remove nsec etc.
+	dbState.BoardsCount = dbc.Boards
+	dbState.ThreadsCount = dbc.Threads
+	dbState.PostsCount = dbc.Posts
+	dbState.VotesCount = dbc.Votes
+	dbState.KeysCount = dbc.Keys
+	dbState.TruststatesCount = dbc.Truststates
+	dbState.AddressesCount = dbc.Addresses
+	client.SendDbState(ctx, &dbState)
 }
