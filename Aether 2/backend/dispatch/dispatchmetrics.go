@@ -74,6 +74,8 @@ type CurrentOutboundSyncMetrics struct {
 	AddressesPOSTTimeToFirstResponse float64
 	AddressesDBCommitTime            float64
 
+	MultipleInsertDBCommitTime float64
+
 	LocalIp                 string
 	LocalPort               int
 	RemoteIp                string
@@ -141,6 +143,7 @@ func generateCloseMessage(c *CurrentOutboundSyncMetrics, clr *color.Color, ims *
 	c.KeysDBCommitTime = im.KeysDBCommitTime
 	c.TruststatesDBCommitTime = im.TruststatesDBCommitTime
 	c.AddressesDBCommitTime = im.AddressesDBCommitTime
+	c.MultipleInsertDBCommitTime = im.MultipleInsertDBCommitTime
 
 	totalEntitiesReceived := c.BoardsReceived + c.ThreadsReceived + c.PostsReceived + c.VotesReceived + c.KeysReceived + c.TruststatesReceived + c.AddressesReceived
 	insertDbDetailString := ""
@@ -166,7 +169,7 @@ func generateCloseMessage(c *CurrentOutboundSyncMetrics, clr *color.Color, ims *
 	timeDetailString := ""
 	if c.TotalDurationSeconds > 0 {
 		// This is where we collect db time metrics.
-		dbTimeDetailString := fmt.Sprintf("\n    Boards:      %.1fs, \n    Threads:     %.1fs, \n    Posts:       %.1fs, \n    Votes:       %.1fs, \n    Keys:        %.1fs, \n    Truststates: %.1fs, \n    Addresses:   %.1fs.", c.BoardsDBCommitTime, c.ThreadsDBCommitTime, c.PostsDBCommitTime, c.VotesDBCommitTime, c.KeysDBCommitTime, c.TruststatesDBCommitTime, c.AddressesDBCommitTime)
+		dbTimeDetailString := fmt.Sprintf("\n    Boards:      %.1fs, \n    Threads:     %.1fs, \n    Posts:       %.1fs, \n    Votes:       %.1fs, \n    Keys:        %.1fs, \n    Truststates: %.1fs, \n    Addresses:   %.1fs, \n    Multitype:   %.1fs (likely through purgatory).", c.BoardsDBCommitTime, c.ThreadsDBCommitTime, c.PostsDBCommitTime, c.VotesDBCommitTime, c.KeysDBCommitTime, c.TruststatesDBCommitTime, c.AddressesDBCommitTime, c.MultipleInsertDBCommitTime)
 		// network time metrics for GET and POST.
 		networkTimeDetailString := fmt.Sprintf("\n    Boards:      G: %.1fs P: %.1fs (PWait: %.1f), \n    Threads:     G: %.1fs P: %.1fs (PWait: %.1f), \n    Posts:       G: %.1fs P: %.1fs (PWait: %.1f), \n    Votes:       G: %.1fs P: %.1fs (PWait: %.1f), \n    Keys:        G: %.1fs P: %.1fs (PWait: %.1f), \n    Truststates: G: %.1fs P: %.1fs (PWait: %.1f), \n    Addresses:   G: %.1fs P: %.1fs (PWait: %.1f).",
 			c.BoardsGETNetworkTime, c.BoardsPOSTNetworkTime, c.BoardsPOSTTimeToFirstResponse,

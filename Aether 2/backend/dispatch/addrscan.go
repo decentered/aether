@@ -15,7 +15,7 @@ import (
 	// "strings"
 	"aether-core/services/toolbox"
 	// "net"
-	"github.com/davecgh/go-spew/spew"
+	// "github.com/davecgh/go-spew/spew"
 	"time"
 )
 
@@ -76,7 +76,7 @@ func updateAddrs(addrs *[]api.Address) (*[]api.Address, error) {
 	updatedAddrs := Pinger(*addrs)
 	err := pers.AddrTrustedInsert(&updatedAddrs)
 	if err != nil {
-		return &[]api.Address{}, errors.Wrap(err, "findOnlineNodes encountered an error in AddrTrustedInsert.")
+		return &[]api.Address{}, errors.Wrap(err, "updateAddrs encountered an error in AddrTrustedInsert.")
 	}
 	return &updatedAddrs, nil
 }
@@ -101,19 +101,21 @@ func findOnlineNodes(count int, addrType int, excl *[]api.Address) ([]api.Addres
 		}
 	}
 	updatedAddrs, err := updateAddrs(addrs)
-	logging.Logf(1, "Updated addresses: %s", Dbg_convertAddrSliceToNameSlice(*updatedAddrs))
+	logging.Logf(2, "Updated addresses: %s", Dbg_convertAddrSliceToNameSlice(*updatedAddrs))
 	if err != nil {
 		errors.Wrap(err, "findOnlineNodes: updateAddress within this function failed.")
 	}
 	liveNodes := filterByLastSuccessfulPing(updatedAddrs, start)
-	logging.Logf(1, "Live addresses: %s", Dbg_convertAddrSliceToNameSlice(*updatedAddrs))
+	logging.Logf(2, "Live addresses: %s", Dbg_convertAddrSliceToNameSlice(*updatedAddrs))
 	if count == 0 { // count == 0: return everything found.
 		return *liveNodes, nil
 	}
+	// logging.Logf(1, "live nodes: %v", liveNodes)
 	if addrType == -2 {
 		// logging.Logf(1, "Live nodes are these. Live nodes: %s", Dbg_convertAddrSliceToNameSlice(*liveNodes))
-		logging.Log(2, "AddrType = -2, we are looking for nonconnected addrs.")
+		logging.Log(1, "AddrType = -2, we are looking for nonconnected addrs.")
 		nonconnected := pickUnconnectedAddrs(liveNodes)
+		// logging.Logf(1, "nonconnecteds: %v", nonconnected)
 		if len(*nonconnected) != 0 {
 			logging.Logf(1, "AddrType = -2, we found some nonconnected onlines. Let's pull from those first. Found: %s", Dbg_convertAddrSliceToNameSlice(*nonconnected))
 			liveNodes = nonconnected
@@ -158,7 +160,7 @@ func GetOnlineAddresses(
 	[]api.Address, error,
 ) {
 	ln, err := findOnlineNodes(noOfOnlineAddressesRequested, int(addressType), &exclude)
-	spew.Dump(ln)
+	// spew.Dump(ln)
 	return ln, err
 }
 
@@ -173,7 +175,6 @@ func AddressScanner() {
 }
 
 func GetUnconnAddr(count int) []api.Address {
-	fmt.Println("GetUnconnAddr hits")
 	addrs, err := findOnlineNodes(count, -2, nil)
 	// fmt.Println(len(addrs))
 	if err != nil {

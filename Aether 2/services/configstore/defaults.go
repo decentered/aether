@@ -25,7 +25,7 @@ const (
 	defaultTLSHandshakeTimeout                     = 1 * time.Second
 	defaultPingerPageSize                          = 100
 	defaultOnlineAddressFinderPageSize             = 99
-	defaultDispatchExclusionExpiryForLiveAddress   = 5 * time.Second // this is normally minute TODO
+	defaultDispatchExclusionExpiryForLiveAddress   = 3 * time.Minute // this is normally minute TODO
 	defaultDispatchExclusionExpiryForStaticAddress = 72 * time.Hour
 	defaultPowStrength                             = 20
 	defaultExternalIp                              = "0.0.0.0" // Localhost, if this is still 0.0.0.0 at any point in the future we failed at finding this out.
@@ -41,6 +41,7 @@ const (
 	defaultMaxInboundConns                         = 10
 	defaultMaxDbSizeMb                             = 10000
 	defaultVotesMemoryDays                         = 14
+	defaultBootstrapAfterOfflineMinutes            = 360
 )
 
 // Default entity page sizes
@@ -73,14 +74,4 @@ const (
 	defaultAddressManifestsPageSize    = 30000
 	// Manifests are all the same size, so they're all the same.
 
-)
-
-// Hardcoded version numbers specific to this build
-const (
-	clientVersionMajor   = 2
-	clientVersionMinor   = 0
-	clientVersionPatch   = 0
-	clientName           = "Aether"
-	protocolVersionMajor = 1
-	protocolVersionMinor = 0
 )

@@ -57,7 +57,7 @@ func Pinger(fullAddressesSlice []api.Address) []api.Address {
 			if globals.BackendTransientConfig.ShutdownInitiated {
 				break // Stop processing and return
 			}
-			logging.Log(3, fmt.Sprintf("Pinging the address at %#v:%d", addrs[j].Location, addrs[j].Port))
+			logging.Log(3, fmt.Sprintf("Pinging the address at %v:%d", addrs[j].Location, addrs[j].Port))
 			go Ping(addrs[j], outputChan)
 		}
 		var updatedAddresses []api.Address

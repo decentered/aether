@@ -24,7 +24,7 @@ import (
 // Check is the short routine that reaches out to a node to see if it is online, and if so, pull the node data. This returns an updated api.Address object. Sync logic uses check as a starting point.
 func Check(a api.Address) (api.Address, bool, api.ApiResponse, error) {
 	// if a.Location == "127.0.0.1" {
-	//  fmt.Printf("Check is being called for: %s:%d\n", a.Location, a.Port)
+	// 	fmt.Printf("Check is being called for: %s:%d\n", a.Location, a.Port)
 	// }
 	NODE_STATIC := false
 	/*
@@ -63,8 +63,10 @@ func Check(a api.Address) (api.Address, bool, api.ApiResponse, error) {
 		*/
 		return api.Address{}, NODE_STATIC, api.ApiResponse{}, errors.New(fmt.Sprintf("This node appears to have found itself through a loopback interface, or via calling its own IP. IP: %s:%d", a.Location, a.Port))
 	}
-	if apiResp.Address.Type == 255 {
+	if apiResp.Address.Type == 255 || apiResp.Address.Type == 254 {
 		NODE_STATIC = true
+		// 255: static node
+		// 254: static bootstrapper node
 	}
 	// if a.Location == "127.0.0.1" {
 	// 	fmt.Printf("Check made it through GET for: %s:%d\n", a.Location, a.Port)

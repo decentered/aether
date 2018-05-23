@@ -39,6 +39,7 @@ func init() {
 	var sigCheckEnabled bool
 	var powCheckEnabled bool
 	var pageSigCheckEnabled bool
+	var tlsEnabled bool
 	cmdOrchestrate.Flags().StringVarP(&orgName, "orgname", "", "Air Labs", "Global transient org name for the app.")
 	cmdOrchestrate.Flags().StringVarP(&appName, "appname", "", "Aether", "Global transient app name for the app.")
 	cmdOrchestrate.Flags().IntVarP(&loggingLevel, "logginglevel", "", 0, "Global logging level of the app.")
@@ -57,6 +58,7 @@ func init() {
 	cmdOrchestrate.Flags().BoolVarP(&sigCheckEnabled, "sigcheckenabled", "", true, "Setting this to false will disable signature checks on entities. True by default.")
 	cmdOrchestrate.Flags().BoolVarP(&powCheckEnabled, "powcheckenabled", "", true, "Setting this to false will disable signature checks on entities. True by default.")
 	cmdOrchestrate.Flags().BoolVarP(&pageSigCheckEnabled, "pagesigcheckenabled", "", true, "Setting this to false will disable page signature checks on pages. True by default.")
+	cmdOrchestrate.Flags().BoolVarP(&tlsEnabled, "tlsenabled", "", true, "Setting this to false will disable the TLS encryption layer in peer to peer connections. This is for debug purposes only, mainnet nodes will refuse to connect to or accept connections from any remote with TLS disabled.")
 	cmdRoot.AddCommand(cmdOrchestrate)
 }
 
@@ -71,7 +73,6 @@ var cmdOrchestrate = &cobra.Command{
 		persistence.CheckDatabaseReady()
 		showIntro()
 		// startup()
-		globals.BackendTransientConfig.DispatcherExclusions = make(map[*interface{}]time.Time)
 		// do things here
 		// If all of them are changed, or if none of them are changed, we're good. If SOME of them are changed, we crash.
 		if !((flags.bootstrapIp.changed && flags.bootstrapPort.changed && flags.bootstrapType.changed) || (!flags.bootstrapIp.changed && !flags.bootstrapPort.changed && !flags.bootstrapType.changed)) {
@@ -91,10 +92,11 @@ var cmdOrchestrate = &cobra.Command{
 			}
 			// First, verify external port, so that our metrics will report the right port.
 			// We just want to connect, pull and quit.
-			err := dispatch.Sync(addr)
+			err := dispatch.Sync(addr, []string{})
 			if err != nil {
 				logging.LogCrash(err)
 			}
+			// dispatch.Bootstrap()
 			logging.Log(2, fmt.Sprintf("We've gotten everything in the node %#v.", addr))
 		} else {
 			startSchedules()

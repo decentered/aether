@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	// "strconv"
+	"crypto/tls"
 	"time"
 )
 
@@ -92,7 +93,40 @@ func Serve() {
 				} else {
 					w.Write(jsonResp)
 				}
-
+			// TODO: bootstrappers - we should probably cache this.
+			case "/v0/bootstrappers", "/v0/bootstrappers/":
+				// Shortcut endpoints that returns bootstrap nodes that this particular node knows.
+				var resp api.ApiResponse
+				resp.Prefill()
+				// r := responsegenerator.GeneratePrefilledApiResponse()
+				// resp = *r
+				resp.Endpoint = "bootstrappers"
+				resp.Entity = "addresses"
+				// Get 20 addresses of type 3 (live bootstrap type) sorted by most recent localarrival and type 254 (static bootstrap type)
+				addrsLiveBootstrappers, err := persistence.ReadAddresses("", "", 0, 0, 0, 20, 0, 3, "limit")
+				if err != nil {
+					logging.Logf(1, "There was an error when we tried to read live bootstrapper addresses for the /bootstrappers endpoint. Error: %#v", err)
+				}
+				addrsStaticBootstrappers, err2 := persistence.ReadAddresses("", "", 0, 0, 0, 10, 0, 254, "limit")
+				if err2 != nil {
+					logging.Logf(1, "There was an error when we tried to read static bootstrapper addresses for the /bootstrappers endpoint. Error: %#v", err)
+				}
+				resp.ResponseBody.Addresses = append(addrsLiveBootstrappers, addrsStaticBootstrappers...)
+				resp.Timestamp = api.Timestamp(time.Now().Unix())
+				signingErr := resp.CreateSignature(globals.BackendConfig.GetBackendKeyPair())
+				if signingErr != nil {
+					logging.Log(1, fmt.Sprintf("This cache page failed to be page-signed. Error: %#v Page: %#v\n", signingErr, resp))
+				}
+				jsonResp, err := resp.ToJSON()
+				if err != nil {
+					logging.Log(1, errors.New(fmt.Sprintf("The response that was prepared to respond to this query failed to convert to JSON. Error: %#v\n", err)))
+				}
+				if len(jsonResp) == 0 {
+					w.WriteHeader(http.StatusBadRequest)
+					w.Write([]byte{})
+				} else {
+					w.Write(jsonResp)
+				}
 			default:
 				// TODO: Convert this into a whitelist. This should not respond to the random requests, only the endpoints. It also should not list directories.
 				http.ServeFile(w, r, fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), r.URL.Path))
@@ -172,8 +206,8 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/addresses", "/v0/addresses/":
-				resp, err := AddressesPOST(r)
+			case "/v0/c0/truststates", "/v0/c0/truststates/":
+				resp, err := TruststatesPOST(r)
 				if err != nil {
 					logging.Log(1, err)
 				}
@@ -184,8 +218,8 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/c0/truststates", "/v0/c0/truststates/":
-				resp, err := TruststatesPOST(r)
+			case "/v0/addresses", "/v0/addresses/":
+				resp, err := AddressesPOST(r)
 				if err != nil {
 					logging.Log(1, err)
 				}
@@ -208,10 +242,32 @@ func Serve() {
 	http.Handle("/", gzippedMainHandler)
 	port := globals.BackendConfig.GetExternalPort()
 	logging.Log(1, fmt.Sprintf("Serving setup complete. Starting to serve publicly on port %d", port))
-
-	err := http.ListenAndServe(fmt.Sprint(":", port), nil)
-	if err != nil {
-		logging.LogCrash(fmt.Sprintf("Server encountered a fatal error. Error: %s", err))
+	if globals.BackendTransientConfig.TLSEnabled {
+		certLoc := fmt.Sprintf("%s/cert.pem", globals.BackendConfig.GetUserDirectory())
+		keyLoc := fmt.Sprintf("%s/key.pem", globals.BackendConfig.GetUserDirectory())
+		tlsConfig := &tls.Config{
+			MinVersion:               tls.VersionTLS12,
+			CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
+			PreferServerCipherSuites: true,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				// Secure or die
+			},
+		}
+		srv := &http.Server{
+			TLSConfig: tlsConfig,
+			Addr:      fmt.Sprint(":", port),
+		}
+		// HSTS header is not set because node IP addresses are dynamic, and us setting HSTS for an address might mean the next user of that IP address might end up having trouble getting people to connect to it through non-TLS.
+		err := srv.ListenAndServeTLS(certLoc, keyLoc)
+		if err != nil {
+			logging.LogCrash(fmt.Sprintf("Server encountered a fatal error. Error: %s", err))
+		}
+	} else {
+		err := http.ListenAndServe(fmt.Sprint(":", port), nil)
+		if err != nil {
+			logging.LogCrash(fmt.Sprintf("Server encountered a fatal error. Error: %s", err))
+		}
 	}
 }
 

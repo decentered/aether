@@ -131,11 +131,8 @@ func isBlank(a api.Address) bool {
 }
 
 func connect(a api.Address) error {
-	// Set mutex
-	globals.BackendTransientConfig.ActiveOutbound.Lock()
-	defer globals.BackendTransientConfig.ActiveOutbound.Unlock()
 	// sync
-	err := Sync(a)
+	err := Sync(a, []string{})
 	if err != nil {
 		logging.Log(1, fmt.Sprintf("Sync failed. Address: %#v, Error: %#v", a, err))
 		return errors.Wrapf(err, "Sync failed. Address: %#v", a)
@@ -145,14 +142,14 @@ func connect(a api.Address) error {
 	addrIface := interface{}(a)
 	globals.BackendTransientConfig.DispatcherExclusions[&addrIface] = now
 	// Mark
-	switch a.Type {
-	case 2:
-		globals.BackendConfig.SetLastLiveAddressConnectionTimestamp(now.Unix())
-	case 3:
-		//globals.BackendConfig.SetLastLiveAddressConnectionTimestamp(now.Unix())
-	case 255:
-		globals.BackendConfig.SetLastStaticAddressConnectionTimestamp(now.Unix())
-	}
+	// switch a.Type {
+	// case 2:
+	// 	globals.BackendConfig.SetLastLiveAddressConnectionTimestamp(now.Unix())
+	// case 3, 254:
+	// 	globals.BackendConfig.SetLastBootstrapAddressConnectionTimestamp(now.Unix())
+	// case 255:
+	// 	globals.BackendConfig.SetLastStaticAddressConnectionTimestamp(now.Unix())
+	// }
 	globals.BackendTransientConfig.NeighboursList.Push(string(a.Location), string(a.Sublocation), a.Port)
 	return nil
 }

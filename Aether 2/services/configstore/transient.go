@@ -91,8 +91,6 @@ This is set when the shutdown of the backend service is initiated. The processes
 ## DispatcherExclusions
 This is the temporary exclusions for the dispatcher. When you connect to a node, that node is placed in the exclusions list for a while, so that you don't repeatedly keep connecting back to that node again.
 
-## StopStaticDispatcherCycle
-This is the channel to send the message to when you want to stop the static dispatcher repeated task.
 
 ## StopAddressScannerCycle
 This is the channel to send the message to when you want to stop the address scanner repeated task.
@@ -141,6 +139,9 @@ Our list of neighbours that we are checking in with at given intervals.
 
 # Bouncer
 Bouncer controls the inbound and outbound connections. This is the library that starts to refuse connections if the node gets too busy.
+
+# ExplorerTick
+Explorer does different things based on modulus of the tick. Explorer uses this ticker and resets it appropriately whenever it deems its threshold has passed.
 */
 
 type BackendTransientConfig struct {
@@ -154,8 +155,8 @@ type BackendTransientConfig struct {
 	SwarmNodeId               int
 	ShutdownInitiated         bool
 	DispatcherExclusions      map[*interface{}]time.Time
-	StopLiveDispatcherCycle   chan bool
-	StopStaticDispatcherCycle chan bool
+	StopNeighbourhoodCycle    chan bool
+	StopExplorerCycle         chan bool
 	StopAddressScannerCycle   chan bool
 	StopUPNPCycle             chan bool
 	StopCacheGenerationCycle  chan bool
@@ -173,6 +174,8 @@ type BackendTransientConfig struct {
 	POSTResponseRepo          POSTResponseRepo // empty at start, empty at every app start
 	NeighboursList            NeighboursList
 	Bouncer                   Bouncer
+	ExplorerTick              int
+	TLSEnabled                bool
 }
 
 // Set transient backend config defaults. Only need to set defaults that are not the type default.
@@ -185,10 +188,18 @@ func (config *BackendTransientConfig) SetDefaults() {
 	config.AppIdentifier = "Aether"
 	config.OrgIdentifier = "Air Labs"
 	config.ConfigMutex = &sync.Mutex{}
-	config.FingerprintCheckEnabled = true
-	config.SignatureCheckEnabled = true
-	config.ProofOfWorkCheckEnabled = true
-	config.PageSignatureCheckEnabled = true
+	config.TLSEnabled = true
+	// config.FingerprintCheckEnabled = true
+	// config.SignatureCheckEnabled = true
+	// config.ProofOfWorkCheckEnabled = true
+	// config.PageSignatureCheckEnabled = true
+
+	config.DispatcherExclusions = make(map[*interface{}]time.Time)
+	config.FingerprintCheckEnabled = false
+	config.SignatureCheckEnabled = false
+	config.ProofOfWorkCheckEnabled = false
+	config.PageSignatureCheckEnabled = false
+
 	ev := EntityVersions{
 		Board:      defaultBoardEntityVersion,
 		Thread:     defaultThreadEntityVersion,

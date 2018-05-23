@@ -319,6 +319,7 @@ type InsertMetrics struct {
 	TruststatesDBCommitTime        float64
 	AddressesReceived              int
 	AddressesDBCommitTime          float64
+	MultipleInsertDBCommitTime     float64
 	TimeElapsedSeconds             int
 }
 
@@ -340,6 +341,7 @@ func (im *InsertMetrics) Add(im2 InsertMetrics) {
 	im.TruststatesDBCommitTime = im.TruststatesDBCommitTime + im2.TruststatesDBCommitTime
 	im.AddressesReceived = im.AddressesReceived + im2.AddressesReceived
 	im.AddressesDBCommitTime = im.AddressesDBCommitTime + im2.AddressesDBCommitTime
+	im.MultipleInsertDBCommitTime = im.MultipleInsertDBCommitTime + im2.MultipleInsertDBCommitTime
 	im.TimeElapsedSeconds = im.TimeElapsedSeconds + im2.TimeElapsedSeconds
 }
 
@@ -622,7 +624,8 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 		return err2
 	}
 	elapsed := time.Since(start)
-	if len(insertType) == 1 { // If this is a multiple insert, I won't save the time it takes, because we don't know which part takes the most time.
+	if len(insertType) == 1 ||
+		(len(insertType) == 2 && toolbox.IndexOf("dbBoard", insertType) != -1 && toolbox.IndexOf("dbBoardOwner", insertType) != -1) { // If this is a multiple insert, I won't save the time it takes, because we don't know which part takes the most time.
 		if insertType[0] == "dbBoard" {
 			im.BoardsDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
 		} else if insertType[0] == "dbThread" {
@@ -637,9 +640,15 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 			im.TruststatesDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
 		} else if insertType[0] == "dbAddress" {
 			im.AddressesDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
-		} else if insertType[0] == "dbBoardOwner" {
-			im.BoardOwnerDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
 		}
+		// else if insertType[0] == "dbBoardOwner" {
+		// 	im.BoardOwnerDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
+		// }
+	} else if len(insertType) > 1 {
+		fmt.Println("this insert has multiple types")
+		fmt.Println(insertType)
+		// Multiple insert - save it to multiple insert time.
+		im.MultipleInsertDBCommitTime = toolbox.Round(elapsed.Seconds(), 0.1)
 	}
 	return nil
 }

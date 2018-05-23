@@ -10,6 +10,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"time"
 )
 
 func Round(x, unit float64) float64 {
@@ -84,8 +85,8 @@ func Trace() string {
 }
 
 func DeleteFromDisk(path string) {
-	return
-	fmt.Printf("DeleteFromDisk called for the path %#v\n", path)
+	// return
+	// fmt.Printf("DeleteFromDisk called for the path %#v\n", path)
 	err := os.RemoveAll(path)
 	if err != nil {
 		panic(err)
@@ -129,4 +130,16 @@ func GetInsecureRands(max, count int) []int {
 		}
 	}
 	return ints
+}
+
+func CnvToCutoff(days int) int64 {
+	return int64(time.Now().Add(-(time.Duration(days) * time.Hour * time.Duration(24))).Unix())
+}
+
+func FileExists(filePath string) bool {
+	fileInfo, _ := os.Stat(filePath)
+	if fileInfo == nil {
+		return false
+	}
+	return true
 }

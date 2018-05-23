@@ -244,6 +244,7 @@ type Truststate struct { // Mutables: Type, Domains, Expiry, Meta
 
 type BoardIndex struct {
 	Fingerprint   Fingerprint `json:"fingerprint"`
+	Owner         Fingerprint `json:",omitempty"`
 	Creation      Timestamp   `json:"creation"`
 	LastUpdate    Timestamp   `json:"last_update"`
 	EntityVersion int         `json:"entity_version"`
@@ -252,6 +253,7 @@ type BoardIndex struct {
 
 type ThreadIndex struct {
 	Fingerprint   Fingerprint `json:"fingerprint"`
+	Owner         Fingerprint `json:",omitempty"`
 	Board         Fingerprint `json:"board"`
 	Creation      Timestamp   `json:"creation"`
 	LastUpdate    Timestamp   `json:"last_update"`
@@ -261,8 +263,10 @@ type ThreadIndex struct {
 
 type PostIndex struct {
 	Fingerprint   Fingerprint `json:"fingerprint"`
+	Owner         Fingerprint `json:",omitempty"`
 	Board         Fingerprint `json:"board"`
 	Thread        Fingerprint `json:"thread"`
+	Parent        Fingerprint `json:",omitempty"`
 	Creation      Timestamp   `json:"creation"`
 	LastUpdate    Timestamp   `json:"last_update"`
 	EntityVersion int         `json:"entity_version"`
@@ -271,6 +275,7 @@ type PostIndex struct {
 
 type VoteIndex struct {
 	Fingerprint   Fingerprint `json:"fingerprint"`
+	Owner         Fingerprint `json:",omitempty"`
 	Board         Fingerprint `json:"board"`
 	Thread        Fingerprint `json:"thread"`
 	Target        Fingerprint `json:"target"`
@@ -292,12 +297,97 @@ type KeyIndex struct {
 
 type TruststateIndex struct {
 	Fingerprint   Fingerprint `json:"fingerprint"`
+	Owner         Fingerprint `json:",omitempty"`
 	Target        Fingerprint `json:"target"`
 	Creation      Timestamp   `json:"creation"`
 	LastUpdate    Timestamp   `json:"last_update"`
 	EntityVersion int         `json:"entity_version"`
 	PageNumber    int         `json:"page_number"`
 }
+
+// Index interfaces
+
+type ProvableIndex interface {
+	GetFingerprint() Fingerprint
+	GetEntityType() string
+	GetCreation() Timestamp
+	GetLastUpdate() Timestamp
+	GetLastModified() Timestamp
+	GetOwner() Fingerprint
+	IsIndex() bool // We don't want other inter things that aren't indexes to satisfy this interface.
+}
+
+// Fingerprint accessors
+
+func (entity *BoardIndex) GetFingerprint() Fingerprint      { return entity.Fingerprint }
+func (entity *ThreadIndex) GetFingerprint() Fingerprint     { return entity.Fingerprint }
+func (entity *PostIndex) GetFingerprint() Fingerprint       { return entity.Fingerprint }
+func (entity *VoteIndex) GetFingerprint() Fingerprint       { return entity.Fingerprint }
+func (entity *KeyIndex) GetFingerprint() Fingerprint        { return entity.Fingerprint }
+func (entity *TruststateIndex) GetFingerprint() Fingerprint { return entity.Fingerprint }
+
+// LastUpdate accessors
+
+func (entity *BoardIndex) GetLastUpdate() Timestamp      { return entity.LastUpdate }
+func (entity *ThreadIndex) GetLastUpdate() Timestamp     { return entity.LastUpdate }
+func (entity *PostIndex) GetLastUpdate() Timestamp       { return entity.LastUpdate }
+func (entity *VoteIndex) GetLastUpdate() Timestamp       { return entity.LastUpdate }
+func (entity *KeyIndex) GetLastUpdate() Timestamp        { return entity.LastUpdate }
+func (entity *TruststateIndex) GetLastUpdate() Timestamp { return entity.LastUpdate }
+
+// Creation accessors
+
+func (entity *BoardIndex) GetCreation() Timestamp      { return entity.Creation }
+func (entity *ThreadIndex) GetCreation() Timestamp     { return entity.Creation }
+func (entity *PostIndex) GetCreation() Timestamp       { return entity.Creation }
+func (entity *VoteIndex) GetCreation() Timestamp       { return entity.Creation }
+func (entity *KeyIndex) GetCreation() Timestamp        { return entity.Creation }
+func (entity *TruststateIndex) GetCreation() Timestamp { return entity.Creation }
+
+// EntityType accessors
+
+func (entity *BoardIndex) GetEntityType() string      { return "board" }
+func (entity *ThreadIndex) GetEntityType() string     { return "thread" }
+func (entity *PostIndex) GetEntityType() string       { return "post" }
+func (entity *VoteIndex) GetEntityType() string       { return "vote" }
+func (entity *KeyIndex) GetEntityType() string        { return "key" }
+func (entity *TruststateIndex) GetEntityType() string { return "truststate" }
+func (entity *AddressIndex) GetEntityType() string    { return "address" }
+
+// LastModified accessors (LM: the larger of creation / lastupdate)
+
+func glmIndex(entity ProvableIndex) Timestamp {
+	if entity.GetCreation() > entity.GetLastUpdate() {
+		return entity.GetCreation()
+	} else {
+		return entity.GetLastUpdate()
+	}
+}
+
+func (entity *BoardIndex) GetLastModified() Timestamp      { return glmIndex(entity) }
+func (entity *ThreadIndex) GetLastModified() Timestamp     { return glmIndex(entity) }
+func (entity *PostIndex) GetLastModified() Timestamp       { return glmIndex(entity) }
+func (entity *VoteIndex) GetLastModified() Timestamp       { return glmIndex(entity) }
+func (entity *KeyIndex) GetLastModified() Timestamp        { return glmIndex(entity) }
+func (entity *TruststateIndex) GetLastModified() Timestamp { return glmIndex(entity) }
+
+// IsIndex accessors
+
+func (entity *BoardIndex) IsIndex() bool      { return true }
+func (entity *ThreadIndex) IsIndex() bool     { return true }
+func (entity *PostIndex) IsIndex() bool       { return true }
+func (entity *VoteIndex) IsIndex() bool       { return true }
+func (entity *KeyIndex) IsIndex() bool        { return true }
+func (entity *TruststateIndex) IsIndex() bool { return true }
+
+// GetOwner accessors
+
+func (entity *BoardIndex) GetOwner() Fingerprint      { return entity.Owner }
+func (entity *ThreadIndex) GetOwner() Fingerprint     { return entity.Owner }
+func (entity *PostIndex) GetOwner() Fingerprint       { return entity.Owner }
+func (entity *VoteIndex) GetOwner() Fingerprint       { return entity.Owner }
+func (entity *KeyIndex) GetOwner() Fingerprint        { return entity.Fingerprint }
+func (entity *TruststateIndex) GetOwner() Fingerprint { return entity.Owner }
 
 // Response types
 
@@ -551,6 +641,9 @@ type Provable interface {
 	Encryptable
 	GetOwner() Fingerprint
 	GetLastUpdate() Timestamp
+	GetCreation() Timestamp
+	GetEntityType() string
+	GetLastModified() Timestamp
 }
 
 type Updateable interface {
@@ -593,6 +686,42 @@ func (entity *Post) GetLastUpdate() Timestamp       { return entity.LastUpdate }
 func (entity *Vote) GetLastUpdate() Timestamp       { return entity.LastUpdate }
 func (entity *Key) GetLastUpdate() Timestamp        { return entity.LastUpdate }
 func (entity *Truststate) GetLastUpdate() Timestamp { return entity.LastUpdate }
+
+// Creation accessors
+
+func (entity *Board) GetCreation() Timestamp      { return entity.Creation }
+func (entity *Thread) GetCreation() Timestamp     { return entity.Creation }
+func (entity *Post) GetCreation() Timestamp       { return entity.Creation }
+func (entity *Vote) GetCreation() Timestamp       { return entity.Creation }
+func (entity *Key) GetCreation() Timestamp        { return entity.Creation }
+func (entity *Truststate) GetCreation() Timestamp { return entity.Creation }
+
+// EntityType accessors
+
+func (entity *Board) GetEntityType() string      { return "board" }
+func (entity *Thread) GetEntityType() string     { return "thread" }
+func (entity *Post) GetEntityType() string       { return "post" }
+func (entity *Vote) GetEntityType() string       { return "vote" }
+func (entity *Key) GetEntityType() string        { return "key" }
+func (entity *Truststate) GetEntityType() string { return "truststate" }
+func (entity *Address) GetEntityType() string    { return "address" }
+
+// LastModified accessors (LM: the larger of creation / lastupdate)
+
+func glm(entity Provable) Timestamp {
+	if entity.GetCreation() > entity.GetLastUpdate() {
+		return entity.GetCreation()
+	} else {
+		return entity.GetLastUpdate()
+	}
+}
+
+func (entity *Board) GetLastModified() Timestamp      { return glm(entity) }
+func (entity *Thread) GetLastModified() Timestamp     { return glm(entity) }
+func (entity *Post) GetLastModified() Timestamp       { return glm(entity) }
+func (entity *Vote) GetLastModified() Timestamp       { return glm(entity) }
+func (entity *Key) GetLastModified() Timestamp        { return glm(entity) }
+func (entity *Truststate) GetLastModified() Timestamp { return glm(entity) }
 
 // Signature accessors
 
@@ -778,5 +907,174 @@ func (r *Response) Insert(r2 *Response) {
 		r.MostRecentSourceTimestamp = r2.MostRecentSourceTimestamp
 	} else {
 		r.MostRecentSourceTimestamp = r.MostRecentSourceTimestamp
+	}
+}
+
+func (r *Response) IndexOf(item Provable) int {
+	switch entity := item.(type) {
+	case *Board:
+		for key, _ := range r.Boards {
+			if r.Boards[key].Fingerprint == entity.Fingerprint {
+				return key
+			}
+		}
+	case *Thread:
+		for key, _ := range r.Threads {
+			if r.Threads[key].Fingerprint == entity.Fingerprint {
+				return key
+			}
+		}
+	case *Post:
+		for key, _ := range r.Posts {
+			if r.Posts[key].Fingerprint == entity.Fingerprint {
+				return key
+			}
+		}
+	case *Vote:
+		for key, _ := range r.Votes {
+			if r.Votes[key].Fingerprint == entity.Fingerprint {
+				return key
+			}
+		}
+	case *Key:
+		for key, _ := range r.Keys {
+			if r.Keys[key].Fingerprint == entity.Fingerprint {
+				return key
+			}
+		}
+	case *Truststate:
+		for key, _ := range r.Truststates {
+			if r.Truststates[key].Fingerprint == entity.Fingerprint {
+				return key
+			}
+		}
+	}
+	return -1
+}
+
+func (r *Response) RemoveByIndex(i int, entityType string) {
+	if i == -1 {
+		return
+	}
+	switch entityType {
+	case "board":
+		if len(r.Boards) > i { // i:5, len(boards): 5, fails. because boards[5] is out of bounds.
+			r.Boards = append(r.Boards[0:i], r.Boards[i+1:len(r.Boards)]...)
+		}
+	case "thread":
+		if len(r.Threads) > i {
+			r.Threads = append(r.Threads[0:i], r.Threads[i+1:len(r.Threads)]...)
+		}
+	case "post":
+		if len(r.Posts) > i {
+			r.Posts = append(r.Posts[0:i], r.Posts[i+1:len(r.Posts)]...)
+		}
+	case "vote":
+		if len(r.Votes) > i {
+			r.Votes = append(r.Votes[0:i], r.Votes[i+1:len(r.Votes)]...)
+		}
+	case "key":
+		if len(r.Keys) > i {
+			r.Keys = append(r.Keys[0:i], r.Keys[i+1:len(r.Keys)]...)
+		}
+	case "truststate":
+		if len(r.Truststates) > i {
+			r.Truststates = append(r.Truststates[0:i], r.Truststates[i+1:len(r.Truststates)]...)
+		}
+	default:
+		logging.LogCrash(fmt.Sprintf("You gave Response.RemoveByIndex an unknown entity type. You gave: %s", entityType))
+	}
+}
+
+func isInIndexSlice(idx int, idxs []int) bool {
+	for key, _ := range idxs {
+		if idx == idxs[key] {
+			idxs = append(idxs[0:key], idxs[key+1:len(idxs)]...)
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Response) MassRemoveByIndex(idxs []int, entityType string) {
+	if len(idxs) == 0 {
+		return
+	}
+	switch entityType {
+	case "board":
+		if len(r.Boards) == len(idxs) {
+			// There is no way any entities will remain unless indexes are nonexistent.
+			r.Boards = []Board{}
+			return
+		}
+		retained := []Board{}
+		for key, _ := range r.Boards {
+			if !isInIndexSlice(key, idxs) {
+				retained = append(retained, r.Boards[key])
+			}
+		}
+		r.Boards = retained
+	case "thread":
+		if len(r.Threads) == len(idxs) {
+			r.Threads = []Thread{}
+			return
+		}
+		retained := []Thread{}
+		for key, _ := range r.Threads {
+			if !isInIndexSlice(key, idxs) {
+				retained = append(retained, r.Threads[key])
+			}
+		}
+		r.Threads = retained
+	case "post":
+		if len(r.Posts) == len(idxs) {
+			r.Posts = []Post{}
+			return
+		}
+		retained := []Post{}
+		for key, _ := range r.Posts {
+			if !isInIndexSlice(key, idxs) {
+				retained = append(retained, r.Posts[key])
+			}
+		}
+		r.Posts = retained
+	case "vote":
+		if len(r.Votes) == len(idxs) {
+			r.Votes = []Vote{}
+			return
+		}
+		retained := []Vote{}
+		for key, _ := range r.Votes {
+			if !isInIndexSlice(key, idxs) {
+				retained = append(retained, r.Votes[key])
+			}
+		}
+		r.Votes = retained
+	case "key":
+		if len(r.Keys) == len(idxs) {
+			r.Keys = []Key{}
+			return
+		}
+		retained := []Key{}
+		for key, _ := range r.Keys {
+			if !isInIndexSlice(key, idxs) {
+				retained = append(retained, r.Keys[key])
+			}
+		}
+		r.Keys = retained
+	case "truststate":
+		if len(r.Truststates) == len(idxs) {
+			r.Truststates = []Truststate{}
+			return
+		}
+		retained := []Truststate{}
+		for key, _ := range r.Truststates {
+			if !isInIndexSlice(key, idxs) {
+				retained = append(retained, r.Truststates[key])
+			}
+		}
+		r.Truststates = retained
+	default:
+		logging.LogCrash(fmt.Sprintf("You gave Response.RemoveByIndex an unknown entity type. You gave: %s", entityType))
 	}
 }

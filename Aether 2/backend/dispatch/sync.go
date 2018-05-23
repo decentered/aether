@@ -7,7 +7,7 @@ import (
 	// "aether-core/backend/responsegenerator"
 	"aether-core/io/api"
 	"aether-core/io/persistence"
-	// "aether-core/services/globals"
+	"aether-core/services/globals"
 	"aether-core/services/logging"
 	tb "aether-core/services/toolbox"
 	// "aether-core/services/verify"
@@ -23,7 +23,10 @@ import (
 )
 
 // Sync is the core logic of a single connection. It pulls updates from a remote node and patches it to the current node.
-func Sync(a api.Address) error {
+func Sync(a api.Address, lineup []string) error {
+	// Set mutex
+	globals.BackendTransientConfig.ActiveOutbound.Lock()
+	defer globals.BackendTransientConfig.ActiveOutbound.Unlock()
 	// --------------------
 	// Steps
 	// - Fetch /status GET to see if the node is online.
@@ -39,6 +42,9 @@ func Sync(a api.Address) error {
 	if err != nil {
 		return err
 	}
+
+	// Establish purgatory. This is where we keep received items that are older than our network head. At the end of the sync, we will take a look at those items and determine if they're ancestor of something that arrived in the sync. If so, we'll insert them as the last step of the sync. If not so, we'll discard them.
+	p := Purgatory{}
 
 	// FULLY TRUSTED ADDRESS ENTRY
 	// Anything here will be committed in and will write over existing data, since all of this data is either coming from a first-party remote, or from the client.
@@ -91,7 +97,7 @@ func Sync(a api.Address) error {
 	logging.Log(2, fmt.Sprintf("Endpoints: %#v", endpoints))
 	ims := []persistence.InsertMetrics{}
 	// callOrder := []string{"addresses", "votes", "truststates", "posts", "threads", "boards", "keys"}
-	callOrder := constructCallOrder(addr)
+	callOrder := constructCallOrder(addr, lineup)
 	for _, endpointName := range callOrder {
 		satiated := false
 		fmt.Println(endpointName)
@@ -124,6 +130,17 @@ func Sync(a api.Address) error {
 		}
 		if !satiated {
 			start := time.Now()
+			if globals.BackendConfig.GetScaledMode() {
+				/*
+					First check if we're in the scaled mode. If so, skip this part - we'll only sync addresses until we're out of the scaled mode.
+					Why?
+					Scaled mode means that the node is under so much disk pressure that the event horizon (the threshold of history deletion that can move forwards or backwards in time) has touched the network head, which renders this node one that is not able to provide a full network head to its peers. In the future, in this mode the node will switch to a mode where it only tracks the boards and people followed by its users, but for now, it temporarily stops accepting new content until the network head moves far enough ahead that event horizon can reduce the DB size to under maximum allowable.
+					To prepare for that moment, though, we keep updating the addresses tables. Since that table is limited to 1000 addresses, it takes up a constant space.
+					(This also appropriately skips setting up the timestamps, so that it won't set timestamps for things that it did not sync.)
+				*/
+				logging.Logf(1, "This node is in scaled mode, so it's skipping sync with this remote. Remote: %s:%d", a.Location, a.Port)
+				continue
+			}
 			// // GET
 			// Do an endpoint GET with the timestamp. (Mind that the timestamp is being provided into the GetEndpoint, it will only fetch stuff after that timestamp.)
 			logging.Log(2, fmt.Sprintf("Asking for entity type: %s", endpointName))
@@ -138,6 +155,7 @@ func Sync(a api.Address) error {
 			if len(resp.Addresses) > 100 {
 				resp.Addresses = resp.Addresses[0:100]
 			}
+			p.Filter(&resp) // Filter through purgatory. Older items will be held in purgatory and removed from the resp. At the end of the sync, we'll deal with the items in the purgatory.
 			iface := prepareForBatchInsert(&resp)
 			// Save the response to the database.
 			im, err := persistence.BatchInsert(*iface)
@@ -182,6 +200,7 @@ func Sync(a api.Address) error {
 			var elapsed time.Duration
 			postResp, timeToFirstResponse, err := api.GetPOSTEndpoint(string(a.Location), string(a.Sublocation), a.Port, endpointName, endpoints[endpointName])
 			elapsed = time.Since(start)
+			p.Filter(&postResp)
 			postIface := prepareForBatchInsert(&postResp)
 			im, err := persistence.BatchInsert(*postIface)
 			if err != nil {
@@ -232,6 +251,15 @@ func Sync(a api.Address) error {
 			}
 		}
 	}
+	// Here, after all the endpoint pulls are complete, we process the purgatory and commit it separately.
+	iface := p.Process()
+	// Save the response to the database.
+	im, err := persistence.BatchInsert(iface)
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	ims = append(ims, im)
+	// Purgatory end.
 	logging.Log(2, fmt.Sprintf("SYNC:PULL COMPLETE with data from node: %s:%d", a.Location, a.Port))
 	// Both POST and GETs are committed into the database. We now need to save the Node LastCheckin timestamps into the database.
 	n.BoardsLastCheckin = endpoints["boards"]
@@ -260,6 +288,15 @@ func Sync(a api.Address) error {
 	logging.Log(1, generateCloseMessage(c, closeClr, &ims, int(time.Since(start).Seconds()), true))
 	// Send the connection state to the metrics server.
 	metrics.SendConnState(addr, false, firstSync, &ims)
+	// Insert the appropriate markers to the config
+	switch addr.Type {
+	case 2:
+		globals.BackendConfig.SetLastLiveAddressConnectionTimestamp(time.Now().Unix())
+	case 3, 254:
+		globals.BackendConfig.SetLastBootstrapAddressConnectionTimestamp(time.Now().Unix())
+	case 255:
+		globals.BackendConfig.SetLastStaticAddressConnectionTimestamp(time.Now().Unix())
+	}
 	return nil
 }
 
@@ -269,28 +306,38 @@ Internal functions
 //////////
 */
 
-func constructCallOrder(remote api.Address) []string {
+func constructCallOrder(remote api.Address, lineup []string) []string {
 	// All mim nodes support addresses to enable proper protocol function.
 	supported := []string{"addresses"}
+	if len(lineup) == 0 {
+		// If not specified, all entities are allowed. FUTURE: This needs to read from a central somewhere else — otherwise when we add a new entity, we're going to forget adding it here and it's gonna be a lot of unnecessary pain to find it out. TODO eventually
+		lineup = []string{"vote", "truststate", "post", "thread", "board", "key"}
+	}
 	availableSubprots := remote.Protocol.Subprotocols
 	for _, val := range availableSubprots {
 		if val.Name == "c0" {
-			if tb.IndexOf(tb.Singular("votes"), val.SupportedEntities) != -1 {
+			if tb.IndexOf(tb.Singular("votes"), val.SupportedEntities) != -1 &&
+				tb.IndexOf("vote", lineup) != -1 {
 				supported = append(supported, "votes")
 			}
-			if tb.IndexOf(tb.Singular("truststates"), val.SupportedEntities) != -1 {
+			if tb.IndexOf(tb.Singular("truststates"), val.SupportedEntities) != -1 &&
+				tb.IndexOf("truststate", lineup) != -1 {
 				supported = append(supported, "truststates")
 			}
-			if tb.IndexOf(tb.Singular("posts"), val.SupportedEntities) != -1 {
+			if tb.IndexOf(tb.Singular("posts"), val.SupportedEntities) != -1 &&
+				tb.IndexOf("post", lineup) != -1 {
 				supported = append(supported, "posts")
 			}
-			if tb.IndexOf(tb.Singular("threads"), val.SupportedEntities) != -1 {
+			if tb.IndexOf(tb.Singular("threads"), val.SupportedEntities) != -1 &&
+				tb.IndexOf("thread", lineup) != -1 {
 				supported = append(supported, "threads")
 			}
-			if tb.IndexOf(tb.Singular("boards"), val.SupportedEntities) != -1 {
+			if tb.IndexOf(tb.Singular("boards"), val.SupportedEntities) != -1 &&
+				tb.IndexOf("board", lineup) != -1 {
 				supported = append(supported, "boards")
 			}
-			if tb.IndexOf(tb.Singular("keys"), val.SupportedEntities) != -1 {
+			if tb.IndexOf(tb.Singular("keys"), val.SupportedEntities) != -1 &&
+				tb.IndexOf("key", lineup) != -1 {
 				supported = append(supported, "keys")
 			}
 		}
@@ -300,9 +347,6 @@ func constructCallOrder(remote api.Address) []string {
 
 // prepareForBatchInsert verifies the items in this response container, and converts it to the correct form BatchInsert accepts.
 func prepareForBatchInsert(r *api.Response) *[]interface{} {
-	// // cleanedResp := verify.VerifyEntitiesInResponse(r)
-	// cleanedResp := verify.BatchVerify(r)
-	// resp := *cleanedResp
 	resp := *r
 	var carrier []interface{}
 	for i, _ := range resp.Boards {
@@ -317,14 +361,14 @@ func prepareForBatchInsert(r *api.Response) *[]interface{} {
 	for i, _ := range resp.Votes {
 		carrier = append(carrier, resp.Votes[i])
 	}
-	for i, _ := range resp.Addresses {
-		carrier = append(carrier, resp.Addresses[i])
-	}
 	for i, _ := range resp.Keys {
 		carrier = append(carrier, resp.Keys[i])
 	}
 	for i, _ := range resp.Truststates {
 		carrier = append(carrier, resp.Truststates[i])
+	}
+	for i, _ := range resp.Addresses {
+		carrier = append(carrier, resp.Addresses[i])
 	}
 	return &carrier
 }

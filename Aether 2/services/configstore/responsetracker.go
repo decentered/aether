@@ -197,7 +197,7 @@ func (r *POSTResponseRepo) GetPostResponseChain(start Timestamp, end Timestamp, 
 		}
 	}
 	count := collectCounts(chain)
-	fmt.Printf("This is the chain count we've found. Chain: %v, Count: %v\n", chain, count)
+	// fmt.Printf("This is the chain count we've found. Chain: %v, Count: %v\n", chain, count)
 	return &chain, firstLinkStartsFrom, lastLinkEndsAt, count
 }
 

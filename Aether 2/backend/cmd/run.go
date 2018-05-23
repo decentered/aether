@@ -41,36 +41,36 @@ This will do three main things:
 		persistence.CheckDatabaseReady()
 		startSchedules()
 		// Allocate the dispatcher exclusions list.
-		globals.BackendTransientConfig.DispatcherExclusions = make(map[*interface{}]time.Time)
 		server.Serve()
 		shutdown()
 	},
 }
 
 func startSchedules() {
+	// logging.Logf(1, "UserDir: %v", globals.BackendConfig.GetUserDirectory())
 	logging.Log(1, "Setting up cyclical tasks is starting.")
 	defer logging.Log(1, "Setting up cyclical tasks is complete.")
 	/*
 		Ordered by initial delay:
 		Verify external port: T+0 	(immediately)
-		Live dispatcher 			T+0: 	(immediately)
+		Neighbourhood dispatcher 			T+0: 	(immediately)
+
 		UPNP Port mapper: 		T+0 	(immediately)
-		Address Scanner: 			T+10m
-		Static dispatcher: 		T+20m
+		Explorer dispatcher 			T+10:
+		Address Scanner: 			T+15m
 		Cache generator: 			T+30m
 	*/
 	// Before doing anything, you need to validate the external port. This function takes a second or so, and it needs to block the runtime execution because if two routines call it separately, it causes a race condition. After the first initialisation, however, this function becomes safe for concurrent use.
 	ports.VerifyExternalPort()
-	// The dispatcher that seeks live nodes runs every minute.
-	// globals.BackendTransientConfig.StopLiveDispatcherCycle = scheduling.ScheduleRepeat(func() { dispatch.Dispatcher(2) }, 20*time.Second, time.Duration(0))
-	globals.BackendTransientConfig.StopLiveDispatcherCycle = scheduling.ScheduleRepeat(func() { dispatch.NeighbourWatch() }, 20*time.Second, time.Duration(0))
-
 	// UPNP tries to port map every 10 minutes. TODO reenable
 	// globals.BackendTransientConfig.StopUPNPCycle = scheduling.ScheduleRepeat(func() { upnp.MapPort() }, 10*time.Minute, time.Duration(0))
+	dispatch.Bootstrap() // This will run only if needed.
+	// The dispatcher that seeks live nodes runs every minute.
+	globals.BackendTransientConfig.StopNeighbourhoodCycle = scheduling.ScheduleRepeat(func() { dispatch.NeighbourWatch() }, 20*time.Second, time.Duration(0))
+	globals.BackendTransientConfig.StopExplorerCycle = scheduling.ScheduleRepeat(func() { dispatch.Explore() }, 10*time.Minute, time.Duration(10)*time.Minute)
+
 	// Address scanner goes through all prior unconnected addresses and attempts to connect to them to establish a relationship. It starts 30 minutes after a node is started, so that the node will actually have a chance to collect some addresses to check.
-	globals.BackendTransientConfig.StopAddressScannerCycle = scheduling.ScheduleRepeat(func() { dispatch.AddressScanner() }, 2*time.Hour, time.Duration(10)*time.Minute)
-	// The dispatcher that seeks static nodes runs every hour.
-	// globals.BackendTransientConfig.StopStaticDispatcherCycle = scheduling.ScheduleRepeat(func() { dispatch.Dispatcher(255) }, 10*time.Minute, time.Duration(20)*time.Minute)
+	globals.BackendTransientConfig.StopAddressScannerCycle = scheduling.ScheduleRepeat(func() { dispatch.AddressScanner() }, 2*time.Hour, time.Duration(15)*time.Minute)
 	// Attempt cache generation every hour, but it will be pre-empted if the last cache generation is less than 23 hours old, and if the node is not tracking the head. So that this will run effectively every day, only.
 	globals.BackendTransientConfig.StopCacheGenerationCycle = scheduling.ScheduleRepeat(func() { responsegenerator.GenerateCaches() }, 1*time.Hour, time.Duration(30)*time.Minute)
 }
@@ -78,8 +78,8 @@ func startSchedules() {
 func shutdown() {
 	logging.Log(1, "Shutdown initiated. Stopping all scheduled tasks and routines...")
 	globals.BackendTransientConfig.ShutdownInitiated = true
-	globals.BackendTransientConfig.StopLiveDispatcherCycle <- true // Send true through the channel to stop the dispatch.
-	// globals.BackendTransientConfig.StopStaticDispatcherCycle <- true
+	globals.BackendTransientConfig.StopNeighbourhoodCycle <- true // Send true through the channel to stop the dispatch.
+	globals.BackendTransientConfig.StopExplorerCycle <- true      // Send true through the channel to stop the dispatch.
 	globals.BackendTransientConfig.StopAddressScannerCycle <- true
 	// globals.BackendTransientConfig.StopUPNPCycle <- true // upnp is disabled, reenable both when it's back
 	globals.BackendTransientConfig.StopCacheGenerationCycle <- true

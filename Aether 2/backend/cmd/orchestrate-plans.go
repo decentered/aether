@@ -54,7 +54,7 @@ func selectCmdFunc(str string, plan PlanCommand) func() {
 		clr := color.New(color.FgYellow)
 		logging.Log(1, clr.Sprintf("Starting the sync with the address: %s:%d now. (Forced)", plan.ToIp, plan.ToPort))
 		addr := constructCallAddress(api.Location(plan.ToIp), plan.ToPort, plan.ToType)
-		dispatch.Sync(addr)
+		dispatch.Sync(addr, []string{})
 	}
 	generateCaches := func() {
 		clr := color.New(color.FgYellow)

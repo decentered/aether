@@ -534,7 +534,7 @@ func ReadDbBoards(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Boards WHERE (LocalArrival > ? AND LocalArrival < ? ) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Boards WHERE (LastReferenced > ? AND LastReferenced < ? ) ORDER BY LastReferenced DESC", beginTimestamp, endTimestamp)
 		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return dbArr, err
@@ -601,7 +601,7 @@ func ReadDbThreads(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Threads WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Threads WHERE (LastReferenced > ? AND LastReferenced < ?) ORDER BY LastReferenced DESC", beginTimestamp, endTimestamp)
 		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return dbArr, err
@@ -669,7 +669,7 @@ func ReadDbPosts(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Posts WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Posts WHERE (LastReferenced > ? AND LastReferenced < ?) ORDER BY LastReferenced DESC", beginTimestamp, endTimestamp)
 		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return dbArr, err
@@ -736,7 +736,7 @@ func ReadDbVotes(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Votes WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Votes WHERE (LastReferenced > ? AND LastReferenced < ?) ORDER BY LastReferenced DESC", beginTimestamp, endTimestamp)
 		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return dbArr, err
@@ -777,27 +777,32 @@ func readDbAddressesBasicSearch(Location api.Location, Sublocation api.Location,
 
 func readDbAddressesFirstXResultsSearch(maxResults int, offset int, addrType uint8) (*[]DbAddress, error) {
 	var dbArr []DbAddress
-	if maxResults > 0 {
-		// First X results search.
-		var query string
-		var err error
-		// You have to provide a addrtype, if you search for 0, that will find the nodes you haven't connected yet.
+	query := ""
+	if maxResults == 0 {
+		query = "SELECT * from Addresses WHERE AddressType = ? ORDER BY LocalArrival DESC OFFSET ?"
+	} else if maxResults > 0 {
 		query = "SELECT * from Addresses WHERE AddressType = ? ORDER BY LocalArrival DESC LIMIT ? OFFSET ?"
-		rows, err := globals.DbInstance.Queryx(query, addrType, maxResults, offset)
-		defer rows.Close() // In case of premature exit.
+	} else {
+		// if negative value
+		return &dbArr, errors.New("You've provided a negative maxResults value to address search.")
+	}
+	// First X results search.
+	var err error
+	// You have to provide a addrtype, if you search for 0, that will find the nodes you haven't connected yet.
+	rows, err := globals.DbInstance.Queryx(query, addrType, maxResults, offset)
+	defer rows.Close() // In case of premature exit.
+	if err != nil {
+		return &dbArr, err
+	}
+	for rows.Next() {
+		var entity DbAddress
+		err := rows.StructScan(&entity)
 		if err != nil {
 			return &dbArr, err
 		}
-		for rows.Next() {
-			var entity DbAddress
-			err := rows.StructScan(&entity)
-			if err != nil {
-				return &dbArr, err
-			}
-			dbArr = append(dbArr, entity)
-		}
-		rows.Close()
+		dbArr = append(dbArr, entity)
 	}
+	rows.Close()
 	return &dbArr, nil
 }
 
@@ -952,93 +957,6 @@ func ReadAddresses(
 	return arr, nil
 }
 
-// func ReadDbAddresses(
-// 	Location api.Location,
-// 	Sublocation api.Location,
-// 	Port uint16,
-// 	beginTimestamp api.Timestamp,
-// 	endTimestamp api.Timestamp,
-// 	maxResults int, offset int, addrType uint8,
-// 	searchType string) ([]DbAddress, error) {
-// 	/*
-// 		There are three ways you can use this.
-// 		1) Provide Location, sublocation, port, and nothing else = regular search
-// 		2) Provide MaxResults, Maybe provide offset, addrType, and nothing else = first X results search
-// 		3) Provide Begin, End timestamp, nothing else = time range search.
-// 		None of these can be combined. Provide only one set - not a combination.
-
-// 		searchType:
-// 		Options: timerange_all, timerange_connected. It only affects time range search (#3.)
-// 		Allows the caller to specify whether you want this search to be done based on localArrival (all addresses in the database is processed) or lastsuccessfulping/lastsuccessfulsync (only the addresses the computer has personally connected to returns).
-// 		If nothing is given (i.e. ""), it defaults to "all".
-// 	*/
-// 	var dbArr []DbAddress
-// 	if len(Location) > 0 && Port > 0 && maxResults == 0 { // Regular address search.
-// 		logging.Log(1, "This is an address search. Type: Basic.")
-// 		logging.LogCrash("yo")
-// 		dbArrPointer, err := readDbAddressesBasicSearch(Location, Sublocation, Port)
-// 		dbArr = *dbArrPointer
-// 		if err != nil {
-// 			return dbArr, err
-// 		}
-// 	} else if maxResults > 0 && len(Location) == 0 && Port == 0 {
-// 		// First X results search.
-// 		logging.Log(1, "This is an address search. Type: First X results.")
-// 		logging.LogCrash("yo")
-// 		dbArrPointer, err := readDbAddressesFirstXResultsSearch(maxResults, offset, addrType)
-// 		dbArr = *dbArrPointer
-// 		if err != nil {
-// 			return dbArr, err
-// 		}
-// 	} else if maxResults == 0 && len(Location) == 0 && Port == 0 { // Time range search
-// 		// This should result in:
-// 		// - Entities that has landed to local after the beginning and before the end
-// 		// If the end timestamp is 0, it's assumed that endTs is right now.
-// 		logging.Log(1, "This is an address search. Type: Time Range.")
-// 		logging.LogCrash("yo")
-// 		arrPointer, err := readDbAddressesTimeRangeSearch(beginTimestamp, endTimestamp, offset, searchType)
-// 		dbArr = *arrPointer
-// 		if err != nil {
-// 			return dbArr, err
-// 		}
-// 	} else {
-// 		// Invalid configuration coming from the address. Return error.
-// 		return dbArr, errors.New("You have requested data from ReadAddresses in an invalid configuration. It can provide a) search by IP and Port, b) Return last X updated addresses, c) Return the addresses that were updated in a given time range. These cannot be combined. In other words,if you want to use any of the options, you need to zero out the inputs required for the other two. You have provided inputs for more than one option. ")
-// 	}
-// 	// if arrPointer != nil {
-// 	// 	arr = *arrPointer
-// 	// } else {
-// 	// 	arr = []api.Address{}
-// 	// }
-// 	return dbArr, nil
-// }
-
-// ReadAddresses reads addresses from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
-// func ReadAddresses(
-// 	Location api.Location,
-// 	Sublocation api.Location,
-// 	Port uint16,
-// 	beginTimestamp api.Timestamp,
-// 	endTimestamp api.Timestamp,
-// 	maxResults int, offset int, addrType uint8,
-// 	searchType string) ([]api.Address, error) {
-// 	var arr []api.Address
-// 	dbArr, err := ReadDbAddresses(Location, Sublocation, Port, beginTimestamp, endTimestamp, maxResults, offset, addrType, searchType)
-// 	if err != nil {
-// 		return arr, err
-// 	}
-// 	for _, entity := range dbArr {
-// 		apiEntity, err := DBtoAPI(entity)
-// 		if err != nil {
-// 			// Log the problem and go to the next iteration without saving this one.
-// 			logging.Log(1, err)
-// 			continue
-// 		}
-// 		arr = append(arr, apiEntity.(api.Address))
-// 	}
-// 	return arr, nil
-// }
-
 // ReadKeys reads keys from the database. Even when there is a single result, it will still be arriving in an array to provide a consistent API.
 func ReadKeys(
 	fingerprints []api.Fingerprint,
@@ -1088,7 +1006,7 @@ func ReadDbKeys(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from PublicKeys WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from PublicKeys WHERE (LastReferenced > ? AND LastReferenced < ?) ORDER BY LastReferenced DESC", beginTimestamp, endTimestamp)
 		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return dbArr, err
@@ -1155,7 +1073,7 @@ func ReadDbTruststates(
 	} else { // Time range search
 		// This should result in:
 		// - Entities that has landed to local after the beginning and before the end
-		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Truststates WHERE (LocalArrival > ? AND LocalArrival < ?) ORDER BY LocalArrival DESC", beginTimestamp, endTimestamp)
+		rows, err := globals.DbInstance.Queryx("SELECT DISTINCT * from Truststates WHERE (LastReferenced > ? AND LastReferenced < ?) ORDER BY LastReferenced DESC", beginTimestamp, endTimestamp)
 		defer rows.Close() // In case of premature exit.
 		if err != nil {
 			return dbArr, err

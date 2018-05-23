@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"crypto/tls"
+	"golang.org/x/net/proxy"
 )
 
 // Exists checks whether a given item exists in the current DB. This is here because we cannot import persistence due to import cycle being formed, and this is the only place this is being used.
@@ -162,6 +164,28 @@ func concatResponses(response Response, response2 Response) Response {
 	return resp
 }
 
+func makeProxyDialer() proxy.Dialer {
+	var pdialer proxy.Dialer
+	var proxyErr error
+	if globals.BackendConfig.GetSOCKS5ProxyEnabled() {
+		auth := proxy.Auth{
+			User: globals.BackendConfig.GetSOCKS5ProxyUsername(),
+			Password: globals.BackendConfig.GetSOCKS5ProxyPassword(),
+		}
+		if len(auth.User) > 0 || len(auth.Password) > 0 {
+			pdialer, proxyErr = proxy.SOCKS5("tcp", globals.BackendConfig.GetSOCKS5ProxyAddress(), &auth, proxy.Direct)	
+		} else{
+			pdialer, proxyErr = proxy.SOCKS5("tcp", globals.BackendConfig.GetSOCKS5ProxyAddress(), nil, proxy.Direct)
+		}
+		if proxyErr != nil {
+			logging.LogCrash(fmt.Sprintf(
+				"Cannot connect to the proxy. This was the error: %v \nInstead of connecting with no proxy, the application will terminate so as not to create a false impression of being connected via the proxy. If you want to revert back to the default no-proxy setting, go to %s/backend_config.json and set SOCKS5ProxyEnabled key to 'false'.", 
+				proxyErr, globals.BackendConfig.GetUserDirectory()))
+		}  
+	}
+	return pdialer
+}
+
 // Basic, reusable instances of transport and client.
 
 // var transport = &http.Transport{
@@ -176,24 +200,38 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 	// Gotcha of setting these here, these will be repeated every time this is called. Maybe we can run this somehow one time...
 	dialer := &d
 	dialer.Timeout = globals.BackendConfig.GetTCPConnectTimeout()
-	// Dialer configuration inserted here.
-	t.Dial = dialer.Dial
+	// Proxy dialer in the case we are using a proxy
+	pdialer := makeProxyDialer()
+	// pdialer.Timeout doesn't exist, heads up. It'll be default timeout.
+	if globals.BackendConfig.GetSOCKS5ProxyEnabled() {
+		t.Dial = pdialer.Dial
+	} else {
+		t.Dial = dialer.Dial
+	}
 	t.TLSHandshakeTimeout = globals.BackendConfig.GetTLSHandshakeTimeout()
+	t.TLSClientConfig = &tls.Config{
+	InsecureSkipVerify: true,
+	} // Is that not insecure? Not in this specific case, we're not using TLS as a means of identifying the remote, just for encrypting the pipe. See note at tlscerts library.
 	transport := &t
 	// Transport configuration settings inserted here.
 	c.Transport = transport
 	c.Timeout = globals.BackendConfig.GetConnectionTimeout()
 	client := &c
-
 	// fmt.Println(client.Timeout)
 	// fmt.Println(globals.ConnectionTimeout)
+	var prot string
+	if globals.BackendTransientConfig.TLSEnabled {
+		prot = "https://"
+	} else {
+		prot = "http://"
+	}
 	var fullLink string
 	if len(subhost) > 0 {
 		fullLink = fmt.Sprint(
-			"http://", host, ":", strconv.Itoa(int(port)), "/", subhost, "/v0/", location) // TODO: Move to HTTPS after that portion goes live.
+			prot, host, ":", strconv.Itoa(int(port)), "/", subhost, "/v0/", location) // TODO: Move to HTTPS after that portion goes live.
 	} else {
 		fullLink = fmt.Sprint(
-			"http://", host, ":", strconv.Itoa(int(port)), "/v0/", location) // TODO: Move to HTTPS after that portion goes live.
+			prot, host, ":", strconv.Itoa(int(port)), "/v0/", location) // TODO: Move to HTTPS after that portion goes live.
 	}
 	logging.Log(3, fmt.Sprintf("Fetch is being called for the URL: %s", fullLink))
 	// TODO: When we have the local profile, the v0 should be coming from the appropriate version number. Constant for the time being.
@@ -239,7 +277,28 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 		} else if strings.Contains(err.Error(), "EOF") {
 			return []byte{}, errors.New(
 				fmt.Sprint(
-					"The remote crashed or shutting down. Host:", host,
+					"The remote crashed or is shutting down. Host:", host,
+					", Subhost: ", subhost,
+					", Port: ", port,
+					", Location: ", location))
+		} else if strings.Contains(err.Error(), "server gave HTTP response to HTTPS client") {
+			return []byte{}, errors.New(
+				fmt.Sprint(
+					"Remote gave HTTP response to HTTPS client. Host:", host,
+					", Subhost: ", subhost,
+					", Port: ", port,
+					", Location: ", location))
+		} else if strings.Contains(err.Error(), "tls: oversized record received with length") {
+			return []byte{}, errors.New(
+				fmt.Sprint(
+					"Remote gave HTTP response to HTTPS client. Host:", host,
+					", Subhost: ", subhost,
+					", Port: ", port,
+					", Location: ", location))
+		} else if strings.Contains(err.Error(), "remote error: tls: handshake failure") {
+			return []byte{}, errors.New(
+				fmt.Sprint(
+					"Remote is unavailable. Host:", host,
 					", Subhost: ", subhost,
 					", Port: ", port,
 					", Location: ", location))
@@ -249,6 +308,8 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 			logging.LogCrash(err)
 		}
 	}
+
+	// server gave HTTP response to HTTPS client
 	defer resp.Body.Close()
 	if resp.StatusCode == 200 {
 		limitedReader := &io.LimitedReader{
@@ -261,6 +322,19 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 			fmt.Sprint(err.Error())
 		}
 		return body, nil
+	} else if resp.StatusCode == 501 {
+		/*
+			HTTP 501: Not implemented
+			This usually happens when you try to do a non-static sync on a node that is static, thus isn't supporting POST requests.
+		*/
+		return []byte{}, errors.New(
+			fmt.Sprint(
+				"This remote does not implement this HTTP method. Likely this was an attempt to do a live sync with a static node. Host:", host,
+				", Subhost: ", subhost,
+				", Port: ", port,
+				", Location: ", location,
+				", Request method: ", method,
+			))
 	} else {
 		logging.Log(2, fmt.Sprintf("FULL LINK IN FETCH FOR THIS FAILED REQUEST: \n%s\n", fullLink))
 		return []byte{}, errors.New(
@@ -373,7 +447,7 @@ func countManifests(resp Response) {
 	for _, val := range resp.AddressManifests {
 		a = a + len(val.Entities)
 	}
-	logging.Logf(1, "generateHitlist manifestResponse result returned these: \nB: %v, T: %v, P: %v, V: %v, K: %v, TS: %v, A: %v", b, t, p, v, k, ts, a)
+	logging.Logf(2, "generateHitlist manifestResponse result returned these: \nB: %v, T: %v, P: %v, V: %v, K: %v, TS: %v, A: %v", b, t, p, v, k, ts, a)
 }
 
 func generateHitlist(host string, subhost string, port uint16, location string) (map[int]bool, error) {
@@ -561,7 +635,7 @@ func GetManifestGatedCache(host string, subhost string, port uint16, location st
 		mainResp = concatResponses(mainResp, resp)
 	}
 	elapsed := time.Since(start)
-	logging.Logf(1, "GetManifestGatedCache V1 took this long: %v", elapsed.String())
+	logging.Logf(2, "GetManifestGatedCache V1 took this long: %v", elapsed.String())
 	return mainResp, nil
 }
 

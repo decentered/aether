@@ -98,7 +98,7 @@ func generatePostFaceResponse(
 	// if len(resp.Results) > 1 {
 	// 	fmt.Println("TWO RESULTS")
 	// }
-	logging.LogObj(1, "ResultCaches returning:", resp.Results)
+	logging.LogObj(2, "ResultCaches returning:", resp.Results)
 	return &resp
 }
 
@@ -115,14 +115,14 @@ func bakeFinalPOSTApiResponse(
 	dbReadStartLoc api.Timestamp, // This is needed in the case of container generation.
 ) (*api.ApiResponse, error) {
 	if len(*resultPages) > 1 {
-		logging.Logf(1, "This result is still more than one page after the chain addition. We are generating the container %s", dirname)
+		logging.Logf(2, "This result is still more than one page after the chain addition. We are generating the container %s", dirname)
 		generateContainer(resultPages, indexPages, manifestPages, entityCounts, filters, dirname, true, "", dbReadStartLoc) // this will save to disk, doesn't return anything.
 		// Generate container needs to generate its own entity
 		resp := generatePostFaceResponse(resultPages, mergedEntityCounts, filters, dirname, reusedPostResponses)
 		return resp, nil
 	} else if len(*resultPages) == 1 {
-		logging.Logf(1, "This result is one page after the chain addition. We are not generating a container")
-		logging.Logf(1, "This result that is being sent as single page has these items: \nB: %v, T: %v, P: %v, V: %v, K: %v, TS: %v, A: %v",
+		logging.Logf(2, "This result is one page after the chain addition. We are not generating a container")
+		logging.Logf(2, "This result that is being sent as single page has these items: \nB: %v, T: %v, P: %v, V: %v, K: %v, TS: %v, A: %v",
 			len((*resultPages)[0].ResponseBody.Boards),
 			len((*resultPages)[0].ResponseBody.Threads),
 			len((*resultPages)[0].ResponseBody.Posts),
@@ -132,7 +132,7 @@ func bakeFinalPOSTApiResponse(
 			len((*resultPages)[0].ResponseBody.Addresses))
 		// Has no container, will be directly served across.
 		resp := generatePostFaceResponse(resultPages, mergedEntityCounts, filters, dirname, reusedPostResponses)
-		logging.Logf(1, "GeneratePostFaceResponse for the single page result returned these: \nB: %v, T: %v, P: %v, V: %v, K: %v, TS: %v, A: %v",
+		logging.Logf(2, "GeneratePostFaceResponse for the single page result returned these: \nB: %v, T: %v, P: %v, V: %v, K: %v, TS: %v, A: %v",
 			len(resp.ResponseBody.Boards),
 			len(resp.ResponseBody.Threads),
 			len(resp.ResponseBody.Posts),

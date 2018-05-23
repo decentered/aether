@@ -11,10 +11,20 @@ import (
 	// "runtime"
 )
 
+var loggingLevel int
+var loglevelInitd bool
+
+func captLogLevel() {
+	loggingLevel = globals.BackendConfig.GetLoggingLevel()
+	loglevelInitd = true
+}
+
 // Log prints to the standard logger.
 func Log(level int, input interface{}) {
-	// TODO: Check whether debug is enabled ONCE at application launch. If so, print to the log file. If not, be a noop.
-	if globals.BackendConfig.GetLoggingLevel() >= level {
+	if !loglevelInitd {
+		captLogLevel()
+	}
+	if loggingLevel >= level {
 		// If print to stdout is enabled, instead of logging, route to stdout. This means it's running in a swarm setup that wants the results that way for collation.
 		if globals.BackendTransientConfig.PrintToStdout {
 			if globals.BackendTransientConfig.SwarmNodeId != -1 {
@@ -30,8 +40,10 @@ func Log(level int, input interface{}) {
 }
 
 func Logf(level int, input string, v ...interface{}) {
-	// TODO: Check whether debug is enabled ONCE at application launch. If so, print to the log file. If not, be a noop.
-	if globals.BackendConfig.GetLoggingLevel() >= level {
+	if !loglevelInitd {
+		captLogLevel()
+	}
+	if loggingLevel >= level {
 		// If print to stdout is enabled, instead of logging, route to stdout. This means it's running in a swarm setup that wants the results that way for collation.
 		if globals.BackendTransientConfig.PrintToStdout {
 			if globals.BackendTransientConfig.SwarmNodeId != -1 {

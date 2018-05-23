@@ -311,7 +311,9 @@ func calcCSNodeEquilibriumState(numberOfNodes int, conns []CSConn) (bool, int64,
 		}
 		conns[key].Timestamp = 0
 	}
-	if firstSyncsCount == numberOfNodes { // this is not -1 as you would expect removing the node itself from conns list. +1 comes from the donor node we use before the beginning.
+	if firstSyncsCount == numberOfNodes || firstSyncsCount == numberOfNodes+1 {
+		// or +1 comes from there being a bootstrap node available possibly.
+		// this is not -1 as you would expect removing the node itself from conns list. +1 comes from the donor node we use before the beginning.
 		hasFullData = true
 	}
 	return hasFullData, lastFirstSyncTimestamp, firstSyncsCount

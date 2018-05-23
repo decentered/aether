@@ -7,6 +7,7 @@ import (
 	"aether-core/services/fingerprinting"
 	// "aether-core/services/randomhashgen"
 	"aether-core/services/signaturing"
+	// "aether-core/services/tlscerts"
 	"aether-core/services/toolbox"
 	// "crypto/ecdsa"
 	// "crypto/elliptic"
@@ -281,7 +282,7 @@ Port of the SQL server, if not SQLite3. By default, it's 3306 (MySQL default por
 DbUsername is the username of the account that has read/write access to the "aetherdb" database, if not SQLite3. By default it's "aether-app-db-access-user".
 
 ## DbPassword
-The password of the DB user, if not SQLite3. By default it's "exventoveritas". It's highly recommended that you change this.
+The password of the DB user, if not SQLite3. By default it's "exventoveritas". It's highly recommended that you change this if you're using MySQL. If you don't know what you're using, you're not using MySQL.
 
 ## MetricsLevel
 ## MetricsToken
@@ -309,6 +310,43 @@ This is the size that the user has allotted the application to use in the comput
 
 # VotesMemoryDays
 How long will the votes be retained in memory. This is a special case of LocalMemoryDays. We retain the votes much fewer days than the rest of the items because they're much more numerous and much less information dense. That does not mean all voting information will disappear though - when the frontend compiles votes, the compiled vote counts will be retained normally.
+
+# Scaled Mode
+This mode is normally disabled, and it is automatically enabled if the event horizon crosses network head threshold. In this mode, the behaviour of the node changes to only collecting and sharing boards that the user(s) on this backend has explicitly requested vs. the normal behaviour where all data on the network is collected for a limited timespan.
+
+# ScaledModeUserSet
+If this is enabled, the user has made a decision to keep scaled mode on or off, and we will not be flipping it back and forth based on disk space pressure.
+
+# LastBootstrapAddressConnectionTimestamp
+This is the last successful bootstrap timestamp. Every time a bootstrap is completed, this runs. If a node remains offline long enough that a given amount of time passes, bootstrap runs again.
+
+# BootstrapAfterOfflineMinutes
+This is how long a node can remain offline before a bootstrap kicks in at next restart. So if this value is 6 hours, if you're offline for more than 6h, this means when you start the app again, it will do a bootstrap. If you set this to -1, this will be disabled.
+
+# SOCKS5ProxyEnabled
+If this is true, a proxy is used for all outbound connections. This is an advanced feature, please read below if you are planning to use this, and use this only if you understand what this means. This feature can be used to use Aether over Tor.
+
+IMPORTANT: Mind that proxies are one-way gates, so your requests will be able to go out and get the data your node requests, but your node will not be able to receive and serve any requests coming in from the network. That means the data you create (posts, threads, upvotes ... anything) will NOT be able to leave under normal conditions. If nobody can connect to you, they cannot get the data you create, thus your data won't ever reach the network, but ...
+
+...thankfully, Aether has some mitigations for this case, and if this is the case, your node will attempt to ask other nodes to connect to you by pre-establishing connections from your side and handing the pipe over to them. But the nodes you do this to have *no* obligation to connect to you using the pipe you gave them, and they will likely ignore your node's request if they are under load, for example.
+
+In essence, if you use a proxy, the ability of your node to get your data spread to the network can be anything from effectively unharmed, to completely nonexistent, based on network load.
+
+Aether already anonymises who posts which content: after a piece of content spreads to a few nodes, it is impossible to find its owners' IP address. Therefore privacy is already inbuilt to the system, you do not need to do anything extra for it. This feature is available for those that require extra privacy above this baseline.
+
+The nature of proxy technology means that unless configured specifically for it, a proxy or a VPN will not be able to accept inbound connections into your machine. For that to happen, you need to set up 'remote' or 'reverse' port forwarding (as opposed to *local* port forwarding.) Google it, and make sure you understand the security implications of doing that.
+
+This applies to proxies, Tor, and VPN equally. It's easier to find VPNs that allow you to do a remote port forwarding than SOCKS5 proxies, since it's natively supported with VPNs.
+
+Oh and lastly, HostFat, here's your feature. :)
+
+# SOCKS5ProxyAddress
+This is the address of the proxy that is going ot be used if the proxy is enabled. If you enable proxies and see no network traffic, it probably means your proxy configuration is broken. In the case proxy doesn't respond, it won't transmit anything. If proxy refuses your connection, the backend will terminate itself so as to not expose you to non-proxied traffic.
+
+# SOCKS5ProxyUsername
+# SOCKS5ProxyPassword
+Username and password for the SOCKS5 proxy if required.
+
 
 */
 
@@ -362,8 +400,8 @@ type BackendConfig struct {
 	DbPassword                              string // Only applies to non-sqlite
 	MetricsLevel                            uint8  // 0: no metrics transmitted
 	MetricsToken                            string // If metrics level is not zero, metrics token is the anonymous identifier for the metrics server. Resetting this to 0 makes this node behave like a new node as far as metrics go, but if you don't want metrics to be collected, you can set it through the application or set the metrics level to zero in the JSON settings file.
-	BackendKeyPair                          string
-	MarshaledBackendPublicKey               string
+	BackendKeyPair                          string // This is the Aether key, not TLS key
+	MarshaledBackendPublicKey               string // This is the Aether key, not TLS key
 	AllowUnsignedEntities                   bool
 	MaxInboundPageSizeKb                    uint
 	NeighbourCount                          uint
@@ -372,6 +410,14 @@ type BackendConfig struct {
 	MaxDbSizeMb                             uint
 	VotesMemoryDays                         uint // 14
 	EventHorizonTimestamp                   uint64
+	ScaledMode                              bool
+	ScaledModeUserSet                       bool
+	LastBootstrapAddressConnectionTimestamp uint64
+	BootstrapAfterOfflineMinutes            int // 360
+	SOCKS5ProxyEnabled                      bool
+	SOCKS5ProxyAddress                      string // Format: "127.0.0.1:65535"
+	SOCKS5ProxyUsername                     string
+	SOCKS5ProxyPassword                     string
 }
 
 // GETTERS AND SETTERS
@@ -389,12 +435,6 @@ Because we do not want users to provide negative values and make the application
 */
 
 // Init check gate
-
-// func (config *BackendConfig) InitCheck() {
-//  if !config.Initialised {
-//    log.Fatal("You've attempted to access a config before it was initialised.")
-//  }
-// }
 
 func (config *BackendConfig) InitCheck() {
 	if !config.Initialised {
@@ -1030,6 +1070,82 @@ func (config *BackendConfig) GetEventHorizonTimestamp() int64 {
 	return 0
 }
 
+func (config *BackendConfig) GetScaledMode() bool {
+	config.InitCheck()
+	return config.ScaledMode
+}
+
+func (config *BackendConfig) GetScaledModeUserSet() bool {
+	config.InitCheck()
+	return config.ScaledModeUserSet
+}
+
+func (config *BackendConfig) GetLastBootstrapAddressConnectionTimestamp() int64 {
+	config.InitCheck()
+	if config.LastBootstrapAddressConnectionTimestamp < maxInt64 &&
+		config.LastBootstrapAddressConnectionTimestamp >= 0 {
+		return int64(config.LastBootstrapAddressConnectionTimestamp)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.LastBootstrapAddressConnectionTimestamp) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *BackendConfig) GetBootstrapAfterOfflineMinutes() int {
+	config.InitCheck()
+	if (config.BootstrapAfterOfflineMinutes < maxInt32 &&
+		config.BootstrapAfterOfflineMinutes > 0) ||
+		config.BootstrapAfterOfflineMinutes == -1 {
+		return int(config.BootstrapAfterOfflineMinutes)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.BootstrapAfterOfflineMinutes) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *BackendConfig) GetSOCKS5ProxyEnabled() bool {
+	config.InitCheck()
+	return config.SOCKS5ProxyEnabled
+}
+
+func (config *BackendConfig) GetSOCKS5ProxyAddress() string {
+	config.InitCheck()
+	if len(config.SOCKS5ProxyAddress) < maxLocationSize &&
+		len(config.SOCKS5ProxyAddress) >= 0 {
+		return config.SOCKS5ProxyAddress
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.SOCKS5ProxyAddress) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return ""
+}
+
+func (config *BackendConfig) GetSOCKS5ProxyUsername() string {
+	config.InitCheck()
+	if len(config.SOCKS5ProxyUsername) < 1024 &&
+		len(config.SOCKS5ProxyUsername) >= 0 {
+		return config.SOCKS5ProxyUsername
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.SOCKS5ProxyUsername) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return ""
+}
+
+func (config *BackendConfig) GetSOCKS5ProxyPassword() string {
+	config.InitCheck()
+	if len(config.SOCKS5ProxyPassword) < 1024 &&
+		len(config.SOCKS5ProxyPassword) >= 0 {
+		return config.SOCKS5ProxyPassword
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.SOCKS5ProxyPassword) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return ""
+}
+
 /*****************************************************************************/
 
 // Setters
@@ -1504,7 +1620,7 @@ func (config *BackendConfig) SetExternalIp(val string) error {
 }
 func (config *BackendConfig) SetLastStaticAddressConnectionTimestamp(val int64) error {
 	config.InitCheck()
-	if val > 0 {
+	if val >= 0 {
 		config.LastStaticAddressConnectionTimestamp = uint64(val)
 		commitErr := config.Commit()
 		if commitErr != nil {
@@ -1519,7 +1635,7 @@ func (config *BackendConfig) SetLastStaticAddressConnectionTimestamp(val int64) 
 }
 func (config *BackendConfig) SetLastLiveAddressConnectionTimestamp(val int64) error {
 	config.InitCheck()
-	if val > 0 {
+	if val >= 0 {
 		config.LastLiveAddressConnectionTimestamp = uint64(val)
 		commitErr := config.Commit()
 		if commitErr != nil {
@@ -1883,6 +1999,116 @@ func (config *BackendConfig) SetEventHorizonTimestamp(val int64) error {
 	return nil
 }
 
+func (config *BackendConfig) SetScaledMode(val bool) error {
+	config.InitCheck()
+	config.ScaledMode = val
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
+func (config *BackendConfig) SetScaledModeUserSet(val bool) error {
+	config.InitCheck()
+	config.ScaledModeUserSet = val
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
+func (config *BackendConfig) SetLastBootstrapAddressConnectionTimestamp(val int64) error {
+	config.InitCheck()
+	if val >= 0 {
+		config.LastBootstrapAddressConnectionTimestamp = uint64(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *BackendConfig) SetBootstrapAfterOfflineMinutes(val int) error {
+	config.InitCheck()
+	if val > 0 || val == -1 {
+		config.BootstrapAfterOfflineMinutes = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *BackendConfig) SetSOCKS5ProxyEnabled(val bool) error {
+	config.InitCheck()
+	config.SOCKS5ProxyEnabled = val
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
+func (config *BackendConfig) SetSOCKS5ProxyAddress(val string) error {
+	config.InitCheck()
+	if len(val) > 0 && len(val) < maxLocationSize {
+		config.SOCKS5ProxyAddress = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *BackendConfig) SetSOCKS5ProxyUsername(val string) error {
+	config.InitCheck()
+	if len(val) > 0 && len(val) < 1024 {
+		config.SOCKS5ProxyUsername = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *BackendConfig) SetSOCKS5ProxyPassword(val string) error {
+	config.InitCheck()
+	if len(val) > 0 && len(val) < 1024 {
+		config.SOCKS5ProxyPassword = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
 /*****************************************************************************/
 
 // BlankCheck looks at all variables and if it finds they're at their zero value, sets the default value for it. This is a guard against a new item being added to the config store as a result of a version update, but it being zero value. If a zero'd value is found, we change it to its default before anything else happens. This also effectively runs at the first pass to set the defaults.
@@ -2087,9 +2313,37 @@ func (config *BackendConfig) BlankCheck() {
 		config.SetVotesMemoryDays(defaultVotesMemoryDays)
 	}
 	if config.EventHorizonTimestamp == 0 {
-		localMemCutoff := time.Now().Add(-(time.Duration(config.LocalMemoryDays) * time.Hour * time.Duration(24))).Unix()
-		config.SetEventHorizonTimestamp(localMemCutoff)
+		config.ResetEventHorizon()
 	}
+	// ::ScaledMode: can be false, no need to blank check.
+	// ::ScaledModeUserSet: can be false, no need to blank check.
+	// ::LastBootstrapAddressConnectionTimestamp: can be 0, no need to blank check.
+	if config.BootstrapAfterOfflineMinutes == 0 {
+		config.SetBootstrapAfterOfflineMinutes(defaultBootstrapAfterOfflineMinutes)
+	}
+	// ::SOCKS5ProxyEnabled: can be false, no need to blank check.
+	// ::SOCKS5ProxyAddress: can be blank, no need to blank check.
+	// ::SOCKS5ProxyUsername: can be blank, no need to blank check.
+	// ::SOCKS5ProxyPassword: can be blank, no need to blank check.
+}
+
+// Resets
+
+func (config *BackendConfig) ResetEventHorizon() {
+	localMemCutoff := time.Now().Add(-(time.Duration(config.LocalMemoryDays) * time.Hour * time.Duration(24))).Unix()
+	config.SetEventHorizonTimestamp(localMemCutoff)
+}
+
+func (config *BackendConfig) ResetLastBootstrapAddressConnectionTimestamp() {
+	config.SetLastBootstrapAddressConnectionTimestamp(0)
+}
+
+func (config *BackendConfig) ResetLastLiveAddressConnectionTimestamp() {
+	config.SetLastLiveAddressConnectionTimestamp(0)
+}
+
+func (config *BackendConfig) ResetLastStaticAddressConnectionTimestamp() {
+	config.SetLastStaticAddressConnectionTimestamp(0)
 }
 
 /*
@@ -2148,6 +2402,12 @@ func (config *BackendConfig) SanityCheck() {
 		config.GetMaxDbSizeMb()
 		config.GetVotesMemoryDays()
 		config.GetEventHorizonTimestamp()
+		config.GetLastBootstrapAddressConnectionTimestamp()
+		config.GetBootstrapAfterOfflineMinutes()
+		config.GetSOCKS5ProxyEnabled()
+		config.GetSOCKS5ProxyAddress()
+		config.GetSOCKS5ProxyUsername()
+		config.GetSOCKS5ProxyPassword()
 	}
 }
 

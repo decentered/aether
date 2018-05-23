@@ -4,6 +4,8 @@ import (
 	"aether-core/services/configstore"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
+	"aether-core/services/tlscerts"
+	"aether-core/services/toolbox"
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/jmoiron/sqlx"
@@ -111,8 +113,12 @@ func EstablishConfigs(cmd *cobra.Command) flags {
 	globals.FrontendTransientConfig.SetDefaults()
 	// Set the transient config data.
 	if cmd != nil {
-		globals.BackendTransientConfig.AppIdentifier = flgs.appName.value.(string)
-		globals.BackendTransientConfig.OrgIdentifier = flgs.orgName.value.(string)
+		if flgs.appName.changed {
+			globals.BackendTransientConfig.AppIdentifier = flgs.appName.value.(string)
+		}
+		if flgs.orgName.changed {
+			globals.BackendTransientConfig.OrgIdentifier = flgs.orgName.value.(string)
+		}
 	} else { // cmd == nil, this is a unit test.
 		globals.BackendTransientConfig.AppIdentifier = "A-UnitTest"
 	}
@@ -129,12 +135,14 @@ func EstablishConfigs(cmd *cobra.Command) flags {
 	}
 	fecfg.Cycle()
 	globals.FrontendConfig = fecfg
+	// Generate TLS keys
+	tlscerts.Generate()
 	// Determine whether the configs have been manipulated by flags. If so, disable editing of permanent configs for this session.
 	if cmd != nil && flagsChanged(cmd) {
 		globals.BackendTransientConfig.PermConfigReadOnly = true
 		globals.FrontendTransientConfig.PermConfigReadOnly = true
 	}
-	if cmd != nil {
+	if cmd != nil && flgs.loggingLevel.changed {
 		// Start setting permanent configs. These are NO-OPs if the permament config is read only.
 		globals.BackendConfig.SetLoggingLevel(flgs.loggingLevel.value.(int))
 	}
@@ -179,8 +187,20 @@ func EstablishConfigs(cmd *cobra.Command) flags {
 	if flgs.pageSigCheckEnabled.changed {
 		globals.BackendTransientConfig.PageSignatureCheckEnabled = flgs.pageSigCheckEnabled.value.(bool)
 	}
+	if flgs.tlsEnabled.changed {
+		globals.BackendTransientConfig.TLSEnabled = flgs.tlsEnabled.value.(bool)
+	}
 	// Set up the DB Instance so that we get access to the database.
 	if globals.BackendConfig.GetDbEngine() == "sqlite" {
+		dbLoc := fmt.Sprintf("%s/AetherDB.db", globals.BackendConfig.GetUserDirectory())
+		if !toolbox.FileExists(dbLoc) {
+			// Db doesn't exist. Make sure that the bootstrap timer and event horizon is reset. Those values depend on the database, and if the DB is deleted while the user settings are not, they can prevent a bootstrap from happening as it should. In the other case where the database isn't created yet, these calls are idempotent.
+			logging.Logf(1, "The database was deleted or is not created yet. Setting event horizon and last successful live, static, bootstrap timestamps to 0.\n")
+			globals.BackendConfig.ResetEventHorizon()
+			globals.BackendConfig.ResetLastLiveAddressConnectionTimestamp()
+			globals.BackendConfig.ResetLastStaticAddressConnectionTimestamp()
+			globals.BackendConfig.ResetLastBootstrapAddressConnectionTimestamp()
+		}
 		conn, err := sqlx.Connect(
 			"sqlite3",
 			fmt.Sprintf(
@@ -257,6 +277,7 @@ type flags struct {
 	sigCheckEnabled     flag //bool
 	powCheckEnabled     flag //bool
 	pageSigCheckEnabled flag //bool
+	tlsEnabled          flag //bool
 	// Flags will be all lowercase in terminal input, heads up.
 }
 
@@ -404,6 +425,14 @@ func renderFlags(cmd *cobra.Command) flags {
 	}
 	fl.pageSigCheckEnabled.value = psig
 	fl.pageSigCheckEnabled.changed = cmd.Flags().Changed("pagesigcheckenabled")
+
+	tls, err19 := cmd.Flags().GetBool("tlsenabled")
+	if err19 != nil && !strings.Contains(
+		err19.Error(), "flag accessed but not defined") {
+		logging.LogCrash(err19)
+	}
+	fl.tlsEnabled.value = tls
+	fl.tlsEnabled.changed = cmd.Flags().Changed("tlsenabled")
 
 	return fl
 }
