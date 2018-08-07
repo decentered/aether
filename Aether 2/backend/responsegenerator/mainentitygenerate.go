@@ -25,17 +25,18 @@ import (
 )
 
 func bakeEntityPages(resultPages *[]api.ApiResponse, entityCounts *[]api.EntityCount, filters *[]api.Filter, foldername string, isPOST bool, respType string, entityType string) {
+	protv := globals.BackendConfig.GetProtURLVersion()
 	var responsedir string
 	if isPOST {
-		responsedir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/responses/", foldername)
+		responsedir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/", protv, "/responses/", foldername)
 	} else {
 		if respType == "addresses" {
-			responsedir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/", respType, "/", foldername)
+			responsedir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/", protv, "/", respType, "/", foldername)
 		} else {
-			responsedir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/c0/", respType, "/", foldername)
+			responsedir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/", protv, "/c0/", respType, "/", foldername)
 		}
 	}
-	// responsedir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/responses/", foldername)
+	// responsedir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/",protv,"/responses/", foldername)
 	toolbox.CreatePath(responsedir)
 	for i, _ := range *resultPages {
 		// entityType := findEntityInApiResponse((*resultPages)[i], entityType)

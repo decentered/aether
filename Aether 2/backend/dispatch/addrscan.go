@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-func getAllAddresses(isDesc bool) (*[]api.Address, error) {
+func getAllAddresses(isDesc bool) ([]api.Address, error) {
 	searchType := ""
 	if isDesc {
 		searchType = "all_desc"
@@ -30,55 +30,53 @@ func getAllAddresses(isDesc bool) (*[]api.Address, error) {
 	if err != nil {
 		errors.Wrap(err, "getAllAddresses in AddressScanner failed.")
 	}
-	return &resp, nil
+	return resp, nil
 }
 
-func filterByLastSuccessfulPing(addrs *[]api.Address, cutoff api.Timestamp) *[]api.Address {
+func filterByLastSuccessfulPing(addrs []api.Address, cutoff api.Timestamp) []api.Address {
 	live := []api.Address{}
-	for key, _ := range *addrs {
-		if (*addrs)[key].LastSuccessfulPing >= cutoff {
-			live = append(live, (*addrs)[key])
+	for key, _ := range addrs {
+		if addrs[key].LastSuccessfulPing >= cutoff {
+			live = append(live, addrs[key])
 		}
 	}
-	return &live
+	return live
 }
 
-func filterByType(addrType int, addrs *[]api.Address) (*[]api.Address, *[]api.Address) {
+func filterByType(addrType int, addrs []api.Address) ([]api.Address, []api.Address) {
 	if addrType <= -1 {
-		return addrs, &[]api.Address{}
+		return addrs, []api.Address{}
 	}
 	filteredAddrs := []api.Address{}
 	remainder := []api.Address{}
-	for key, _ := range *addrs {
-		if (*addrs)[key].Type == uint8(addrType) {
-			filteredAddrs = append(filteredAddrs, (*addrs)[key])
+	for key, _ := range addrs {
+		if addrs[key].Type == uint8(addrType) {
+			filteredAddrs = append(filteredAddrs, addrs[key])
 		} else {
-			remainder = append(remainder, (*addrs)[key])
+			remainder = append(remainder, addrs[key])
 		}
 	}
-	return &filteredAddrs, &remainder
+	return filteredAddrs, remainder
 }
 
-func removeAddr(addr api.Address, addrs *[]api.Address) *[]api.Address {
-	for key, _ := range *addrs {
-		if addr.Location == (*addrs)[key].Location &&
-			addr.Sublocation == (*addrs)[key].Sublocation &&
-			addr.Port == (*addrs)[key].Port {
-			first := (*addrs)[:key]
-			second := (*addrs)[key+1 : len(*addrs)]
-			*addrs = append(first, second...)
+func removeAddr(addr api.Address, addrs []api.Address) []api.Address {
+	for i := len(addrs) - 1; i >= 0; i-- {
+		if addr.Location == addrs[i].Location &&
+			addr.Sublocation == addrs[i].Sublocation &&
+			addr.Port == addrs[i].Port {
+			addrs = append(addrs[0:i], addrs[i+1:len(addrs)]...)
 		}
 	}
 	return addrs
 }
 
-func updateAddrs(addrs *[]api.Address) (*[]api.Address, error) {
-	updatedAddrs := Pinger(*addrs)
+func updateAddrs(addrs []api.Address) ([]api.Address, error) {
+	updatedAddrs := Pinger(addrs)
 	err := pers.AddrTrustedInsert(&updatedAddrs)
 	if err != nil {
-		return &[]api.Address{}, errors.Wrap(err, "updateAddrs encountered an error in AddrTrustedInsert.")
+		return []api.Address{}, errors.Wrap(err, "updateAddrs encountered an error in AddrTrustedInsert.")
 	}
-	return &updatedAddrs, nil
+	return updatedAddrs, nil
 }
 
 // if count == 0, we do a full-range search and return all live nodes.
@@ -92,54 +90,54 @@ func findOnlineNodes(count int, addrType int, excl *[]api.Address) ([]api.Addres
 		return []api.Address{}, errors.Wrap(err, "findOnlineNodes: getAllAddresses within this function failed.")
 	}
 	// logging.Logf(1, "All addresses: %s", )
-	logging.LogObj(2, "All addresses", Dbg_convertAddrSliceToNameSlice(*addrs))
+	// logging.LogObj(2, "All addresses", Dbg_convertAddrSliceToNameSlice(addrs))
 	addrs, _ = filterByType(addrType, addrs)
-	logging.LogObj(2, "Filtered addresses", Dbg_convertAddrSliceToNameSlice(*addrs))
+	// logging.LogObj(2, "Filtered addresses", Dbg_convertAddrSliceToNameSlice(addrs))
 	if excl != nil {
 		for _, addr := range *excl {
 			addrs = removeAddr(addr, addrs)
 		}
 	}
 	updatedAddrs, err := updateAddrs(addrs)
-	logging.Logf(2, "Updated addresses: %s", Dbg_convertAddrSliceToNameSlice(*updatedAddrs))
+	// logging.Logf(2, "Updated addresses: %s", Dbg_convertAddrSliceToNameSlice(updatedAddrs))
 	if err != nil {
 		errors.Wrap(err, "findOnlineNodes: updateAddress within this function failed.")
 	}
 	liveNodes := filterByLastSuccessfulPing(updatedAddrs, start)
-	logging.Logf(2, "Live addresses: %s", Dbg_convertAddrSliceToNameSlice(*updatedAddrs))
+	// logging.Logf(2, "Live addresses: %s", Dbg_convertAddrSliceToNameSlice(updatedAddrs))
 	if count == 0 { // count == 0: return everything found.
-		return *liveNodes, nil
+		return liveNodes, nil
 	}
 	// logging.Logf(1, "live nodes: %v", liveNodes)
 	if addrType == -2 {
-		// logging.Logf(1, "Live nodes are these. Live nodes: %s", Dbg_convertAddrSliceToNameSlice(*liveNodes))
+		// logging.Logf(1, "Live nodes are these. Live nodes: %s", Dbg_convertAddrSliceToNameSlice(liveNodes))
 		logging.Log(1, "AddrType = -2, we are looking for nonconnected addrs.")
 		nonconnected := pickUnconnectedAddrs(liveNodes)
 		// logging.Logf(1, "nonconnecteds: %v", nonconnected)
-		if len(*nonconnected) != 0 {
-			logging.Logf(1, "AddrType = -2, we found some nonconnected onlines. Let's pull from those first. Found: %s", Dbg_convertAddrSliceToNameSlice(*nonconnected))
+		if len(nonconnected) != 0 {
+			// logging.Logf(1, "AddrType = -2, we found some nonconnected onlines. Let's pull from those first. Found: %s", Dbg_convertAddrSliceToNameSlice(nonconnected))
 			liveNodes = nonconnected
 		}
 	}
-	if len(*liveNodes) == 0 { // If zero, bail.
-		return *liveNodes, errors.New("This database has no addresses online.")
+	if len(liveNodes) == 0 { // If zero, bail.
+		return liveNodes, errors.New("This database has no addresses online.")
 	}
-	rands := toolbox.GetInsecureRands(len(*liveNodes), count)
+	rands := toolbox.GetInsecureRands(len(liveNodes), count)
 	selected := []api.Address{}
 	for _, val := range rands {
-		selected = append(selected, (*liveNodes)[val])
+		selected = append(selected, (liveNodes)[val])
 	}
 	return selected, nil
 }
 
-func pickUnconnectedAddrs(addrs *[]api.Address) *[]api.Address {
+func pickUnconnectedAddrs(addrs []api.Address) []api.Address {
 	nonconnecteds := []api.Address{}
-	for key, _ := range *addrs {
-		if (*addrs)[key].LastSuccessfulSync == 0 {
-			nonconnecteds = append(nonconnecteds, (*addrs)[key])
+	for key, _ := range addrs {
+		if addrs[key].LastSuccessfulSync == 0 {
+			nonconnecteds = append(nonconnecteds, addrs[key])
 		}
 	}
-	return &nonconnecteds
+	return nonconnecteds
 }
 
 func RefreshAddresses() error {
@@ -174,8 +172,8 @@ func AddressScanner() {
 	}
 }
 
-func GetUnconnAddr(count int) []api.Address {
-	addrs, err := findOnlineNodes(count, -2, nil)
+func GetUnconnAddr(count int, excl *[]api.Address) []api.Address {
+	addrs, err := findOnlineNodes(count, -2, excl)
 	// fmt.Println(len(addrs))
 	if err != nil {
 		logging.Log(1, fmt.Sprintf("Unconnected address search failed. Error: %#v", err))
@@ -184,12 +182,12 @@ func GetUnconnAddr(count int) []api.Address {
 	return addrs
 }
 
-func Dbg_convertAddrSliceToNameSlice(nodes []api.Address) []string {
-	names := []string{}
-	for _, val := range nodes {
-		if val.Client.ClientName != "" { // If this is not a completely nonconnected node with no data
-			names = append(names, val.Client.ClientName)
-		}
-	}
-	return names
-}
+// func Dbg_convertAddrSliceToNameSlice(nodes []api.Address) []string {
+// 	names := []string{}
+// 	for _, val := range nodes {
+// 		if val.Client.ClientName != "" { // If this is not a completely nonconnected node with no data
+// 			names = append(names, val.Client.ClientName)
+// 		}
+// 	}
+// 	return names
+// }

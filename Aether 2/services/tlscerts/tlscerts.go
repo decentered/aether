@@ -46,12 +46,13 @@ import (
 	"log"
 	"math/big"
 	"os"
+	"path/filepath"
 	"time"
 )
 
 const (
 	host      = "Aether"
-	validFrom = "Dec 16 00:00:00 1689"
+	validFrom = "Dec 16 12:00:00 1689"
 	validFor  = time.Duration(0)
 )
 
@@ -108,8 +109,10 @@ func pemBlockForKey(priv *ecdsa.PrivateKey) *pem.Block {
 
 // Generate generates a key pair if needed.
 func Generate() {
-	certLoc := fmt.Sprintf("%s/cert.pem", globals.BackendConfig.GetUserDirectory())
-	keyLoc := fmt.Sprintf("%s/key.pem", globals.BackendConfig.GetUserDirectory())
+	baseTLSPath := filepath.Join(globals.BackendConfig.GetUserDirectory(), "backend", "tls")
+	toolbox.CreatePath(baseTLSPath)
+	certLoc := filepath.Join(baseTLSPath, "cert.pem")
+	keyLoc := filepath.Join(baseTLSPath, "key.pub")
 	if !toolbox.FileExists(certLoc) || !toolbox.FileExists(keyLoc) {
 		toolbox.DeleteFromDisk(certLoc)
 		toolbox.DeleteFromDisk(keyLoc)

@@ -121,6 +121,7 @@ type DbVote struct {
 	Target         api.Fingerprint `db:"Target"`
 	Owner          api.Fingerprint `db:"Owner"`
 	OwnerPublicKey string          `db:"OwnerPublicKey"`
+	TypeClass      int             `db:"TypeClass"`
 	Type           int             `db:"Type"`
 	LocalArrival   api.Timestamp   `db:"LocalArrival"`
 	LastReferenced api.Timestamp   `db:"LastReferenced"`
@@ -154,8 +155,9 @@ type DbTruststate struct {
 	Target         api.Fingerprint `db:"Target"`
 	Owner          api.Fingerprint `db:"Owner"`
 	OwnerPublicKey string          `db:"OwnerPublicKey"`
+	TypeClass      int             `db:"TypeClass"`
 	Type           int             `db:"Type"`
-	Domains        string          `db:"Domains"` // comma separated fingerprint list
+	Domain         api.Fingerprint `db:"Domain"`
 	Expiry         api.Timestamp   `db:"Expiry"`
 	LocalArrival   api.Timestamp   `db:"LocalArrival"`
 	LastReferenced api.Timestamp   `db:"LastReferenced"`
@@ -334,6 +336,7 @@ func APItoDB(object interface{}, ts time.Time) (interface{}, error) {
 		dbObj.Target = obj.Target
 		dbObj.Owner = obj.Owner
 		dbObj.OwnerPublicKey = obj.OwnerPublicKey
+		dbObj.TypeClass = obj.TypeClass
 		dbObj.Type = obj.Type
 		// now := time.Now().Unix()
 		dbObj.LocalArrival = api.Timestamp(now)
@@ -350,6 +353,64 @@ func APItoDB(object interface{}, ts time.Time) (interface{}, error) {
 		dbObj.LastUpdate = obj.LastUpdate
 		dbObj.UpdateProofOfWork = obj.UpdateProofOfWork
 		dbObj.UpdateSignature = obj.UpdateSignature
+		return dbObj, nil
+
+	case api.Key:
+		if !obj.GetVerified() {
+			return DbKey{}, errors.New(fmt.Sprintf("This Api entity failed verification (or the verification hasn't been run on it), thus is denied conversion to the Db entity. Entity %#v", obj))
+		}
+		var dbObj DbKey
+		dbObj.Fingerprint = obj.Fingerprint
+		dbObj.Type = obj.Type
+		dbObj.PublicKey = obj.Key
+		dbObj.Expiry = obj.Expiry
+		dbObj.Name = obj.Name
+		dbObj.Info = obj.Info
+		// now := time.Now().Unix()
+		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.LastReferenced = api.Timestamp(now)
+		dbObj.EntityVersion = obj.EntityVersion
+		dbObj.Meta = obj.Meta
+		dbObj.RealmId = obj.RealmId
+		dbObj.EncrContent = obj.EncrContent
+		// Provable set
+		dbObj.Creation = obj.Creation
+		dbObj.ProofOfWork = obj.ProofOfWork
+		dbObj.Signature = obj.Signature
+		// Updateable set
+		dbObj.LastUpdate = obj.LastUpdate
+		dbObj.UpdateProofOfWork = obj.UpdateProofOfWork
+		dbObj.UpdateSignature = obj.UpdateSignature
+		return dbObj, nil
+
+	case api.Truststate:
+		if !obj.GetVerified() {
+			return DbTruststate{}, errors.New(fmt.Sprintf("This Api entity failed verification (or the verification hasn't been run on it), thus is denied conversion to the Db entity. Entity %#v", obj))
+		}
+		var dbObj DbTruststate
+		dbObj.Fingerprint = obj.Fingerprint
+		dbObj.Target = obj.Target
+		dbObj.Owner = obj.Owner
+		dbObj.OwnerPublicKey = obj.OwnerPublicKey
+		dbObj.TypeClass = obj.TypeClass
+		dbObj.Type = obj.Type
+		dbObj.Expiry = obj.Expiry
+		// now := time.Now().Unix()
+		dbObj.LocalArrival = api.Timestamp(now)
+		dbObj.LastReferenced = api.Timestamp(now)
+		dbObj.EntityVersion = obj.EntityVersion
+		dbObj.Meta = obj.Meta
+		dbObj.RealmId = obj.RealmId
+		dbObj.EncrContent = obj.EncrContent
+		// Provable set
+		dbObj.Creation = obj.Creation
+		dbObj.ProofOfWork = obj.ProofOfWork
+		dbObj.Signature = obj.Signature
+		// Updateable set
+		dbObj.LastUpdate = obj.LastUpdate
+		dbObj.UpdateProofOfWork = obj.UpdateProofOfWork
+		dbObj.UpdateSignature = obj.UpdateSignature
+		dbObj.Domain = obj.Domain
 		return dbObj, nil
 
 	case api.Address:
@@ -403,69 +464,6 @@ func APItoDB(object interface{}, ts time.Time) (interface{}, error) {
 		ap.Subprotocols = subprotocols
 		return ap, nil
 
-	case api.Key:
-		if !obj.GetVerified() {
-			return DbKey{}, errors.New(fmt.Sprintf("This Api entity failed verification (or the verification hasn't been run on it), thus is denied conversion to the Db entity. Entity %#v", obj))
-		}
-		var dbObj DbKey
-		dbObj.Fingerprint = obj.Fingerprint
-		dbObj.Type = obj.Type
-		dbObj.PublicKey = obj.Key
-		dbObj.Expiry = obj.Expiry
-		dbObj.Name = obj.Name
-		dbObj.Info = obj.Info
-		// now := time.Now().Unix()
-		dbObj.LocalArrival = api.Timestamp(now)
-		dbObj.LastReferenced = api.Timestamp(now)
-		dbObj.EntityVersion = obj.EntityVersion
-		dbObj.Meta = obj.Meta
-		dbObj.RealmId = obj.RealmId
-		dbObj.EncrContent = obj.EncrContent
-		// Provable set
-		dbObj.Creation = obj.Creation
-		dbObj.ProofOfWork = obj.ProofOfWork
-		dbObj.Signature = obj.Signature
-		// Updateable set
-		dbObj.LastUpdate = obj.LastUpdate
-		dbObj.UpdateProofOfWork = obj.UpdateProofOfWork
-		dbObj.UpdateSignature = obj.UpdateSignature
-		return dbObj, nil
-
-	case api.Truststate:
-		if !obj.GetVerified() {
-			return DbTruststate{}, errors.New(fmt.Sprintf("This Api entity failed verification (or the verification hasn't been run on it), thus is denied conversion to the Db entity. Entity %#v", obj))
-		}
-		// Corner case: domain is a slice of fingerprints, convert to that.
-		var dbObj DbTruststate
-		dbObj.Fingerprint = obj.Fingerprint
-		dbObj.Target = obj.Target
-		dbObj.Owner = obj.Owner
-		dbObj.OwnerPublicKey = obj.OwnerPublicKey
-		dbObj.Type = obj.Type
-		dbObj.Expiry = obj.Expiry
-		// now := time.Now().Unix()
-		dbObj.LocalArrival = api.Timestamp(now)
-		dbObj.LastReferenced = api.Timestamp(now)
-		dbObj.EntityVersion = obj.EntityVersion
-		dbObj.Meta = obj.Meta
-		dbObj.RealmId = obj.RealmId
-		dbObj.EncrContent = obj.EncrContent
-		// Provable set
-		dbObj.Creation = obj.Creation
-		dbObj.ProofOfWork = obj.ProofOfWork
-		dbObj.Signature = obj.Signature
-		// Updateable set
-		dbObj.LastUpdate = obj.LastUpdate
-		dbObj.UpdateProofOfWork = obj.UpdateProofOfWork
-		dbObj.UpdateSignature = obj.UpdateSignature
-		parsedStr, err :=
-			parseStringSliceToCommaSeparatedString(
-				convertFingerprintSliceToStringSlice(obj.Domains), "truststates")
-		if err != nil {
-			return dbObj, err
-		}
-		dbObj.Domains = parsedStr
-		return dbObj, nil
 	default:
 		return nil, errors.New(
 			fmt.Sprintf(
@@ -567,6 +565,7 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.Target = obj.Target
 		apiObj.Owner = obj.Owner
 		apiObj.OwnerPublicKey = obj.OwnerPublicKey
+		apiObj.TypeClass = obj.TypeClass
 		apiObj.Type = obj.Type
 		apiObj.EntityVersion = obj.EntityVersion
 		apiObj.Meta = obj.Meta
@@ -580,6 +579,53 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 		apiObj.LastUpdate = obj.LastUpdate
 		apiObj.UpdateProofOfWork = obj.UpdateProofOfWork
 		apiObj.UpdateSignature = obj.UpdateSignature
+		return apiObj, nil
+
+	case DbKey:
+		var apiObj api.Key
+		apiObj.Fingerprint = obj.Fingerprint
+		apiObj.Type = obj.Type
+		apiObj.Key = obj.PublicKey
+		apiObj.Expiry = obj.Expiry
+		apiObj.Name = obj.Name
+		apiObj.Info = string(obj.Info)
+		apiObj.EntityVersion = obj.EntityVersion
+		apiObj.Meta = obj.Meta
+		apiObj.RealmId = obj.RealmId
+		apiObj.EncrContent = obj.EncrContent
+		// Provable set
+		apiObj.Creation = obj.Creation
+		apiObj.ProofOfWork = obj.ProofOfWork
+		apiObj.Signature = obj.Signature
+		// Updateable set
+		apiObj.LastUpdate = obj.LastUpdate
+		apiObj.UpdateProofOfWork = obj.UpdateProofOfWork
+		apiObj.UpdateSignature = obj.UpdateSignature
+		return apiObj, nil
+
+	case DbTruststate:
+		// Corner case, comma separated fingerprint parse
+		var apiObj api.Truststate
+		apiObj.Fingerprint = obj.Fingerprint
+		apiObj.Target = obj.Target
+		apiObj.Owner = obj.Owner
+		apiObj.OwnerPublicKey = obj.OwnerPublicKey
+		apiObj.TypeClass = obj.TypeClass
+		apiObj.Type = obj.Type
+		apiObj.Expiry = obj.Expiry
+		apiObj.EntityVersion = obj.EntityVersion
+		apiObj.Meta = obj.Meta
+		apiObj.RealmId = obj.RealmId
+		apiObj.EncrContent = obj.EncrContent
+		// Provable set
+		apiObj.Creation = obj.Creation
+		apiObj.ProofOfWork = obj.ProofOfWork
+		apiObj.Signature = obj.Signature
+		// Updateable set
+		apiObj.LastUpdate = obj.LastUpdate
+		apiObj.UpdateProofOfWork = obj.UpdateProofOfWork
+		apiObj.UpdateSignature = obj.UpdateSignature
+		apiObj.Domain = obj.Domain
 		return apiObj, nil
 
 	case DbAddress:
@@ -620,56 +666,6 @@ func DBtoAPI(object interface{}) (interface{}, error) {
 			apiSubprotocols = append(apiSubprotocols, apiSp)
 		}
 		apiObj.Protocol.Subprotocols = apiSubprotocols
-		return apiObj, nil
-
-	case DbKey:
-		var apiObj api.Key
-		apiObj.Fingerprint = obj.Fingerprint
-		apiObj.Type = obj.Type
-		apiObj.Key = obj.PublicKey
-		apiObj.Expiry = obj.Expiry
-		apiObj.Name = obj.Name
-		apiObj.Info = string(obj.Info)
-		apiObj.EntityVersion = obj.EntityVersion
-		apiObj.Meta = obj.Meta
-		apiObj.RealmId = obj.RealmId
-		apiObj.EncrContent = obj.EncrContent
-		// Provable set
-		apiObj.Creation = obj.Creation
-		apiObj.ProofOfWork = obj.ProofOfWork
-		apiObj.Signature = obj.Signature
-		// Updateable set
-		apiObj.LastUpdate = obj.LastUpdate
-		apiObj.UpdateProofOfWork = obj.UpdateProofOfWork
-		apiObj.UpdateSignature = obj.UpdateSignature
-		return apiObj, nil
-
-	case DbTruststate:
-		// Corner case, comma separated fingerprint parse
-		var apiObj api.Truststate
-		apiObj.Fingerprint = obj.Fingerprint
-		apiObj.Target = obj.Target
-		apiObj.Owner = obj.Owner
-		apiObj.OwnerPublicKey = obj.OwnerPublicKey
-		apiObj.Type = obj.Type
-		apiObj.Expiry = obj.Expiry
-		apiObj.EntityVersion = obj.EntityVersion
-		apiObj.Meta = obj.Meta
-		apiObj.RealmId = obj.RealmId
-		apiObj.EncrContent = obj.EncrContent
-		// Provable set
-		apiObj.Creation = obj.Creation
-		apiObj.ProofOfWork = obj.ProofOfWork
-		apiObj.Signature = obj.Signature
-		// Updateable set
-		apiObj.LastUpdate = obj.LastUpdate
-		apiObj.UpdateProofOfWork = obj.UpdateProofOfWork
-		apiObj.UpdateSignature = obj.UpdateSignature
-		parsedStrSlice, err := parseCommaSeparatedStringToStringSlice(obj.Domains, 64, 100)
-		if err != nil {
-			return apiObj, err
-		}
-		apiObj.Domains = convertStringSliceToFingerprintSlice(parsedStrSlice)
 		return apiObj, nil
 
 	case DbBoardOwner:
@@ -728,9 +724,6 @@ func parseStringSliceToCommaSeparatedString(strs []string, entityType string) (s
 	if entityType == "addresses" {
 		maxLen = api.MAX_ADDRESS_PROTOCOL_SUBPROTOCOL_SUPPORTEDENTITIES_NAME_V1
 		maxCount = api.MAX_ADDRESS_PROTOCOL_SUBPROTOCOL_SUPPORTEDENTITIES_V1
-	} else if entityType == "truststates" {
-		maxLen = 64 // Fingerprint length
-		maxCount = api.MAX_TRUSTSTATE_DOMAINS_V1
 	}
 	var err error
 	var finalStr string
@@ -783,18 +776,18 @@ func checkDuplicatesInStringSlice(strs []string) error {
 	return nil
 }
 
-func convertFingerprintSliceToStringSlice(fps []api.Fingerprint) []string {
-	var strSlice []string
-	for _, val := range fps {
-		strSlice = append(strSlice, string(val))
-	}
-	return strSlice
-}
+// func convertFingerprintSliceToStringSlice(fps []api.Fingerprint) []string {
+// 	var strSlice []string
+// 	for _, val := range fps {
+// 		strSlice = append(strSlice, string(val))
+// 	}
+// 	return strSlice
+// }
 
-func convertStringSliceToFingerprintSlice(strs []string) []api.Fingerprint {
-	var fpSlice []api.Fingerprint
-	for _, val := range strs {
-		fpSlice = append(fpSlice, api.Fingerprint(val))
-	}
-	return fpSlice
-}
+// func convertStringSliceToFingerprintSlice(strs []string) []api.Fingerprint {
+// 	var fpSlice []api.Fingerprint
+// 	for _, val := range strs {
+// 		fpSlice = append(fpSlice, api.Fingerprint(val))
+// 	}
+// 	return fpSlice
+// }

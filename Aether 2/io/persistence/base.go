@@ -13,9 +13,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	// _ "github.com/lib/pq"
 	"errors"
-	"github.com/fatih/color"
-	"math/rand"
+	// "github.com/fatih/color"
 	// "os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -23,8 +23,8 @@ import (
 // DeleteDatabase removes the existing database in the default location.
 func DeleteDatabase() {
 	if globals.BackendConfig.GetDbEngine() == "sqlite" {
-		dbFile := fmt.Sprintf("%s/AetherDB.db", globals.BackendConfig.GetUserDirectory())
-		toolbox.DeleteFromDisk(dbFile)
+		dbLoc := filepath.Join(globals.BackendConfig.GetUserDirectory(), "backend", "AetherDB.db")
+		toolbox.DeleteFromDisk(dbLoc)
 	} else if globals.BackendConfig.GetDbEngine() == "mysql" {
 		globals.DbInstance.MustExec("DROP DATABASE `AetherDB`;")
 	}
@@ -85,7 +85,19 @@ func createDatabase() error {
 	var idxSqlite9 string
 	var idxSqlite10 string
 	var idxSqlite11 string
-	// var idxSqlite12 string
+	var idxSqlite12 string
+	var idxSqlite13 string
+	var idxSqlite14 string
+	var idxSqlite15 string
+	var idxSqlite16 string
+	var idxSqlite17 string
+	var idxSqlite18 string
+	var idxSqlite19 string
+	var idxSqlite20 string
+	var idxSqlite21 string
+	var idxSqlite22 string
+	var idxSqlite23 string
+	var idxSqlite24 string
 
 	if globals.BackendConfig.DbEngine == "mysql" {
 		schemaPrep1 = `
@@ -125,7 +137,7 @@ func createDatabase() error {
           Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
           EncrContent MEDIUMTEXT NOT NULL,
-          INDEX (LastReferenced)
+          INDEX (LastReferenced, LastUpdate, Creation)
         )ROW_FORMAT=COMPRESSED;`
 		schema4 = `
         CREATE TABLE IF NOT EXISTS Threads (
@@ -148,7 +160,7 @@ func createDatabase() error {
           Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
           EncrContent MEDIUMTEXT NOT NULL,
-          INDEX (Board, LastReferenced)
+          INDEX (Board, LastReferenced, LastUpdate, Creation)
         )ROW_FORMAT=COMPRESSED;`
 		schema5 = `
         CREATE TABLE IF NOT EXISTS Posts (
@@ -171,7 +183,7 @@ func createDatabase() error {
           Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
           EncrContent MEDIUMTEXT NOT NULL,
-          INDEX (Thread, Parent, LastReferenced)
+          INDEX (Board, Thread, Parent, LastReferenced, LastUpdate, Creation)
         )ROW_FORMAT=COMPRESSED;`
 		schema6 = `
         CREATE TABLE IF NOT EXISTS Votes (
@@ -181,6 +193,7 @@ func createDatabase() error {
           Target VARCHAR(64) NOT NULL,
           Owner VARCHAR(64) NOT NULL,
           OwnerPublicKey VARCHAR(128) NOT NULL,
+          TypeClass SMALLINT NOT NULL,
           Type SMALLINT NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
@@ -194,7 +207,7 @@ func createDatabase() error {
           Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
           EncrContent MEDIUMTEXT NOT NULL,
-          INDEX (Target, LastReferenced)
+          INDEX (Target, LastReferenced, LastUpdate, Creation)
         )ROW_FORMAT=COMPRESSED;`
 		schema7 = `
         CREATE TABLE IF NOT EXISTS Addresses (
@@ -244,8 +257,9 @@ func createDatabase() error {
           Target VARCHAR(64) NOT NULL,
           Owner VARCHAR(64) NOT NULL,
           OwnerPublicKey VARCHAR(128) NOT NULL,
+          TypeClass SMALLINT NOT NULL,
           Type SMALLINT NOT NULL,
-          Domains VARCHAR(7000) NOT NULL,
+          Domain VARCHAR(64) NOT NULL,
           Expiry BIGINT NOT NULL,
           Creation BIGINT NOT NULL,
           ProofOfWork VARCHAR(1024) NOT NULL,
@@ -259,7 +273,7 @@ func createDatabase() error {
           Meta MEDIUMTEXT NOT NULL,
           RealmId VARCHAR(64) NOT NULL,
           EncrContent MEDIUMTEXT NOT NULL,
-          INDEX (LastReferenced)
+          INDEX (LastReferenced, LastUpdate, Creation)
         )ROW_FORMAT=COMPRESSED;
       `
 		schema10 = `
@@ -383,6 +397,7 @@ func createDatabase() error {
         ,  "Target" varchar(64) NOT NULL
         ,  "Owner" varchar(64) NOT NULL
         ,  "OwnerPublicKey" varchar(128) NOT NULL
+        ,  "TypeClass" integer NOT NULL
         ,  "Type" integer NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
@@ -426,8 +441,9 @@ func createDatabase() error {
         ,  "Target" varchar(64) NOT NULL
         ,  "Owner" varchar(64) NOT NULL
         ,  "OwnerPublicKey" varchar(128) NOT NULL
+        ,  "TypeClass" integer NOT NULL
         ,  "Type" integer NOT NULL
-        ,  "Domains" varchar(7000) NOT NULL
+        ,  "Domain" varchar(64) NOT NULL
         ,  "Expiry" integer NOT NULL
         ,  "Creation" integer NOT NULL
         ,  "ProofOfWork" varchar(1024) NOT NULL
@@ -513,6 +529,7 @@ func createDatabase() error {
 		idxSqlite5 = `
           CREATE INDEX IF NOT EXISTS "idx_Posts_Parent" ON "Posts" ("Parent");
           `
+		// LastReferenced indexes
 		idxSqlite6 = `
           CREATE INDEX IF NOT EXISTS "idx_Boards_LastReferenced" ON "Boards" ("LastReferenced");
           `
@@ -531,9 +548,48 @@ func createDatabase() error {
 		idxSqlite11 = `
           CREATE INDEX IF NOT EXISTS "idx_Truststates_LastReferenced" ON "Truststates" ("LastReferenced");
           `
-		// idxSqlite12 = `
-		//         CREATE INDEX IF NOT EXISTS "idx_Addresses_LastReferenced" ON "Addresses" ("LastReferenced");
-		//         `
+		// LastUpdate indexes
+		idxSqlite12 = `
+          CREATE INDEX IF NOT EXISTS "idx_Boards_LastUpdate" ON "Boards" ("LastUpdate");
+          `
+		idxSqlite13 = `
+          CREATE INDEX IF NOT EXISTS "idx_Threads_LastUpdate" ON "Threads" ("LastUpdate");
+          `
+		idxSqlite14 = `
+          CREATE INDEX IF NOT EXISTS "idx_Posts_LastUpdate" ON "Posts" ("LastUpdate");
+          `
+		idxSqlite15 = `
+          CREATE INDEX IF NOT EXISTS "idx_Votes_LastUpdate" ON "Votes" ("LastUpdate");
+          `
+		idxSqlite16 = `
+          CREATE INDEX IF NOT EXISTS "idx_PublicKeys_LastUpdate" ON "PublicKeys" ("LastUpdate");
+          `
+		idxSqlite17 = `
+          CREATE INDEX IF NOT EXISTS "idx_Truststates_LastUpdate" ON "Truststates" ("LastUpdate");
+          `
+		// Creation indexes
+		idxSqlite18 = `
+          CREATE INDEX IF NOT EXISTS "idx_Boards_Creation" ON "Boards" ("Creation");
+          `
+		idxSqlite19 = `
+          CREATE INDEX IF NOT EXISTS "idx_Threads_Creation" ON "Threads" ("Creation");
+          `
+		idxSqlite20 = `
+          CREATE INDEX IF NOT EXISTS "idx_Posts_Creation" ON "Posts" ("Creation");
+          `
+		idxSqlite21 = `
+          CREATE INDEX IF NOT EXISTS "idx_Votes_Creation" ON "Votes" ("Creation");
+          `
+		idxSqlite22 = `
+          CREATE INDEX IF NOT EXISTS "idx_PublicKeys_Creation" ON "PublicKeys" ("Creation");
+          `
+		idxSqlite23 = `
+          CREATE INDEX IF NOT EXISTS "idx_Truststates_Creation" ON "Truststates" ("Creation");
+          `
+		// Post's board index (thread and parent already indexed above.)
+		idxSqlite24 = `
+          CREATE INDEX IF NOT EXISTS "idx_Posts_Board" ON "Posts" ("Board");
+          `
 	} else {
 		logging.LogCrash(fmt.Sprintf("Storage engine you've inputted is not supported. Please change it from the backend user config into something that is supported. You've provided: %s", globals.BackendConfig.GetDbEngine()))
 	}
@@ -564,7 +620,19 @@ func createDatabase() error {
 		creationSchemas = append(creationSchemas, idxSqlite9)
 		creationSchemas = append(creationSchemas, idxSqlite10)
 		creationSchemas = append(creationSchemas, idxSqlite11)
-		// creationSchemas = append(creationSchemas, idxSqlite12)
+		creationSchemas = append(creationSchemas, idxSqlite12)
+		creationSchemas = append(creationSchemas, idxSqlite13)
+		creationSchemas = append(creationSchemas, idxSqlite14)
+		creationSchemas = append(creationSchemas, idxSqlite15)
+		creationSchemas = append(creationSchemas, idxSqlite16)
+		creationSchemas = append(creationSchemas, idxSqlite17)
+		creationSchemas = append(creationSchemas, idxSqlite18)
+		creationSchemas = append(creationSchemas, idxSqlite19)
+		creationSchemas = append(creationSchemas, idxSqlite20)
+		creationSchemas = append(creationSchemas, idxSqlite21)
+		creationSchemas = append(creationSchemas, idxSqlite22)
+		creationSchemas = append(creationSchemas, idxSqlite23)
+		creationSchemas = append(creationSchemas, idxSqlite24)
 	} else if globals.BackendConfig.GetDbEngine() == "mysql" {
 		creationSchemas = append(creationSchemas, schemaPrep1)
 		creationSchemas = append(creationSchemas, schemaPrep2)
@@ -616,9 +684,8 @@ func CheckDatabaseReady() {
     :DbRoundtripTestField
   )`
 	DiagDelete := `DELETE FROM Diagnostics`
-	rand.Seed(time.Now().UTC().UnixNano())
 	// We're using time.now because we don't want DB to optimise out the write and not test the connection that way. Get a random number between 0- 65535 for entry test.
-	ss := map[string]interface{}{"DbRoundtripTestField": rand.Intn(65535)}
+	ss := map[string]interface{}{"DbRoundtripTestField": toolbox.GetInsecureRand(65535)}
 	// First, remove everything.
 	tx, err := globals.DbInstance.Beginx()
 	if err != nil {
@@ -642,7 +709,7 @@ func CheckDatabaseReady() {
 	if err5 != nil {
 		logging.LogCrash(err4)
 	}
-	color.Cyan("Database is ready. Just verified by removing and inserting data successfully.")
+	logging.Logf(1, "Database is ready. Just verified by removing and inserting data successfully.")
 }
 
 // Insertion SQL code used by the writer.
@@ -696,7 +763,6 @@ BOARD > KEY(Y): Update board's key's lastreferenced timestamp.
    THE ORDER OF THE STATEMENTS DO MATTER - The main insert needs to happen the LAST, because after the insert succeeds, all of these IS NULL constraints that we rely on will start to fail, since at that point the candidate is already in, and now the candidate comparison becomes a comparison with itself - which candidate will fail.
 */
 
-// Board insert does insert or replace without checking because we're handling the logic that decides whether we should update or not in the database layer (above), not SQL layer here. TODO / TOTHINK: Should we ALSO do it here, just in case?
 var boardInsert_BoardsBoardOwners_DeletePriors = `
 WITH ExtantE(Creation, LastUpdate) AS (
   SELECT Creation, LastUpdate
@@ -1237,6 +1303,7 @@ SELECT Candidate.* FROM
         :Target AS Target,
         :Owner AS Owner,
         :OwnerPublicKey AS OwnerPublicKey,
+        :TypeClass AS TypeClass,
         :Type AS Type,
         :Creation AS Creation,
         :ProofOfWork AS ProofOfWork,
@@ -1361,8 +1428,9 @@ SELECT Candidate.* FROM
         :Target AS Target,
         :Owner AS Owner,
         :OwnerPublicKey AS OwnerPublicKey,
+        :TypeClass AS TypeClass,
         :Type AS Type,
-        :Domains AS Domains,
+        :Domain AS Domain,
         :Expiry AS Expiry,
         :Creation AS Creation,
         :ProofOfWork AS ProofOfWork,

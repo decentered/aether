@@ -13,6 +13,7 @@ import (
 
 // Sizes for mathematical constants
 const (
+	// Why not just ^(uint8(0)? Because we want these things untyped for now.
 	MAX_INT64  = 9223372036854775807
 	MAX_UINT8  = 255
 	MAX_UINT16 = 65535
@@ -57,7 +58,8 @@ const (
 	MIN_BOARD_BOARDOWNERS_V1 = 0
 	MAX_BOARD_BOARDOWNERS_V1 = 128
 
-	MIN_BOARD_LANGUAGE_V1 = 3 // 3 char ISO 639-3 codes in lowercase
+	MIN_BOARD_LANGUAGE_V1 = 0 // 3 char ISO 639-3 codes in lowercase
+	// ^ 0 Because in the absence of language data, or when unrecognised, we assume Common Tongue.
 	MAX_BOARD_LANGUAGE_V1 = 3
 
 	// Thread
@@ -92,9 +94,6 @@ const (
 
 	MIN_TRUSTSTATE_TYPE_V1 = MIN_VOTE_TYPE_V1
 	MAX_TRUSTSTATE_TYPE_V1 = MAX_VOTE_TYPE_V1
-
-	MIN_TRUSTSTATE_DOMAINS_V1 = 0
-	MAX_TRUSTSTATE_DOMAINS_V1 = 128
 
 	// Address
 
@@ -172,7 +171,7 @@ const (
 
 func stringBC(item string, minLen, maxLen int) bool {
 	if !(utf8.ValidString(item) && len(item) >= minLen && len(item) <= maxLen) {
-		fmt.Printf("STRING CHECK FAIL: %s, min: %d, max: %d\n", item, minLen, maxLen)
+		fmt.Printf("STRING CHECK FAIL. Item: %s, Min: %d, Max: %d\n", item, minLen, maxLen)
 	}
 	return utf8.ValidString(item) &&
 		len(item) >= minLen &&
@@ -218,6 +217,11 @@ func fingerprintBC(item Fingerprint) bool {
 	// if !stringBC(string(item), 0, 64) {
 	// 	fmt.Printf("FINGERPRINT FAIL: %s\n", item)
 	// }
+	return stringBC(string(item), 0, 64)
+}
+
+func nonceBC(item Nonce) bool {
+	// Min 0 because nonce is only checked when there is a post request.
 	return stringBC(string(item), 0, 64)
 }
 func fingerprintSliceBC(item *[]Fingerprint, minLen, maxLen int) bool {
@@ -565,6 +569,7 @@ func checkVoteBounds_V1(item *Vote) bool {
 		fingerprintBC(item.Target) &&
 		fingerprintBC(item.Owner) &&
 		publicKeyBC(item.OwnerPublicKey, item.Owner) &&
+		intBC(int64(item.TypeClass), MIN_VOTE_TYPE_V1, MAX_VOTE_TYPE_V1) &&
 		intBC(int64(item.Type), MIN_VOTE_TYPE_V1, MAX_VOTE_TYPE_V1) &&
 		intBC(int64(item.EntityVersion), MIN_ENTITYVERSION, MAX_ENTITYVERSION) &&
 		stringBC(item.Meta, MIN_META_V1, MAX_META_V1) &&
@@ -589,8 +594,9 @@ func checkTruststateBounds_V1(item *Truststate) bool {
 		fingerprintBC(item.Target) &&
 		fingerprintBC(item.Owner) &&
 		publicKeyBC(item.OwnerPublicKey, item.Owner) &&
+		intBC(int64(item.TypeClass), MIN_TRUSTSTATE_TYPE_V1, MAX_TRUSTSTATE_TYPE_V1) &&
 		intBC(int64(item.Type), MIN_TRUSTSTATE_TYPE_V1, MAX_TRUSTSTATE_TYPE_V1) &&
-		fingerprintSliceBC(&item.Domains, MIN_TRUSTSTATE_DOMAINS_V1, MAX_TRUSTSTATE_DOMAINS_V1) &&
+		fingerprintBC(item.Domain) &&
 		timestampBC(item.Expiry) &&
 		intBC(int64(item.EntityVersion), MIN_ENTITYVERSION, MAX_ENTITYVERSION) &&
 		stringBC(item.Meta, MIN_META_V1, MAX_META_V1) &&
@@ -613,6 +619,7 @@ func checkAddressBounds_V1(item *Address) bool {
 func checkApiResponseBounds_V1_0(item *ApiResponse) bool {
 	bodyOk := nodePublicKeyBC(item.NodePublicKey) &&
 		signatureBC(item.Signature) &&
+		nonceBC(item.Nonce) &&
 		stringBC(item.Entity,
 			MIN_APIRESPONSE_ENTITY_NAME_V1_0,
 			MAX_APIRESPONSE_ENTITY_NAME_V1_0) &&

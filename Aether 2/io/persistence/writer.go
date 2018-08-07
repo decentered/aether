@@ -54,7 +54,6 @@ func insertNode(n DbNode) error {
 	// fmt.Println("Node to be inserted:")
 	// spew.Dump(n)
 	// fmt.Printf("%#v\n", n)
-	// TODO: Consider whether this needs a enforceNoEmptyIdentityFields or enforceNoEmptyRequiredFields
 	if api.Fingerprint(globals.BackendConfig.GetNodeId()) == n.Fingerprint {
 		return errors.New(fmt.Sprintf("The node ID that was attempted to be inserted is the SAME AS the local node's ID. This could be an attempted attack. Node ID of the remote: %s", n.Fingerprint))
 	}
@@ -106,7 +105,7 @@ func AddrTrustedInsert(a *[]api.Address) error {
 		aPkIface, err := APItoDB((*a)[key], time.Now())
 		if err != nil {
 			// return errors.Wrap(err, "AddrTrustedInsert encountered an error in using APItoDB.")
-			logging.Log(1, fmt.Sprintf("AddrTrustedInsert encountered an error in using APItoDB. Error: %#v", err))
+			logging.Logf(1, "AddrTrustedInsert encountered an error in using APItoDB. Error: %#v", err)
 			continue
 		}
 		addrPack := aPkIface.(AddressPack)
@@ -124,13 +123,13 @@ func AddrTrustedInsert(a *[]api.Address) error {
 		}
 		_, err5 := tx.NamedExec(getSQLCommands("dbAddressUpdate")[0], addrPack.Address)
 		if err5 != nil {
-			logging.LogCrash(err5)
+			logging.Log(1, err5)
 		}
 		if len(addrPack.Subprotocols) > 0 {
 			for _, sp := range addrPack.Subprotocols {
 				_, err6 := tx.NamedExec(getSQLCommands("dbSubprotocol")[0], sp)
 				if err6 != nil {
-					logging.LogCrash(err6)
+					logging.Log(1, err6)
 				}
 			}
 		}
@@ -138,7 +137,7 @@ func AddrTrustedInsert(a *[]api.Address) error {
 			for _, jn := range addrPack.Junctions {
 				_, err7 := tx.NamedExec(getSQLCommands("dbAddressSubprotocol")[0], jn)
 				if err7 != nil {
-					logging.LogCrash(err7)
+					logging.Log(1, err)
 				}
 			}
 		}
@@ -153,9 +152,18 @@ func AddrTrustedInsert(a *[]api.Address) error {
 }
 
 // InsertOrUpdateAddresses is the multi-entry of the core function InsertOrUpdateAddress. This is the only public API, and it should be used exclusively, because this is where we have the connection retry logic that we need.
-
-// TODO: We need to do validation here and if the address does not pass validation (i.e. the versions are either zero, or they're outside of the range this node supports) we need to return an error and then bail from connecting.
 func InsertOrUpdateAddresses(a *[]api.Address) []error {
+	errs := []error{}
+	for key, _ := range *a {
+		(*a)[key].SetVerified(true)
+		valid, err := (*a)[key].CheckBounds()
+		if err != nil {
+			errs = append(errs, err)
+		}
+		if !valid {
+			return errs
+		}
+	}
 	err := AddrTrustedInsert(a)
 	if err != nil {
 		return []error{err}
@@ -212,17 +220,17 @@ func insertOrUpdateAddress(a api.Address) error {
 	}
 	tx, err3 := globals.DbInstance.Beginx()
 	if err3 != nil {
-		logging.LogCrash(err3)
+		logging.Log(1, err3)
 	}
 	_, err4 := tx.NamedExec(getSQLCommands("dbAddressUpdate")[0], dbAddress)
 	if err4 != nil {
-		logging.LogCrash(err4)
+		logging.Log(1, err4)
 	}
 	if len(dbSubprotocols) > 0 {
 		for _, dbSubprotocol := range dbSubprotocols {
 			_, err5 := tx.NamedExec(getSQLCommands("dbSubprotocol")[0], dbSubprotocol)
 			if err5 != nil {
-				logging.LogCrash(err5)
+				logging.Log(1, err5)
 			}
 		}
 	}
@@ -230,7 +238,7 @@ func insertOrUpdateAddress(a api.Address) error {
 		for _, dbJunctionItem := range dbJunctionItems {
 			_, err5 := tx.NamedExec(getSQLCommands("dbAddressSubprotocol")[0], dbJunctionItem)
 			if err5 != nil {
-				logging.LogCrash(err5)
+				logging.Log(1, err5)
 			}
 		}
 	}
@@ -345,8 +353,6 @@ func (im *InsertMetrics) Add(im2 InsertMetrics) {
 	im.TimeElapsedSeconds = im.TimeElapsedSeconds + im2.TimeElapsedSeconds
 }
 
-// TODO: Mind that any errors happening within the transaction, if they need to bail from the transaction, they need to close it! otherwise you get database is locked.
-// TODO: Should this take a pointer instead? It's dealing with some big amounts of data.
 // BatchInsert insert a set of objects in a batch as a transaction.
 func batchInsert(apiObjectsPtr *[]interface{}) (InsertMetrics, error) {
 	apiObjects := *apiObjectsPtr
@@ -507,7 +513,7 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 	insertType := []string{}
 	tx, err := globals.DbInstance.Beginx()
 	if err != nil {
-		logging.LogCrash(err)
+		logging.Log(1, err)
 	}
 	if len(bb.DbBoards) > 0 {
 		etype := "dbBoard"
@@ -516,7 +522,7 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 			for _, dbBoard := range bb.DbBoards {
 				_, err := tx.NamedExec(cmd, dbBoard)
 				if err != nil {
-					logging.LogCrash(err)
+					logging.Log(1, err)
 				}
 			}
 		}
@@ -528,7 +534,7 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 			for _, dbThread := range bb.DbThreads {
 				_, err := tx.NamedExec(cmd, dbThread)
 				if err != nil {
-					logging.LogCrash(err)
+					logging.Log(1, err)
 				}
 			}
 		}
@@ -540,7 +546,7 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 			for _, dbPost := range bb.DbPosts {
 				_, err := tx.NamedExec(cmd, dbPost)
 				if err != nil {
-					logging.LogCrash(err)
+					logging.Log(1, err)
 				}
 			}
 		}
@@ -552,7 +558,7 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 			for _, dbVote := range bb.DbVotes {
 				_, err := tx.NamedExec(cmd, dbVote)
 				if err != nil {
-					logging.LogCrash(err)
+					logging.Log(1, err)
 				}
 			}
 		}
@@ -564,7 +570,7 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 			for _, dbKey := range bb.DbKeys {
 				_, err := tx.NamedExec(cmd, dbKey)
 				if err != nil {
-					logging.LogCrash(err)
+					logging.Log(1, err)
 				}
 			}
 		}
@@ -576,7 +582,7 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 			for _, dbTruststate := range bb.DbTruststates {
 				_, err := tx.NamedExec(cmd, dbTruststate)
 				if err != nil {
-					logging.LogCrash(err)
+					logging.Log(1, err)
 				}
 			}
 		}
@@ -588,7 +594,7 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 			for _, dbAddress := range bb.DbAddresses {
 				_, err := tx.NamedExec(cmd, dbAddress)
 				if err != nil {
-					logging.LogCrash(err)
+					logging.Log(1, err)
 				}
 			}
 		}
@@ -596,8 +602,7 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 		cmds := getSQLCommands("dbAddressPrune")
 		_, err := tx.Exec(cmds[0], globals.BackendConfig.GetMaxAddressTableSize())
 		if err != nil {
-			fmt.Println(err)
-			logging.LogCrash(err)
+			logging.Log(1, err)
 		}
 	}
 	if len(bb.DbBoardOwners) > 0 {
@@ -607,7 +612,7 @@ func insert(batchBucket *batchBucket, im *InsertMetrics) error {
 			for _, dbBoardOwner := range bb.DbBoardOwners {
 				_, err := tx.NamedExec(cmd, dbBoardOwner)
 				if err != nil {
-					logging.LogCrash(err)
+					logging.Log(1, err)
 				}
 			}
 		}
@@ -793,19 +798,18 @@ func enforceNoEmptyIdentityFields(object interface{}) error {
 
 // enforceNoEmptyRequiredFields enforces that nothing will enter the database without having proper required columns. What columns are required depends on the type of the entity. See documentation for details.
 func enforceNoEmptyRequiredFields(object interface{}) error {
-	// TODO: This needs to be able to also defend against unicode replacement char or unicode rune error characters, as well as fields that are somehow only composed of spaces. There have been occurrences in the past where people tried to get past this by editing their own local database. The local machine assumes zero trust, everything that is coming in needs to be fully checked for sanity.
+	// FUTURE: This needs to be able to also defend against unicode replacement char or unicode rune error characters, as well as fields that are somehow only composed of spaces. That defence *should* be in place, but only real-world testing can prove it. There have been occurrences in the past where people tried to get past this by editing their own local database. The local machine assumes zero trust, everything that is coming in needs to be fully checked for sanity.
 	switch obj := object.(type) {
 	case BoardPack:
 		if obj.Board.Name == "" ||
 			obj.Board.Creation == 0 ||
 			obj.Board.EntityVersion == 0 ||
-			obj.Board.Language == "" ||
 			obj.Board.ProofOfWork == "" ||
 			((len(obj.Board.Owner) > 0 && len(obj.Board.OwnerPublicKey) == 0) ||
 				(len(obj.Board.Owner) == 0 && len(obj.Board.OwnerPublicKey) > 0)) {
 			return errors.New(
 				fmt.Sprintf(
-					"This board has some required fields empty (One or more of: Name, Creation, PoW, EntityVersion, Language), or Owner is empty when OwnerPublicKey is not, or vice versa. BoardPack: %#v\n", obj))
+					"This board has some required fields empty (One or more of: Name, Creation, PoW, EntityVersion), or Owner is empty when OwnerPublicKey is not, or vice versa. BoardPack: %#v\n", obj))
 		}
 		for _, bo := range obj.BoardOwners {
 			if bo.Level == 0 {
@@ -874,11 +878,10 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 			obj.Creation == 0 ||
 			obj.EntityVersion == 0 ||
 			obj.ProofOfWork == "" ||
-			obj.Signature == "" ||
-			obj.Expiry == 0 {
+			obj.Signature == "" {
 			return errors.New(
 				fmt.Sprintf(
-					"This key has some required fields empty (One or more of: Type, PublicKey, Creation, PoW, Signature, Expiry, EntityVersion) Key: %#v\n", obj))
+					"This key has some required fields empty (One or more of: Type, PublicKey, Creation, PoW, Signature, EntityVersion) Key: %#v\n", obj))
 		}
 	case DbTruststate:
 		if obj.Target == "" ||

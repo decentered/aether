@@ -1,0 +1,60 @@
+@import "./../../../node_modules/tippy.js/dist/themes/light";
+@import "./globals.scss";
+
+.tippy-tooltip {
+  cursor: default;
+  .tippy-content {
+    font-size: 16px;
+  }
+}
+
+.tippy-tooltip.light-theme {
+  color: $a-grey-100;
+  box-shadow: 0 0 20px 4px rgba(154, 161, 177, 0.15),
+  0 4px 80px -8px rgba(36, 40, 47, 0.25),
+  0 4px 4px -2px rgba(91, 94, 105, 0.15);
+  background-color: $a-grey-800;
+
+  .tippy-backdrop {
+    background-color: $a-grey-800;
+  }
+
+  .tippy-roundarrow {
+    fill: $a-grey-800;
+  }
+
+  &[data-animatefill] {
+    background-color: transparent;
+  }
+}
+
+.tippy-tooltip.dark-theme {
+  background-color: $mid-base*0.6;
+  .tippy-backdrop {
+    background-color: $mid-base*0.6;
+  }
+  .tippy-roundarrow svg {
+    fill: $mid-base*0.6;
+  }
+}
+
+.tippy-tooltip.infomark-theme {
+  background-color: $mid-base*0.6;
+  text-align: left;
+  .tippy-backdrop {
+    background-color: $mid-base*0.6;
+  }
+  .tippy-roundarrow svg {
+    fill: $mid-base*0.6;
+  }
+  .tippy-content {
+    padding: 12px;
+  }
+  .infomark-header {
+    padding-bottom: 5px;
+  }
+
+  .infomark-body {
+    font-family: "SSP Regular"
+  }
+}

@@ -58,7 +58,7 @@ type POSTResponseRepo struct {
 
 //deleteFromDisk deletes the POST response from the directory. This only triggers when the item is also removed from the Responses repo.
 func deleteFromDisk(url string) {
-	postDir := fmt.Sprintf("%s/v0/responses/%s", bc.GetCachesDirectory(), url)
+	postDir := fmt.Sprintf("%s/", bc.GetProtURLVersion(), "/responses/%s", bc.GetCachesDirectory(), url)
 	toolbox.DeleteFromDisk(postDir)
 }
 
@@ -170,7 +170,6 @@ func (r *POSTResponseRepo) GetPostResponseChain(start Timestamp, end Timestamp, 
 	defer r.lock.Unlock()
 	// fmt.Printf("This is all post responses available for chaining: %#v\n", r)
 	// return &[]POSTResponseEntry{}, Timestamp(0), Timestamp(0), EntityCount{}
-	// disabling this temporarily TODO
 	chain := []POSTResponseEntry{}
 	linkStart := start
 	firstLinkStartsFrom := Timestamp(0)
@@ -210,6 +209,6 @@ func (r *POSTResponseRepo) Maintain() {
 }
 
 func (r *POSTResponseRepo) DeleteAllFromDisk() {
-	postDir := fmt.Sprintf("%s/v0/responses", bc.GetCachesDirectory())
+	postDir := fmt.Sprintf("%s/", bc.GetProtURLVersion(), "/responses", bc.GetCachesDirectory())
 	toolbox.DeleteFromDisk(postDir)
 }

@@ -16,7 +16,7 @@ package eventhorizon
 import (
 	"aether-core/services/globals"
 	"aether-core/services/logging"
-	// tb "aether-core/services/toolbox"
+	tb "aether-core/services/toolbox"
 	"fmt"
 	"os"
 	"time"
@@ -59,9 +59,9 @@ func delete(ts Timestamp, entityType string) {
 	tx.Commit()
 }
 
-func cnvToCutoff(days int) Timestamp {
-	return Timestamp(time.Now().Add(-(time.Duration(days) * time.Hour * time.Duration(24))).Unix())
-}
+// func CnvToCutoffDays(days int) Timestamp {
+// 	return Timestamp(time.Now().Add(-(time.Duration(days) * time.Hour * time.Duration(24))).Unix())
+// }
 
 func max(ts1 Timestamp, ts2 Timestamp) Timestamp {
 	if ts1 > ts2 {
@@ -72,9 +72,9 @@ func max(ts1 Timestamp, ts2 Timestamp) Timestamp {
 
 func deleteUpToLocalMemory() {
 	lmD := globals.BackendConfig.GetLocalMemoryDays()
-	lmCutoff := cnvToCutoff(lmD)
+	lmCutoff := Timestamp(toolbox.CnvToCutoffDays(lmD))
 	vmD := globals.BackendConfig.GetVotesMemoryDays()
-	vmCutoff := cnvToCutoff(vmD)
+	vmCutoff := Timestamp(toolbox.CnvToCutoffDays(vmD))
 	delete(lmCutoff, "boards")
 	delete(lmCutoff, "threads")
 	delete(lmCutoff, "posts")
@@ -115,7 +115,7 @@ func getDbSize() int {
 		}
 		return size
 	case "sqlite":
-		dbLoc := fmt.Sprintf("%s/AetherDB.db", globals.BackendConfig.GetUserDirectory())
+		dbLoc := filepath.Join(globals.BackendConfig.GetUserDirectory(), "backend", "AetherDB.db")
 		fi, _ := os.Stat(dbLoc)
 		// get the size
 		size := fi.Size() / 1048576 // Assuming 1Mb = 1048576 bytes (binary, not decimal)
@@ -128,9 +128,9 @@ func getDbSize() int {
 
 func PruneDB() {
 	lmD := globals.BackendConfig.GetLocalMemoryDays()
-	lmCutoff := cnvToCutoff(lmD)
+	lmCutoff := Timestamp(toolbox.CnvToCutoffDays(lmD))
 	nhD := globals.BackendConfig.GetNetworkHeadDays()
-	nhCutoff := cnvToCutoff(nhD)
+	nhCutoff := Timestamp(toolbox.CnvToCutoffDays(nhD))
 	tempeh := Timestamp(globals.BackendConfig.GetEventHorizonTimestamp())
 	logging.Logf(2, "DbSize at the beginning of PruneDB: %v", getDbSize())
 	logging.Logf(2, "Event horizon at the beginning of PruneDB: %v", time.Unix(int64(tempeh), 0).String())

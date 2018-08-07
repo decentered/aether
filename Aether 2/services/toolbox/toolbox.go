@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"net"
 	"os"
 	"runtime"
 	"strconv"
@@ -94,8 +95,8 @@ func DeleteFromDisk(path string) {
 }
 
 func IndexOf(searchString string, stringSlice []string) int {
-	for key, val := range stringSlice {
-		if val == searchString {
+	for key, _ := range stringSlice {
+		if stringSlice[key] == searchString {
 			return key
 		}
 	}
@@ -114,6 +115,7 @@ func IndexOfInt(searchInt int, intSlice []int) int {
 // GetInsecureRand gets a random number within the given range.
 // WARNING: GetRand is NOT cryptographically secure! Do not use it within, as an input of, as a way to process the output of, any cryptographic process.
 func GetInsecureRand(max int) int {
+	rand.Seed(time.Now().UnixNano())
 	return rand.Intn(max)
 }
 
@@ -132,8 +134,16 @@ func GetInsecureRands(max, count int) []int {
 	return ints
 }
 
-func CnvToCutoff(days int) int64 {
+func CnvToCutoffDays(days int) int64 {
 	return int64(time.Now().Add(-(time.Duration(days) * time.Hour * time.Duration(24))).Unix())
+}
+
+func CnvToCutoffMinutes(mins int) int64 {
+	return int64(time.Now().Add(-(time.Duration(mins) * time.Minute)).Unix())
+}
+
+func CnvToFutureCutoffMinutes(mins int) int64 {
+	return int64(time.Now().Add((time.Duration(mins) * time.Minute)).Unix())
 }
 
 func FileExists(filePath string) bool {
@@ -142,4 +152,10 @@ func FileExists(filePath string) bool {
 		return false
 	}
 	return true
+}
+
+func SplitHostPort(addr string) (string, uint16) {
+	host, portAsStr, _ := net.SplitHostPort(addr)
+	portAsInt, _ := strconv.Atoi(portAsStr)
+	return host, uint16(portAsInt)
 }

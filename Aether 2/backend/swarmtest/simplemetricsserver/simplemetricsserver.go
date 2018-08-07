@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -256,7 +257,7 @@ func ProcessConnectionStates(rawData []pb.ConnState, rawDbStateData []pb.DbState
 	}
 	for key, _ := range finalData.Nodes {
 		// Get Db Size.
-		fi, _ := os.Stat(fmt.Sprintf("%s/%s/AetherDB.db", "/Users/Helios/Library/Application Support/Air Labs", finalData.Nodes[key].Name))
+		fi, _ := os.Stat(filepath.Join("/Users/Helios/Library/Application Support/Air Labs", finalData.Nodes[key].Name, "backend/AetherDB.db"))
 		// get the size
 		size := fi.Size() / 1000000
 		finalData.Nodes[key].EndDbSizeMb = size

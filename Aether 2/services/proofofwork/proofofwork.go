@@ -89,17 +89,13 @@ func convertToBinaryString(input []byte) string {
 	return result
 }
 
-func getNowInUnixTS() int {
-	return int(time.Now().Unix())
-}
-
 // Mid level functions
 
 // Create creates the Hashcash proof of with the given difficulty. This function has an inner loop which adds a random element to the input and tries to find enough zeros at the beginning of the SHA1 hash of the result.
 func Create(input string, difficulty int, privKey *ed25519.PrivateKey) (string, error) {
 	// First of all, check if BailoutSeconds exists. If this does not exist we have to exit as the allotted maximum time until a PoW is created will be zero.
 	difficulty64 := int64(difficulty)
-	if globals.BackendConfig.GetPoWBailoutTimeSeconds() == 0 {
+	if globals.FrontendConfig.GetPoWBailoutTimeSeconds() == 0 {
 		return "", errors.New(fmt.Sprint(
 			"Please initialise BailoutSeconds first."))
 	}
@@ -133,13 +129,12 @@ func Create(input string, difficulty int, privKey *ed25519.PrivateKey) (string, 
 	inputToBePoWd := strconv.FormatInt(difficulty64, 10) +
 		input + string(saltBytes)
 	// Take time here
-	timeCounter := getNowInUnixTS()
-
-	bailoutSeconds := globals.BackendConfig.GetPoWBailoutTimeSeconds()
+	timeCounter := int(time.Now().Unix())
+	bailoutSeconds := globals.FrontendConfig.GetPoWBailoutTimeSeconds()
 	for {
 		// This is the tight loop.
 		// Check if the bailout time has passed.
-		now := getNowInUnixTS()
+		now := int(time.Now().Unix())
 		if now-(timeCounter+bailoutSeconds) > 0 {
 			return "", errors.New(fmt.Sprint(
 				"The timestamp took too long to create."))
@@ -180,8 +175,6 @@ func Create(input string, difficulty int, privKey *ed25519.PrivateKey) (string, 
 		return proofOfWork, nil
 	}
 }
-
-// TODO: deal with error conditions below.
 
 // Verify validates whether the given Hashcash token is strong enough to satisfy the given difficulty.
 func Verify(input string, pow string, pubKey string) (bool, int, error) {

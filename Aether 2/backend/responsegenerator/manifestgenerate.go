@@ -116,15 +116,16 @@ func bakeManifests(manifestPages *[]api.ApiResponse, entityCounts *[]api.EntityC
 	if respType == "addresses" {
 		return // addresses do not generate manifests.
 	}
+	protv := globals.BackendConfig.GetProtURLVersion()
 	// Create directory
 	var manifestdir string
 	if isPOST {
-		manifestdir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/responses/", foldername, "/manifest")
+		manifestdir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/", protv, "/responses/", foldername, "/manifest")
 	} else {
 		if respType == "addresses" {
-			manifestdir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/", respType, "/", foldername, "/manifest")
+			manifestdir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/", protv, "/", respType, "/", foldername, "/manifest")
 		} else {
-			manifestdir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/c0/", respType, "/", foldername, "/manifest")
+			manifestdir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/", protv, "/c0/", respType, "/", foldername, "/manifest")
 		}
 	}
 	toolbox.CreatePath(manifestdir)

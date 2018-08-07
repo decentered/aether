@@ -4,11 +4,13 @@
 package server
 
 import (
+	// "aether-core/backend/dispatch"
 	"aether-core/backend/responsegenerator"
 	"aether-core/io/api"
 	"aether-core/io/persistence"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
+	"aether-core/services/toolbox"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,41 +20,108 @@ import (
 	"net"
 	"net/http"
 	// "strconv"
+	// "bufio"
 	"crypto/tls"
+	// "github.com/libp2p/go-reuseport"
+	// "reflect"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
-// Bouncer gate.
-func isAllowed(r *http.Request) bool {
-	hostAsString, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		logging.LogCrash(err)
+func isReverseConn(host string, port uint16) bool {
+	return host == globals.BackendTransientConfig.ReverseConnData.C1LocalLocalAddr && port == globals.BackendTransientConfig.ReverseConnData.C1LocalLocalPort
+}
+
+// Bouncer gate
+func isAllowedByBouncer(r *http.Request) bool {
+	remoteHost, remotePort := toolbox.SplitHostPort(r.RemoteAddr)
+	reverse := isReverseConn(remoteHost, remotePort)
+	return globals.BackendTransientConfig.Bouncer.RequestInboundLease(remoteHost, "", remotePort, reverse)
+}
+
+// Node type gate
+func isAllowedByNodeType(method string) bool {
+	nt := globals.BackendConfig.GetNodeType()
+	switch method {
+	case "GET":
+		switch nt {
+		default:
+			return true
+		}
+	case "POST":
+		switch nt {
+		case 2:
+			return true
+		case 3:
+			return true
+		default:
+			return false
+		}
+	default:
+		return false
 	}
-	// p, _ := strconv.Atoi(portAsString)
-	return globals.BackendTransientConfig.Bouncer.RequestInboundLease(hostAsString, "", 0) // We aren't using Port.
+	return false
 }
 
 // Server responds to GETs with the caches and to POSTS with the live data from the database.
-func Serve() {
+func StartMimServer() {
+	protv := globals.BackendConfig.GetProtURLVersion()
 	handlerFunc := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" {
+		// // START SIMULATE NAT
+		// // simulate nat. this works because both apps tend to get ports in +1 -1 of the range of themselves. only accept from internal call.
+		// host, port := toolbox.SplitHostPort(r.RemoteAddr)
+		// if !isReverseConn(host, port) {
+		// 	w.WriteHeader(http.StatusForbidden)
+		// 	return
+		// }
+		// // END SIMULATE NAT
+		if !isAllowedByNodeType(r.Method) {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		// We do not gate POST response directory (this handler). Because the only wy somebody would find this would be that it would have hit a POST endpoint. Only because that initial request was allowed the remote could find this link, so the remote already has had a lease and made a request.
+
+		// if !isAllowedByBouncer(r) {
+		// 	w.WriteHeader(http.StatusTooManyRequests)
+		// 	return
+		// }
+		if r.Method == "GET" { // this is the part that serves multipage post responses.
 			// Check with bouncer if this request is allowed. If not, return too busy.
-			if !isAllowed(r) {
-				w.WriteHeader(http.StatusTooManyRequests)
+			w.Header().Set("Content-Type", "application/json")
+			// Some safeguards. Some of those are replicated in Go's own http library code, but it's still good to have these here just in case.
+			// This disallows serving of .dotfiles and directory indexes.
+			// Heads up! This will actually serve anything in the directory - if the user actually ends up putting a random file here, it will also get served, too. There's no good way to check whether the file is created by us without opening and attempting to parse the file, unfortunately.
+			if strings.Contains(r.URL.Path, "..") ||
+				strings.Contains(r.URL.Path, "/.") ||
+				strings.Contains(r.URL.Path, "\\.") ||
+				strings.HasSuffix(r.URL.Path, "/") {
+				w.WriteHeader(http.StatusNoContent)
 				return
 			}
-			dir := fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), r.URL.Path)
-			w.Header().Set("Content-Type", "application/json")
-			http.ServeFile(w, r, dir)
+			dir := filepath.Join(globals.BackendConfig.GetCachesDirectory(), r.URL.Path)
+			// logging.Logf(1, "POST response directory reader was called for: %s", dir)
+			w2 := CustomRespWriter{ResponseWriter: w}
+			http.ServeFile(&w2, r, dir)
 		} else { // If not GET we bail.
-			w.WriteHeader(http.StatusNotFound)
+			w.WriteHeader(http.StatusNoContent)
 		}
 	})
-	gzippedHandler := gziphandler.GzipHandler(handlerFunc)
-	http.Handle("/v0/responses/", gzippedHandler)
 	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// // START SIMULATE NAT
+		// // simulate nat. this works because both apps tend to get ports in +1 -1 of the range of themselves. only accept from internal call.
+		// host, port := toolbox.SplitHostPort(r.RemoteAddr)
+		// if !isReverseConn(host, port) {
+		// 	w.WriteHeader(http.StatusForbidden)
+		// 	return
+		// }
+		// // END SIMULATE NAT
+		if !isAllowedByNodeType(r.Method) {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		// Check with bouncer if this request is allowed. If not, return too busy.
-		if !isAllowed(r) {
+		if !isAllowedByBouncer(r) {
 			w.WriteHeader(http.StatusTooManyRequests)
 			return
 		}
@@ -60,17 +129,11 @@ func Serve() {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == "GET" {
 			switch r.URL.Path {
-
-			case "/v0/status", "/v0/status/":
-				// Status GET endpoint returns HTTP 200 only if the node is up, and 429 Too Many Requests if the node is being overloaded.
-				if globals.BackendTransientConfig.TooManyConnections {
-					w.WriteHeader(http.StatusTooManyRequests)
-				} else {
-					w.WriteHeader(http.StatusOK)
-				}
+			case "/" + protv + "/status", "/" + protv + "/status/":
+				w.WriteHeader(http.StatusOK)
 				w.Write([]byte{})
 
-			case "/v0/node", "/v0/node/":
+			case "/" + protv + "/node", "/" + protv + "/node/":
 				// Node GET endpoint returns the node info.
 				var resp api.ApiResponse
 				resp.Prefill()
@@ -93,8 +156,8 @@ func Serve() {
 				} else {
 					w.Write(jsonResp)
 				}
-			// TODO: bootstrappers - we should probably cache this.
-			case "/v0/bootstrappers", "/v0/bootstrappers/":
+			// FUTURE: /bootstrappers - we should probably cache this.
+			case "/" + protv + "/bootstrappers", "/" + protv + "/bootstrappers/":
 				// Shortcut endpoints that returns bootstrap nodes that this particular node knows.
 				var resp api.ApiResponse
 				resp.Prefill()
@@ -127,14 +190,25 @@ func Serve() {
 				} else {
 					w.Write(jsonResp)
 				}
-			default:
-				// TODO: Convert this into a whitelist. This should not respond to the random requests, only the endpoints. It also should not list directories.
-				http.ServeFile(w, r, fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), r.URL.Path))
+			default: // this is the part that serves caches
+				// Some safeguards. Some of those are replicated in Go's own http library code, but it's still good to have these here just in case.
+				// This disallows serving of .dotfiles and directory indexes.
+				// Heads up! This will actually serve anything in the directory - if the user actually ends up putting a random file here, it will also get served, too. There's no good way to check whether the file is created by us without opening and attempting to parse the file, unfortunately.
+				if strings.Contains(r.URL.Path, "..") ||
+					strings.Contains(r.URL.Path, "/.") ||
+					strings.Contains(r.URL.Path, "\\.") ||
+					strings.HasSuffix(r.URL.Path, "/") {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				dir := filepath.Join(globals.BackendConfig.GetCachesDirectory(), r.URL.Path)
+				// logging.Logf(1, "GET directory reader was called for: %s", dir)
+				w2 := CustomRespWriter{ResponseWriter: w}
+				http.ServeFile(&w2, r, dir)
 			}
-
 		} else if r.Method == "POST" {
 			switch r.URL.Path {
-			case "/v0/node", "/v0/node/":
+			case "/" + protv + "/node", "/" + protv + "/node/":
 				resp, err := NodePOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -146,7 +220,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/c0/boards", "/v0/c0/boards/":
+			case "/" + protv + "/c0/boards", "/" + protv + "/c0/boards/":
 				resp, err := BoardsPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -158,7 +232,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/c0/threads", "/v0/c0/threads/":
+			case "/" + protv + "/c0/threads", "/" + protv + "/c0/threads/":
 				resp, err := ThreadsPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -170,7 +244,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/c0/posts", "/v0/c0/posts/":
+			case "/" + protv + "/c0/posts", "/" + protv + "/c0/posts/":
 				resp, err := PostsPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -182,7 +256,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/c0/votes", "/v0/c0/votes/":
+			case "/" + protv + "/c0/votes", "/" + protv + "/c0/votes/":
 				resp, err := VotesPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -194,7 +268,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/c0/keys", "/v0/c0/keys/":
+			case "/" + protv + "/c0/keys", "/" + protv + "/c0/keys/":
 				resp, err := KeysPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -206,7 +280,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/c0/truststates", "/v0/c0/truststates/":
+			case "/" + protv + "/c0/truststates", "/" + protv + "/c0/truststates/":
 				resp, err := TruststatesPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -218,7 +292,7 @@ func Serve() {
 					w.Write(resp)
 				}
 
-			case "/v0/addresses", "/v0/addresses/":
+			case "/" + protv + "/addresses", "/" + protv + "/addresses/":
 				resp, err := AddressesPOST(r)
 				if err != nil {
 					logging.Log(1, err)
@@ -232,19 +306,37 @@ func Serve() {
 
 			default:
 				logging.Log(1, fmt.Sprintf("A remote reached out to this node with a request that this node does not have a route for. The requested route: %s, The node requesting: %v", r.URL.Path, r.Body))
-				w.WriteHeader(http.StatusNotFound)
+				// w.WriteHeader(http.StatusNotFound)
+				w.WriteHeader(http.StatusNoContent)
 			}
 		} else { // If not GET or POST, we bail.
-			w.WriteHeader(http.StatusNotFound)
+			// w.WriteHeader(http.StatusNotFound)
+			w.WriteHeader(http.StatusNoContent)
 		}
 	})
+
 	gzippedMainHandler := gziphandler.GzipHandler(mainHandler)
 	http.Handle("/", gzippedMainHandler)
+
+	gzippedHandler := gziphandler.GzipHandler(handlerFunc)
+	http.Handle("/"+protv+"/responses/", gzippedHandler)
+
 	port := globals.BackendConfig.GetExternalPort()
-	logging.Log(1, fmt.Sprintf("Serving setup complete. Starting to serve publicly on port %d", port))
+	extIp := globals.BackendConfig.GetExternalIp()
+	logging.Log(1, fmt.Sprintf("Serving setup complete. Starting to serve Mim publicly on port %d", port))
+	srv := &http.Server{
+		Addr:         fmt.Sprint(extIp, ":", port),
+		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)), // Disables HTTP2 because HTTP2 doesn't support Hijack, which we need to use to access the underlying TCP connection to perform a reverse open that we need to access remote nodes behind uncooperating NATs.
+		// ConnState:    ConnStateListener,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 60 * time.Second,
+	}
+	// srv.SetKeepAlivesEnabled(true)
 	if globals.BackendTransientConfig.TLSEnabled {
-		certLoc := fmt.Sprintf("%s/cert.pem", globals.BackendConfig.GetUserDirectory())
-		keyLoc := fmt.Sprintf("%s/key.pem", globals.BackendConfig.GetUserDirectory())
+		// certLoc := fmt.Sprintf("%s/backend/tls/cert.pem", )
+		certLoc := filepath.Join(globals.BackendConfig.GetUserDirectory(), "backend", "tls", "cert.pem")
+		// keyLoc := fmt.Sprintf("%s/backend/tls/key.pub", globals.BackendConfig.GetUserDirectory())
+		keyLoc := filepath.Join(globals.BackendConfig.GetUserDirectory(), "backend", "tls", "key.pub")
 		tlsConfig := &tls.Config{
 			MinVersion:               tls.VersionTLS12,
 			CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
@@ -254,19 +346,29 @@ func Serve() {
 				// Secure or die
 			},
 		}
-		srv := &http.Server{
-			TLSConfig: tlsConfig,
-			Addr:      fmt.Sprint(":", port),
-		}
+		srv.TLSConfig = tlsConfig
 		// HSTS header is not set because node IP addresses are dynamic, and us setting HSTS for an address might mean the next user of that IP address might end up having trouble getting people to connect to it through non-TLS.
-		err := srv.ListenAndServeTLS(certLoc, keyLoc)
+
+		l, err := net.Listen("tcp4", fmt.Sprint(":", port))
+		// l, err := reuseport.Listen("tcp4", fmt.Sprint(extIp, ":", port))
 		if err != nil {
-			logging.LogCrash(fmt.Sprintf("Server encountered a fatal error. Error: %s", err))
+			logging.LogCrash(err)
+		}
+		il := &InspectingListener{l}
+		srvErr := srv.ServeTLS(il, certLoc, keyLoc)
+		if srvErr != nil {
+			logging.LogCrash(fmt.Sprintf("Server encountered a fatal error. (Heads up, server also exits with error even when it quits normally) Error: %s", srvErr))
 		}
 	} else {
-		err := http.ListenAndServe(fmt.Sprint(":", port), nil)
+		l, err := net.Listen("tcp4", fmt.Sprint(":", port))
+		// l, err := reuseport.Listen("tcp4", fmt.Sprint(extIp, ":", port))
 		if err != nil {
-			logging.LogCrash(fmt.Sprintf("Server encountered a fatal error. Error: %s", err))
+			logging.LogCrash(err)
+		}
+		il := &InspectingListener{l}
+		srvErr := srv.Serve(il)
+		if srvErr != nil {
+			logging.LogCrash(fmt.Sprintf("Server encountered a fatal error. (Heads up, server also exits with error even when it quits normally) Error: %s", err))
 		}
 	}
 }
@@ -298,7 +400,6 @@ func insertLocallySourcedRemoteAddressDetails(r *http.Request, req *api.ApiRespo
 	if len(host) == 0 {
 		return errors.New(fmt.Sprintf("The address from which the remote is connecting seems to be empty. Remote Address: %#v. %#v", r.RemoteAddr, err))
 	}
-	// TODO: Decide whether making a DNS request (ParseIP makes a DNS request) below is a risk (probably not). (Actually it doesn't seem to make a DNS request - just checked the Go source code)
 	ipAddrAsIP := net.ParseIP(host)
 	ipV4Test := ipAddrAsIP.To4()
 	if ipV4Test == nil {
@@ -325,15 +426,30 @@ func ParsePOSTRequest(r *http.Request) (api.ApiResponse, error) {
 	if err2 != nil {
 		return req, errors.New(fmt.Sprintf("The HTTP body could not be parsed into a valid request. Raw Body: %#v\n, Error: %#v\n", string(b), err2.Error()))
 	}
-	// Rules for the request: (TODO TESTS)
+	// Rules for the request:
 	// - http.Request content-type == application/json
 	// - Node Id always 64 chars long
 	// - Port has to exist, and > 0
 	// - Type cannot be 0
 	// - Protocol subprotocols have to include "c0" (aether subprotocol of mim)
+	// - Has a valid nonce (by proxy, the timestamp is within our allowed clock skew bracket)
+	// - PoW is verified.
 	if r.Header["Content-Type"][0] == "application/json" &&
 		req.Address.Port > 0 &&
-		req.Address.Type != 0 {
+		req.Address.Type != 0 &&
+		req.VerifyNonce() {
+		// Verify remote software type and version and make sure we can negotiate with it.
+		if !verifyRemoteClient(req.Address.Client) {
+			logging.Logf(1, "This ApiResponse is created by a remote client we do not support. Client: %#v", req.Address.Client)
+			return req, errors.New(fmt.Sprintf("This ApiResponse is created by a remote client we do not support. Client: %#v", req.Address.Client))
+		}
+
+		// Check PoW, since this is a POST request, it is required to have a PoW.
+		valid, err := req.VerifyPoW()
+		if !valid || err != nil {
+			logging.Logf(1, "This ApiResponse failed PoW verification. Possible error: %v", err)
+			return req, errors.New(fmt.Sprintf("This ApiResponse failed PoW verification. Possible error: %v", err))
+		}
 		for _, ext := range req.Address.Protocol.Subprotocols {
 			if ext.Name == "c0" {
 				// We insert to the POST request the locally sourced details. (Location, Sublocation, LocationType [ipv4 or 6], LastSuccessfulPing)
@@ -346,6 +462,15 @@ func ParsePOSTRequest(r *http.Request) (api.ApiResponse, error) {
 		}
 	}
 	return req, errors.New(fmt.Sprintf("The request is syntactically valid JSON, but it does not include certain vital information"))
+}
+
+func verifyRemoteClient(cl api.Client) bool {
+	return true // DEBUG: remove
+	// List known supported clients here.
+	if cl.ClientName == "Aether" {
+		return true
+	}
+	return false
 }
 
 func NodePOST(r *http.Request) ([]byte, error) {
@@ -361,6 +486,9 @@ func NodePOST(r *http.Request) ([]byte, error) {
 	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("node", req)
 	if err3 != nil {
 		return respAsByte, err3
+	}
+	if r != nil {
+		r.Body.Close()
 	}
 	return respAsByte, nil
 }
@@ -379,6 +507,9 @@ func BoardsPOST(r *http.Request) ([]byte, error) {
 	if err3 != nil {
 		return respAsByte, err3
 	}
+	if r != nil {
+		r.Body.Close()
+	}
 	return respAsByte, nil
 }
 
@@ -395,6 +526,9 @@ func ThreadsPOST(r *http.Request) ([]byte, error) {
 	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("threads", req)
 	if err3 != nil {
 		return respAsByte, err3
+	}
+	if r != nil {
+		r.Body.Close()
 	}
 	return respAsByte, nil
 }
@@ -413,6 +547,9 @@ func PostsPOST(r *http.Request) ([]byte, error) {
 	if err3 != nil {
 		return respAsByte, err3
 	}
+	if r != nil {
+		r.Body.Close()
+	}
 	return respAsByte, nil
 }
 
@@ -430,22 +567,8 @@ func VotesPOST(r *http.Request) ([]byte, error) {
 	if err3 != nil {
 		return respAsByte, err3
 	}
-	return respAsByte, nil
-}
-
-func AddressesPOST(r *http.Request) ([]byte, error) {
-	req, err := ParsePOSTRequest(r)
-	if err != nil {
-		logging.Log(1, fmt.Sprintf("POST request parsing failed. Error: %#v\n, Request Header: %#v\n, Request Body: %#v\n", err, r.Header, req))
-		return []byte{}, nil
-	}
-	err2 := SaveRemote(req)
-	if err2 != nil {
-		return []byte{}, err2
-	}
-	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("addresses", req)
-	if err3 != nil {
-		return respAsByte, err3
+	if r != nil {
+		r.Body.Close()
 	}
 	return respAsByte, nil
 }
@@ -464,6 +587,9 @@ func KeysPOST(r *http.Request) ([]byte, error) {
 	if err3 != nil {
 		return respAsByte, err3
 	}
+	if r != nil {
+		r.Body.Close()
+	}
 	return respAsByte, nil
 }
 
@@ -480,6 +606,29 @@ func TruststatesPOST(r *http.Request) ([]byte, error) {
 	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("truststates", req)
 	if err3 != nil {
 		return respAsByte, err3
+	}
+	if r != nil {
+		r.Body.Close()
+	}
+	return respAsByte, nil
+}
+
+func AddressesPOST(r *http.Request) ([]byte, error) {
+	req, err := ParsePOSTRequest(r)
+	if err != nil {
+		logging.Log(1, fmt.Sprintf("POST request parsing failed. Error: %#v\n, Request Header: %#v\n, Request Body: %#v\n", err, r.Header, req))
+		return []byte{}, nil
+	}
+	err2 := SaveRemote(req)
+	if err2 != nil {
+		return []byte{}, err2
+	}
+	respAsByte, err3 := responsegenerator.GeneratePOSTResponse("addresses", req)
+	if err3 != nil {
+		return respAsByte, err3
+	}
+	if r != nil {
+		r.Body.Close()
 	}
 	return respAsByte, nil
 }

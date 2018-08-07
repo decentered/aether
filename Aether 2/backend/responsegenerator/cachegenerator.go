@@ -41,7 +41,7 @@ func GatherCacheData(respType string, start api.Timestamp, end api.Timestamp) (C
 	var cacheRespStruct CacheResponse
 	switch respType {
 	case "boards", "threads", "posts", "votes", "keys", "truststates":
-		localData, dbError := persistence.Read(respType, []api.Fingerprint{}, []string{}, start, end)
+		localData, dbError := persistence.Read(respType, []api.Fingerprint{}, []string{}, start, end, false, nil)
 		if dbError != nil {
 			return cacheRespStruct, errors.New(fmt.Sprintf("This cache generation request caused an error in the local database while trying to respond to this request. Error: %#v\n", dbError))
 		}
@@ -60,7 +60,7 @@ func GatherCacheData(respType string, start api.Timestamp, end api.Timestamp) (C
 
 			   How do I know? Because that's exactly what happened and this text is the bug fix.
 			*/
-			logging.Log(1, fmt.Sprintf("The result for this cache is empty. Entity type: %s, Start: %d, End: %d", respType, start, end))
+			logging.Log(2, fmt.Sprintf("The result for this cache is empty. Entity type: %s, Start: %d, End: %d", respType, start, end))
 		}
 		entityPages := splitEntitiesToPages(&localData)
 		cacheRespStruct.entityPages = entityPages
@@ -79,7 +79,7 @@ func GatherCacheData(respType string, start api.Timestamp, end api.Timestamp) (C
 		// count entities
 		entityCounts := countEntities(&localData)
 		cacheRespStruct.counts = entityCounts
-		cn, err := randomhashgen.GenerateRandomHash()
+		cn, err := randomhashgen.GenerateInsecureRandomHash()
 		if err != nil {
 			return cacheRespStruct, errors.New(fmt.Sprintf("There was an error in the cache generation request serving. Error: %#v\n", err))
 		}
@@ -103,7 +103,7 @@ func GatherCacheData(respType string, start api.Timestamp, end api.Timestamp) (C
 
 			   How do I know? Because that's exactly what happened and this text is the bug fix.
 			*/
-			logging.Log(1, fmt.Sprintf("The result for this cache is empty. Entity type: %s", respType))
+			logging.Log(2, fmt.Sprintf("The result for this cache is empty. Entity type: %s", respType))
 		}
 		cacheRespStruct.start = start
 		cacheRespStruct.end = end
@@ -111,7 +111,7 @@ func GatherCacheData(respType string, start api.Timestamp, end api.Timestamp) (C
 		localData.Addresses = addresses
 		entityPages := splitEntitiesToPages(&localData)
 		cacheRespStruct.entityPages = entityPages
-		cn, err := randomhashgen.GenerateRandomHash()
+		cn, err := randomhashgen.GenerateInsecureRandomHash()
 		if err != nil {
 			return cacheRespStruct, errors.New(fmt.Sprintf("There was an error in the cache generation request serving. Error: %#v\n", err))
 		}
@@ -128,13 +128,12 @@ func GatherCacheData(respType string, start api.Timestamp, end api.Timestamp) (C
 func updateEntityIndex(cacheIndex *api.ApiResponse, cacheData *CacheResponse) {
 	// Save the cache link into the index.
 	var c api.ResultCache
-	c.ResponseUrl = cacheData.cacheName
+	c.ResponseUrl = fmt.Sprintf("cache_%s", cacheData.cacheName)
 	c.StartsFrom = cacheData.start
 	c.EndsAt = cacheData.end
 	cacheIndex.Results = append(cacheIndex.Results, c)
 	cacheIndex.Timestamp = api.Timestamp(int64(time.Now().Unix()))
 	cacheIndex.Caching.Pregenerated = true
-	// TODO: How many places am I setting this ".Caching" data?
 }
 
 func deleteTooOldCaches(respType string, cacheIndex *api.ApiResponse, entityCacheDir string) {
@@ -148,7 +147,7 @@ func deleteTooOldCaches(respType string, cacheIndex *api.ApiResponse, entityCach
 	}
 	if threshold > oldestCacheEnd {
 		// We have more caches than needed. We need to delete some starting from the oldest.
-		logging.Log(1, fmt.Sprintf("We have caches for a longer duration of time than we need. (The oldest cache.EndsAt is %d, the threshold is %d) Caches will be purged starting from the oldest. Purge is starting.", oldestCacheEnd, threshold))
+		logging.Log(2, fmt.Sprintf("We have caches for a longer duration of time than we need. (The oldest cache.EndsAt is %d, the threshold is %d) Caches will be purged starting from the oldest. Purge is starting.", oldestCacheEnd, threshold))
 		oldCaches := []api.ResultCache{}
 		stillValidCaches := []api.ResultCache{}
 		for _, cache := range cacheIndex.Results {
@@ -166,11 +165,12 @@ func deleteTooOldCaches(respType string, cacheIndex *api.ApiResponse, entityCach
 			location := entityCacheDir + "/" + cache.ResponseUrl
 			os.RemoveAll(location)
 		}
-		logging.Log(1, fmt.Sprintf("Old cache purging is complete. We've deleted these caches from both index and from the local file system: %#v", oldCaches))
+		logging.Log(2, fmt.Sprintf("Old cache purging is complete. We've deleted these caches from both index and from the local file system: %#v", oldCaches))
 	}
 }
 
 func generateEndpointDir(respType string) (string, error) {
+	protv := globals.BackendConfig.GetProtURLVersion()
 	var ecd string
 	if respType == "boards" ||
 		respType == "threads" ||
@@ -178,9 +178,9 @@ func generateEndpointDir(respType string) (string, error) {
 		respType == "votes" ||
 		respType == "keys" ||
 		respType == "truststates" {
-		ecd = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/c0/", respType)
+		ecd = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/", protv, "/c0/", respType)
 	} else if respType == "addresses" {
-		ecd = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/", respType)
+		ecd = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/", protv, "/", respType)
 	} else {
 		return ecd, errors.New(fmt.Sprintf("Unknown response type: %s", respType))
 	}
@@ -192,13 +192,13 @@ func CreateNewCache(respType string, start api.Timestamp, end api.Timestamp, all
 	// - Pull the data from the DB
 	// - Look at the cache folder. If there is a cache folder and an index there, save the cache and add to index.
 	// - If there is no cache present there, create the index and add it as the first entry.
-	fmt.Printf("CreateNewCache was asked to generate a cache for the resp type %#v that ended at the timestamp: %#v\n", respType, end)
+	// fmt.Printf("CreateNewCache was asked to generate a cache for the resp type %#v that ended at the timestamp: %#v\n", respType, end)
 	cacheData, err := GatherCacheData(respType, start, end)
 	if err != nil {
 		return false, errors.New(fmt.Sprintf("Cache creation process encountered an error. Error: %s", err))
 	}
 	if (*cacheData.entityPages)[0].Empty() && allPriorCachesGeneratedSoFarAreEmpty {
-		fmt.Printf("This cache and all prior caches generated so far were empty, skipping generation of this cache. Entity type: %s, Start: %d, End: %d\n", respType, start, end)
+		// fmt.Printf("This cache and all prior caches generated so far were empty, skipping generation of this cache. Entity type: %s, Start: %d, End: %d\n", respType, start, end)
 		return true, nil
 	}
 	ePagesApiresp := convertResponsesToApiResponses(cacheData.entityPages)
@@ -216,13 +216,16 @@ func CreateNewCache(respType string, start api.Timestamp, end api.Timestamp, all
 	toolbox.CreatePath(epd)
 	var endpointIndex api.ApiResponse
 	// Look for the index.json in it. If it doesn't exist, create.
-	// HEADS UP WE ARE *READING* OUR OWN CACHE
+	// Heads up: we're reading and parsing our own caches.
 	endpointIndexAsJson, err3 := ioutil.ReadFile(fmt.Sprint(epd, "/index.json"))
 	if err3 != nil && strings.Contains(err3.Error(), "no such file or directory") {
 		// The index.json of this cache likely doesn't exist. Create one.
 		endpointIndex.Prefill()
-		// endpointIndex = *GeneratePrefilledApiResponse()
+		endpointIndex.Entity = respType
+		endpointIndex.Endpoint = respType
 	} else if err3 != nil {
+		// The index is corrupted. The user knowingly modified it or filesystem did, or some other process did.
+		//FUTURE: We should regenerate this cache, maybe. But if the user (or a process running as user) modified this cache, we have no guarantee that it will not do that again in the future, so regenerating it might just be a waste of resources.
 		return false, errors.New(fmt.Sprintf("Cache creation process encountered an error. Error: %s", err3))
 	} else {
 		// err3 is nil
@@ -251,11 +254,12 @@ func CreateNewCache(respType string, start api.Timestamp, end api.Timestamp, all
 
 // readCacheIndex reads the cache index of the requested endpoint from the local drive. This is then used for finding the end timestamp of the last cache generated.
 func readCacheIndex(etype string) (api.ApiResponse, error) {
+	protv := globals.BackendConfig.GetProtURLVersion()
 	var cacheDir string
 	if etype == "boards" || etype == "threads" || etype == "posts" || etype == "votes" || etype == "keys" || etype == "truststates" {
-		cacheDir = globals.BackendConfig.GetCachesDirectory() + "/v0/c0/" + etype
+		cacheDir = globals.BackendConfig.GetCachesDirectory() + "/" + protv + "/c0/" + etype
 	} else if etype == "addresses" {
-		cacheDir = globals.BackendConfig.GetCachesDirectory() + "/v0/" + etype
+		cacheDir = globals.BackendConfig.GetCachesDirectory() + "/" + protv + "/" + etype
 	}
 	cacheIndex := cacheDir + "/index.json"
 	dat, err := ioutil.ReadFile(cacheIndex)
@@ -265,7 +269,7 @@ func readCacheIndex(etype string) (api.ApiResponse, error) {
 	var apiresp api.ApiResponse
 	err2 := json.Unmarshal([]byte(dat), &apiresp)
 	if err2 != nil {
-		logging.Log(1, fmt.Sprintf(fmt.Sprintf(
+		logging.Log(2, fmt.Sprintf(fmt.Sprintf(
 			"The JSON That was the cache index for the entity type is malformed. Entity type: %s, JSON: %s", etype, string([]byte(dat)))))
 		// Delete the whole index folder and return 0 to generate new caches.
 		os.RemoveAll(cacheDir)
@@ -279,13 +283,13 @@ func determineLastCacheEnd(etype string) api.Timestamp {
 	cacheIndex, err := readCacheIndex(etype)
 	if err != nil {
 		// logging.LogCrash(err)
-		// TODO add tampered caches gating
+		// FUTURE: Add tampered caches gating
 		if strings.Contains(err.Error(), "no such file or directory") {
-			logging.Log(1, fmt.Sprintf("The cache for this entity type does not exist yet. We'll be generating this from scratch. Entity type: %#v", etype))
+			logging.Log(2, fmt.Sprintf("The cache for this entity type does not exist yet. We'll be generating this from scratch. Entity type: %#v", etype))
 			// var blankTs api.Timestamp
 			// return blankTs
 		} else {
-			logging.LogCrash(err)
+			logging.Logf(1, "determineLastCacheEnd errored out. Error: %v", err)
 		}
 	}
 	// Identify the most recent end timestamp
@@ -356,8 +360,8 @@ func generateRequestedCachesTable(mostRecentExtantCacheEndTs api.Timestamp) []ap
 	}
 	// Make the last item of the cache table come up to now, not to future.
 	cachesTable[len(cachesTable)-1].EndsAt = api.Timestamp(time.Now().Unix())
-	fmt.Printf("Caches table length is: %#v\n", len(cachesTable))
-	fmt.Printf("Caches table is: %#v\n", cachesTable)
+	// fmt.Printf("Caches table length is: %#v\n", len(cachesTable))
+	// fmt.Printf("Caches table is: %#v\n", cachesTable)
 	return cachesTable
 }
 
@@ -378,23 +382,25 @@ func GenerateCachedEndpoint(etype string) {
 		for _, val := range cachesTable {
 			empty, err := CreateNewCache(etype, val.StartsFrom, val.EndsAt, allPriorCachesGeneratedSoFarAreEmpty)
 			if err != nil {
-				logging.Log(1, err)
+				logging.Log(2, err)
 			}
 			if !empty {
 				allPriorCachesGeneratedSoFarAreEmpty = false
 			}
 		}
 	} else {
-		logging.Log(1, fmt.Sprintf("Last cache that was created for %s was newer than %d hours ago. Please wait until after.", etype, globals.BackendConfig.GetCacheDurationHours()-1))
+		logging.Log(2, fmt.Sprintf("Last cache that was created for %s was newer than %d hours ago. Please wait until after.", etype, globals.BackendConfig.GetCacheDurationHours()-1))
 	}
 }
 
 // GenerateCaches generates all caches for all entities and saves them to disk.
 func GenerateCaches() {
+	logging.Logf(1, "Cache generation has started.")
+	start := time.Now()
 	entityTypes := []string{"boards", "threads", "posts", "votes", "keys", "truststates", "addresses"}
 	// nodeIsUpToDate, err := syncconfirmations.NodeIsTrackingHead()
 	// if err != nil {
-	// 	logging.Log(1, fmt.Sprintf("The function that checks whether the local node is up to date returned an error. Because of that, this cache generation cycle is pre-empted. It'll be attempted again in the next interval. Error: %#v", err))
+	// 	logging.Log(2, fmt.Sprintf("The function that checks whether the local node is up to date returned an error. Because of that, this cache generation cycle is pre-empted. It'll be attempted again in the next interval. Error: %#v", err))
 	// 	return // If the node is not up to date, bail
 	// }
 	for _, val := range entityTypes {
@@ -402,6 +408,8 @@ func GenerateCaches() {
 	}
 	// We're setting this for the purposes of denying POST requests with a timestamp that is partially or wholly available within our cache bracket. (That is, it's not used to determine where to start generating caches from, we read the actual saved cache for that.)
 	globals.BackendConfig.SetLastCacheGenerationTimestamp(time.Now().Unix())
+	elapsed := time.Since(start)
+	logging.Logf(1, "Cache generation is complete. It took: %s", elapsed)
 }
 
 // MaintainCaches maintains the Reusable POST response repository by deleting too old post responses that got superseded by caches, and triggers the cache generation if the timing is ready. If not, GenerateCaches will stop itself, so there is no harm in calling this more frequently than cache duration.

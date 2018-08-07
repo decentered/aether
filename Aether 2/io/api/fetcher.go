@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	// "github.com/jmoiron/sqlx"
+	"crypto/tls"
+	"golang.org/x/net/proxy"
 	"io"
 	"io/ioutil"
 	"net"
@@ -19,13 +21,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"crypto/tls"
-	"golang.org/x/net/proxy"
+	// "context"
+	// "github.com/davecgh/go-spew/spew"
+	// "reflect"
+	// "github.com/libp2p/go-reuseport"
 )
 
 // Exists checks whether a given item exists in the current DB. This is here because we cannot import persistence due to import cycle being formed, and this is the only place this is being used.
 func ExistsInDB(entityType string, fp Fingerprint, lu Timestamp) bool {
-	// return false // todo remove
+	if globals.BackendTransientConfig.ShutdownInitiated {
+		return true
+	}
 	var tableName string
 	var result bool
 	if entityType == "board" {
@@ -95,7 +101,6 @@ func InsertApiResponseToResponse(response Response, apiresp ApiResponse) Respons
 	return response
 }
 
-// TODO MAKE THIS USE POINTERS, not copying
 func concatResponses(response Response, response2 Response) Response {
 	/*
 		This is how append works: (the first slice to be added, you don't need "...")
@@ -164,61 +169,86 @@ func concatResponses(response Response, response2 Response) Response {
 	return resp
 }
 
+// makeProxyDialer returns blank if proxy support is not enabled. Heads up, proxy doesn't have support for setting timeouts and keepalive.
 func makeProxyDialer() proxy.Dialer {
 	var pdialer proxy.Dialer
 	var proxyErr error
 	if globals.BackendConfig.GetSOCKS5ProxyEnabled() {
 		auth := proxy.Auth{
-			User: globals.BackendConfig.GetSOCKS5ProxyUsername(),
+			User:     globals.BackendConfig.GetSOCKS5ProxyUsername(),
 			Password: globals.BackendConfig.GetSOCKS5ProxyPassword(),
 		}
 		if len(auth.User) > 0 || len(auth.Password) > 0 {
-			pdialer, proxyErr = proxy.SOCKS5("tcp", globals.BackendConfig.GetSOCKS5ProxyAddress(), &auth, proxy.Direct)	
-		} else{
+			pdialer, proxyErr = proxy.SOCKS5("tcp", globals.BackendConfig.GetSOCKS5ProxyAddress(), &auth, proxy.Direct)
+		} else {
 			pdialer, proxyErr = proxy.SOCKS5("tcp", globals.BackendConfig.GetSOCKS5ProxyAddress(), nil, proxy.Direct)
 		}
 		if proxyErr != nil {
 			logging.LogCrash(fmt.Sprintf(
-				"Cannot connect to the proxy. This was the error: %v \nInstead of connecting with no proxy, the application will terminate so as not to create a false impression of being connected via the proxy. If you want to revert back to the default no-proxy setting, go to %s/backend_config.json and set SOCKS5ProxyEnabled key to 'false'.", 
+				"Cannot connect to the proxy. This was the error: %v \nInstead of connecting with no proxy, the application will terminate so as not to create a false impression of being connected via the proxy. If you want to revert back to the default no-proxy setting, go to %s/backend/backend_config.json and set SOCKS5ProxyEnabled key to 'false'.",
 				proxyErr, globals.BackendConfig.GetUserDirectory()))
-		}  
+		}
 	}
 	return pdialer
 }
 
+func generateDialFunc(conn *net.Conn) func(network, address string) (net.Conn, error) {
+	if conn != nil {
+		// This is a reverse connection we decided to accept. We are using the connection opened by the remote to make an outbound request.
+		dialFunc := func(network, address string) (net.Conn, error) {
+			return *conn, nil
+		}
+		return dialFunc
+	}
+	if globals.BackendConfig.GetSOCKS5ProxyEnabled() {
+		// We have a proxy. We'll use the proxy to make an outbound request.
+		dialer := makeProxyDialer()
+		return dialer.Dial
+	}
+	// We have neither a reverse open nor a proxy. Return the regular dialer we created at init.
+	return d.Dial
+}
+
 // Basic, reusable instances of transport and client.
 
-// var transport = &http.Transport{
-// // TODO: TLS configuration for HTTPS.
-// }
-var d net.Dialer
-var t http.Transport
-var c http.Client
+var d *net.Dialer
+var t *http.Transport
+var c *http.Client
+
+// postInit initiates on the first run of Fetch. These cannot be set in init because init runs before the backendconfig is ready.
+func postInit() {
+	t = &http.Transport{
+		TLSHandshakeTimeout: globals.BackendConfig.GetTLSHandshakeTimeout(),
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // Is that not insecure? Not in this specific case. We're not using TLS as a means of identifying the remote, just for encrypting the pipe. See note at tlscerts library.
+		},
+	}
+	c = &http.Client{
+		Transport: t,
+		Timeout:   globals.BackendConfig.GetConnectionTimeout(),
+	}
+	d = &net.Dialer{
+		Timeout:   globals.BackendConfig.GetTCPConnectTimeout(),
+		KeepAlive: 30 * time.Second,
+	}
+	fetchRanBefore = true
+	protv = globals.BackendConfig.GetProtURLVersion()
+}
+
+var fetchRanBefore bool
+var protv string
 
 // Fetch is the most basic access method. It returns bytes. This should almost never be called directly outside this package.
-func Fetch(host string, subhost string, port uint16, location string, method string, postBody []byte) ([]byte, error) {
-	// Gotcha of setting these here, these will be repeated every time this is called. Maybe we can run this somehow one time...
-	dialer := &d
-	dialer.Timeout = globals.BackendConfig.GetTCPConnectTimeout()
-	// Proxy dialer in the case we are using a proxy
-	pdialer := makeProxyDialer()
-	// pdialer.Timeout doesn't exist, heads up. It'll be default timeout.
-	if globals.BackendConfig.GetSOCKS5ProxyEnabled() {
-		t.Dial = pdialer.Dial
-	} else {
-		t.Dial = dialer.Dial
+func Fetch(host string, subhost string, port uint16, location string, method string, postBody []byte, reverseConn *net.Conn) ([]byte, error) {
+	if !fetchRanBefore {
+		postInit()
 	}
-	t.TLSHandshakeTimeout = globals.BackendConfig.GetTLSHandshakeTimeout()
-	t.TLSClientConfig = &tls.Config{
-	InsecureSkipVerify: true,
-	} // Is that not insecure? Not in this specific case, we're not using TLS as a means of identifying the remote, just for encrypting the pipe. See note at tlscerts library.
-	transport := &t
-	// Transport configuration settings inserted here.
-	c.Transport = transport
-	c.Timeout = globals.BackendConfig.GetConnectionTimeout()
-	client := &c
-	// fmt.Println(client.Timeout)
-	// fmt.Println(globals.ConnectionTimeout)
+	if reverseConn != nil {
+		// If this is a reverse connection, it's operating outside a dialer, a transport, or a client. This means we have to manually handle the timeouts.
+		// This timeout is overly generous, because it's not about how much time a remote needs, it's more about if something goes wrong, it will automatically be able to clear the connection and not have it stuck in limbo forever.
+		(*reverseConn).SetDeadline(time.Now().Add(10 * time.Minute))
+	}
+	t.Dial = generateDialFunc(reverseConn)
 	var prot string
 	if globals.BackendTransientConfig.TLSEnabled {
 		prot = "https://"
@@ -228,19 +258,23 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 	var fullLink string
 	if len(subhost) > 0 {
 		fullLink = fmt.Sprint(
-			prot, host, ":", strconv.Itoa(int(port)), "/", subhost, "/v0/", location) // TODO: Move to HTTPS after that portion goes live.
+			prot, host, ":", strconv.Itoa(int(port)), "/", subhost, "/", protv, "/", location)
 	} else {
 		fullLink = fmt.Sprint(
-			prot, host, ":", strconv.Itoa(int(port)), "/v0/", location) // TODO: Move to HTTPS after that portion goes live.
+			prot, host, ":", strconv.Itoa(int(port)), "/", protv, "/", location)
 	}
-	logging.Log(3, fmt.Sprintf("Fetch is being called for the URL: %s", fullLink))
-	// TODO: When we have the local profile, the v0 should be coming from the appropriate version number. Constant for the time being.
+	// if strings.Contains(fullLink, "127.0.0.1") {
+	// 	logging.Log(2, fmt.Sprintf("Fetch is being called for the URL: %s. ReverseConn: %v", fullLink, reverseConn != nil))
+	// }
+	// if strings.Contains(fullLink, "127.0.0.1") {
+	// 	logging.Log(1, fmt.Sprintf("Fetch is being called for the URL: %s", fullLink))
+	// }
 	var err error
 	var resp *http.Response
 	if method == "GET" {
-		resp, err = client.Get(fullLink)
+		resp, err = c.Get(fullLink)
 	} else if method == "POST" {
-		resp, err = client.Post(fullLink, "application/json", bytes.NewReader(postBody))
+		resp, err = c.Post(fullLink, "application/json", bytes.NewReader(postBody))
 	} else {
 		defer resp.Body.Close()
 		return []byte{}, errors.New("Unsupported HTTP method. Available methods are: GET, POST")
@@ -302,13 +336,45 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 					", Subhost: ", subhost,
 					", Port: ", port,
 					", Location: ", location))
+		} else if strings.Contains(err.Error(), "TLS handshake timeout") {
+			return []byte{}, errors.New(
+				fmt.Sprint(
+					"Remote timed out while doing TLS handshake. Host:", host,
+					", Subhost: ", subhost,
+					", Port: ", port,
+					", Location: ", location))
+		} else if strings.Contains(err.Error(), "can't assign requested address") {
+			return []byte{}, errors.New(
+				fmt.Sprint(
+					"Attempted to dial an undialable address. Host:", host,
+					", Subhost: ", subhost,
+					", Port: ", port,
+					", Location: ", location))
+		} else if strings.Contains(err.Error(), "use of closed network connection") {
+			return []byte{}, errors.New(
+				fmt.Sprint(
+					"The connection we attempted to use was already closed. Host:", host,
+					", Subhost: ", subhost,
+					", Port: ", port,
+					", Location: ", location,
+					", ReverseConn: ", fmt.Sprintf("%#v", reverseConn)))
+		} else if strings.Contains(err.Error(), "invalid argument") {
+			return []byte{}, errors.New(
+				fmt.Sprint(
+					"Something bad happened in the OS level under us and the OS sent us an 'invalid argument'. Host:", host,
+					", Subhost: ", subhost,
+					", Port: ", port,
+					", Location: ", location,
+					", ReverseConn: ", fmt.Sprintf("%#v", reverseConn)))
 		} else {
-			fmt.Println("Fatal error in api.Fetch. Quitting.")
-			fmt.Println(err)
-			logging.LogCrash(err)
+			// FUTURE: This should be very rare, since we cover the major cases above. If this happens, we should log.
+			logging.Logf(1, "An unknown error occurred in Fetch. This fetch is terminated. Error: %v \nEnvironment:\n Host: %v, Subhost: %v, Port: %v, Location: %v, Method: %v, POSTBody: %v, ReverseConn: %s", err, host, subhost, port, location, method, postBody, fmt.Sprintf("%#v", reverseConn))
+			// fmt.Println("Fatal error in api.Fetch. Quitting.")
+			// fmt.Printf("Environment: Host: %v, Subhost: %v, Port: %v, Location: %v, Method: %v, POSTBody: %v, ReverseConn: %s\n", host, subhost, port, location, method, postBody, fmt.Sprintf("%#v", reverseConn))
+			// fmt.Println(err)
+			// logging.LogCrash(err)
 		}
 	}
-
 	// server gave HTTP response to HTTPS client
 	defer resp.Body.Close()
 	if resp.StatusCode == 200 {
@@ -319,7 +385,7 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 		body, err := ioutil.ReadAll(limitedReader)
 		if err != nil {
 			// logging.LogCrash(err)
-			fmt.Sprint(err.Error())
+			logging.Logf(1, "Fetch error: %v", err)
 		}
 		return body, nil
 	} else if resp.StatusCode == 501 {
@@ -336,7 +402,7 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 				", Request method: ", method,
 			))
 	} else {
-		logging.Log(2, fmt.Sprintf("FULL LINK IN FETCH FOR THIS FAILED REQUEST: \n%s\n", fullLink))
+		logging.Logf(2, "FULL LINK IN FETCH FOR THIS FAILED REQUEST: \n%s\nStatus Code: %v\n", fullLink, resp.StatusCode)
 		return []byte{}, errors.New(
 			fmt.Sprint(
 				"Non-200 status code returned from Fetch. Received status code: ", resp.StatusCode,
@@ -350,10 +416,9 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 }
 
 // GetPageRaw returns a raw page from the cache. This returns the entire page, not just the data. This is useful for functions that need to be aware of the page's metadata.
-func GetPageRaw(host string, subhost string, port uint16, location string, method string, postBody []byte) (ApiResponse, error) {
-	// TODO: Kill the connection if the file size is too large, or if it takes too long to download. A page above 5mb is probably malicious, also is one that takes more than 10 minutes to download.
+func GetPageRaw(host string, subhost string, port uint16, location string, method string, postBody []byte, reverseConn *net.Conn) (ApiResponse, error) {
 	var apiresp ApiResponse
-	result, err := Fetch(host, subhost, port, location, method, postBody)
+	result, err := Fetch(host, subhost, port, location, method, postBody, reverseConn)
 	if err != nil {
 		return apiresp, err
 	}
@@ -368,9 +433,9 @@ func GetPageRaw(host string, subhost string, port uint16, location string, metho
 				", Location: ", location))
 	}
 	// Map over everything you have.
-	if method == "POST" {
-		logging.Log(2, fmt.Sprintf("We've made a POST request to the endpoint %s and this was its body: %#v", location, string(postBody)))
-	}
+	// if method == "POST" {
+	// 	logging.Log(2, fmt.Sprintf("We've made a POST request to the endpoint %s and this was its body: %#v", location, string(postBody)))
+	// }
 	// if method == "POST" {
 	// 	apiresp.Dump() // let's see
 	// }
@@ -405,7 +470,7 @@ func GetPageRaw(host string, subhost string, port uint16, location string, metho
 }
 
 // GetPage gets a page from a cache. This returns the data on the provided page.
-func GetPage(host string, subhost string, port uint16, location string, method string, postBody []byte) (Response, time.Duration, error) {
+func GetPage(host string, subhost string, port uint16, location string, method string, postBody []byte, reverseConn *net.Conn) (Response, time.Duration, error) {
 	var apiresp ApiResponse
 	var response Response
 	var start time.Time
@@ -413,7 +478,7 @@ func GetPage(host string, subhost string, port uint16, location string, method s
 	if method == "POST" {
 		start = time.Now()
 	}
-	apiresp, err := GetPageRaw(host, subhost, port, location, method, postBody)
+	apiresp, err := GetPageRaw(host, subhost, port, location, method, postBody, reverseConn)
 	if err != nil {
 		return response, elapsed, err // elapsed is unset, set only on POST below.
 	}
@@ -450,9 +515,9 @@ func countManifests(resp Response) {
 	logging.Logf(2, "generateHitlist manifestResponse result returned these: \nB: %v, T: %v, P: %v, V: %v, K: %v, TS: %v, A: %v", b, t, p, v, k, ts, a)
 }
 
-func generateHitlist(host string, subhost string, port uint16, location string) (map[int]bool, error) {
+func generateHitlist(host string, subhost string, port uint16, location string, reverseConn *net.Conn) (map[int]bool, error) {
 	start := time.Now()
-	manifestResponse, err := getManifestOfCache(host, subhost, port, location)
+	manifestResponse, err := getManifestOfCache(host, subhost, port, location, reverseConn)
 	// logging.Logf(1, "Manifest Response: %#v", manifestResponse)
 	if err != nil {
 		return make(map[int]bool), errors.New(fmt.Sprintf("Error raised from GetManifestOfCache inside generateHitlist. Error: %s", err))
@@ -522,15 +587,15 @@ TruststateLoop:
 		}
 	}
 	elapsed := time.Since(start)
-	logging.Logf(1, "GenerateHitlist V1 time spent: %#v.", elapsed.String())
+	logging.Logf(1, "GenerateHitlist V1 time spent: %#v\n", elapsed.String())
 	return allPgs, nil
 }
 
 // GetCache returns an entire cache. This is useful to pull a cache from the remote. This is a single thread process, it does go through the pages in order.  We could bombard the remote with goroutines, but on a larger scale, that would be called a DDoS of the remote node, so we shouldn't do that.
-func GetCache(host string, subhost string, port uint16, location string, isAddr bool) (Response, error) {
+func GetCache(host string, subhost string, port uint16, location string, isAddr bool, reverseConn *net.Conn) (Response, error) {
 	var response Response
 	// Get the first raw page (because we need to access pagination),
-	pageResp, err := GetPageRaw(host, subhost, port, fmt.Sprint(location, "/0.json"), "GET", []byte{})
+	pageResp, err := GetPageRaw(host, subhost, port, fmt.Sprint(location, "/0.json"), "GET", []byte{}, reverseConn)
 	if err != nil && strings.Contains(err.Error(), "Received status code: 404") {
 		return response, errors.New(
 			fmt.Sprint(
@@ -554,9 +619,9 @@ func GetCache(host string, subhost string, port uint16, location string, isAddr 
 	// Iterate over all of the pages, starting from 1 (we already cleared the 0)
 	for i := uint64(1); i <= pageCount; i++ { // Pagination starts from 0
 		pageResp2, _, err := GetPage(host, subhost, port,
-			fmt.Sprint(location, "/", i, ".json"), "GET", []byte{})
+			fmt.Sprint(location, "/", i, ".json"), "GET", []byte{}, reverseConn)
 		if err != nil {
-			logging.Log(1, fmt.Sprintf("GetPage returned this error: Err: %#v", err))
+			logging.Logf(2, "GetPage returned this error: Err: %v", err)
 			brokenPageCounter++
 			if brokenPageCounter >= 3 {
 				logging.Log(1, fmt.Sprint(
@@ -609,13 +674,13 @@ func mapEndpointToEndpointAddress(endpoint string) string {
 }
 
 // GetManifestGatedCache hits the manifests of the cache to determine which pages of the cache this computer needs to hit. This is useful in the case where you expect less than 50% of the cache will be downloaded. Mind that this adds a database check dependency (to know which one of these things we have at hand) and it will have to download the manifests for that cache, so it's a tradeoff.
-func GetManifestGatedCache(host string, subhost string, port uint16, location string, endpoint string) (Response, error) {
+func GetManifestGatedCache(host string, subhost string, port uint16, location string, endpoint string, reverseConn *net.Conn) (Response, error) {
 	start := time.Now()
-	allPgs, err := generateHitlist(host, subhost, port, location)
+	allPgs, err := generateHitlist(host, subhost, port, location, reverseConn)
 	if err != nil && strings.Contains(err.Error(), "Non-200 status code returned from Fetch") {
 		// Manifest doesn't exist for this cache.
 		logging.Log(1, fmt.Sprintf("This cache does not have a manifest. We'll be downloading the full cache. Host %s, Subhost: %s, Port: %d, Location: %s", host, subhost, port, location))
-		resp, err2 := GetCache(host, subhost, port, location, endpoint == "addresses")
+		resp, err2 := GetCache(host, subhost, port, location, endpoint == "addresses", reverseConn)
 		return resp, err2
 	} else if err != nil {
 		logging.Log(1, errors.New(fmt.Sprintf("Error raised from generateHitlist inside GetManifestGatedCache. Error: %s", err)))
@@ -628,7 +693,7 @@ func GetManifestGatedCache(host string, subhost string, port uint16, location st
 	for key, _ := range allPgs {
 		loc := fmt.Sprint(location, "/", key, ".json")
 		logging.Log(2, fmt.Sprintf("Making a request to %s\n", loc))
-		resp, _, err := GetPage(host, subhost, port, loc, "GET", []byte{})
+		resp, _, err := GetPage(host, subhost, port, loc, "GET", []byte{}, reverseConn)
 		if err != nil {
 			return Response{}, err
 		}
@@ -639,14 +704,14 @@ func GetManifestGatedCache(host string, subhost string, port uint16, location st
 	return mainResp, nil
 }
 
-// GetEndpoint returns an entire endpoint from the remote node.
-func GetEndpoint(host string, subhost string, port uint16, endpoint string, lastCheckin Timestamp) (Response, error) {
+// GetGETEndpoint returns an entire endpoint from the remote node.
+func GetGETEndpoint(host string, subhost string, port uint16, endpoint string, lastCheckin Timestamp, reverseConn *net.Conn) (Response, error) {
 	// This is where the mapping for an endpoint to its respective subprotocol folder is mapped. Below this level, you have to supply your own subprotocol string.
-	logging.Log(2, fmt.Sprintf("GetEndpoint was called for the endpoint: %s", endpoint))
+	logging.Log(2, fmt.Sprintf("GetGETEndpoint was called for the endpoint: %s", endpoint))
 	epAddress := mapEndpointToEndpointAddress(endpoint)
 	var response Response
 	// Get raw page, because we need to access index links.
-	result, err := getIndexOfEndpoint(host, subhost, port, epAddress)
+	result, err := getIndexOfEndpoint(host, subhost, port, epAddress, reverseConn)
 	// Map the timestamp of the index onto the response we're generating, in case we might not have any caches (this can happen if our internal timestamp for this cache is newer than the last cache's timestamp.)
 	response.MostRecentSourceTimestamp = result.MostRecentSourceTimestamp
 	indexes := result.CacheLinks
@@ -676,8 +741,9 @@ func GetEndpoint(host string, subhost string, port uint16, endpoint string, last
 		// ------------------------------------------------
 		if val.EndsAt >= lastCheckin {
 			// Get the first page of the cache.
-			cache, err := GetCache(host, subhost, port,
-				fmt.Sprint(epAddress, "/", val.ResponseUrl), endpoint == "addresses")
+			cache, err := GetManifestGatedCache(host, subhost, port, fmt.Sprint(epAddress, "/", val.ResponseUrl), endpoint, reverseConn)
+			// cache, err := GetCache(host, subhost, port,
+			// 	fmt.Sprint(epAddress, "/", val.ResponseUrl), endpoint == "addresses", reverseConn)
 			// cache, err := GetCache(host, subhost, port,
 			// 	fmt.Sprint(epAddress, "/", val.ResponseUrl))
 			response = concatResponses(response, cache)
@@ -714,7 +780,7 @@ func GetEndpoint(host string, subhost string, port uint16, endpoint string, last
 	keysCount := len(response.Keys)
 	truststatesCount := len(response.Truststates)
 	// logging.Log(1, fmt.Sprintf("Response for the endpoint %s was %#v\n", endpoint, response))
-	logging.Log(2, fmt.Sprintf("GetEndpoint returned for the endpoint: %s. Number of items: Boards: %d, Threads: %d, Posts: %d, Votes: %d, Addresses: %d, Keys: %d, Truststates: %d", endpoint, boardCount, threadCount, postCount, voteCount, addressCount, keysCount, truststatesCount))
+	logging.Log(2, fmt.Sprintf("GetGETEndpoint returned for the endpoint: %s. Number of items: Boards: %d, Threads: %d, Posts: %d, Votes: %d, Addresses: %d, Keys: %d, Truststates: %d", endpoint, boardCount, threadCount, postCount, voteCount, addressCount, keysCount, truststatesCount))
 
 	return response, nil
 }
@@ -750,7 +816,7 @@ func GetEndpoint(host string, subhost string, port uint16, endpoint string, last
 
 */
 
-func GetPOSTEndpoint(host string, subhost string, port uint16, endpoint string, lastCheckin Timestamp) (Response, time.Duration, error) {
+func GetPOSTEndpoint(host string, subhost string, port uint16, endpoint string, lastCheckin Timestamp, reverseConn *net.Conn) (Response, time.Duration, error) {
 	// But before anything, we need to create the mapping for the endpoint URLs.
 	endpointsMap := map[string]string{
 		"boards":      "c0/boards",
@@ -772,32 +838,33 @@ func GetPOSTEndpoint(host string, subhost string, port uint16, endpoint string, 
 	if signingErr != nil {
 		return Response{}, 0, signingErr
 	}
+	apiReq.CreatePoW()
 	reqAsJson, err := apiReq.ToJSON()
 	if err != nil {
 		return Response{}, 0, err
 	}
-	postResp, respDuration, err7 := GetPage(host, subhost, port, endpointsMap[endpoint], "POST", reqAsJson)
+	postResp, respDuration, err7 := GetPage(host, subhost, port, endpointsMap[endpoint], "POST", reqAsJson, reverseConn)
 	if err7 != nil {
 		return Response{}, respDuration, errors.New(fmt.Sprintf("Getting POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", endpoint, err7))
 	}
-	presp := dbg_CheckIfExistsInDb(postResp)
+	// presp := dbg_CheckIfExistsInDb(postResp)
 	allResults := Response{}
 	// Add entities embedded directly into the response to our response container, if any. A response can have both.
 	// allResults = concatResponses(allResults, postResp)
-	// allResults.Insert(&postResp)
-	allResults.Insert(&presp)
+	allResults.Insert(&postResp)
+	// allResults.Insert(&presp)
 	// If there are any cache links, one or multiple, read all of them, and insert.
 	// Address-specific. We'll build the structure out if we need to do this for anything other than addresses.
 	if endpoint == "addresses" && len(allResults.Addresses) >= 100 {
 		return allResults, respDuration, nil
 	}
-	logging.Logf(1, "We received these cache links from the remote to download. %v", postResp.CacheLinks)
+	logging.Logf(1, "We received these response links from the remote to download. %v", postResp.CacheLinks)
 	for _, clink := range postResp.CacheLinks {
-		// if clink.EndsAt > lastCheckin { // todo - test
-		if true {
+		if clink.EndsAt > lastCheckin {
+			// if true {
 			// This cache ends after we have our sync timestamp with this remote. We can benefit from downloading this cachelink.
-			logging.Logf(2, "Downloading %s from %s:%d", clink.ResponseUrl, host, port)
-			postCacheResp, err8 := GetManifestGatedCache(host, subhost, port, fmt.Sprintf("responses/%s", clink.ResponseUrl), endpoint)
+			logging.Logf(1, "Downloading %s from %s:%d", clink.ResponseUrl, host, port)
+			postCacheResp, err8 := GetManifestGatedCache(host, subhost, port, fmt.Sprintf("responses/%s", clink.ResponseUrl), endpoint, reverseConn)
 			// We're adding /responses/ because that's where the singular responses will be.
 			if err8 != nil {
 				return allResults, respDuration, errors.New(fmt.Sprintf("Getting Multi page POST Endpoint for this entity type failed. Endpoint type: %s, Error: %s", endpoint, err8))
@@ -833,12 +900,12 @@ func GetPOSTEndpoint(host string, subhost string, port uint16, endpoint string, 
 }
 
 // GetRemoteNode downloads the entire remote node data by hitting all endpoints and all caches and all pages within them. This is the bootstrap function. This should be used when the local database is empty and the remote node is new. Never call this when the local database is not empty as that is fairly wasteful.
-func GetRemoteNode(host string, subhost string, port uint16) (Response, error) {
+func GetRemoteNode(host string, subhost string, port uint16, reverseConn *net.Conn) (Response, error) {
 	endpoints := []string{
 		"boards", "threads", "posts", "votes", "addresses", "keys", "truststates"}
 	var response Response
 	for _, endpoint := range endpoints {
-		resp, err := GetEndpoint(host, subhost, port, endpoint, 0)
+		resp, err := GetGETEndpoint(host, subhost, port, endpoint, 0, reverseConn)
 		response = concatResponses(response, resp)
 		if err != nil {
 			// GetRemoteNode continues to work under all conditions. It won't stop the sequence for any errors.
@@ -849,56 +916,56 @@ func GetRemoteNode(host string, subhost string, port uint16) (Response, error) {
 }
 
 // This function normally does not run on single page responses, but we've added this for debugging purposes. This does have a performance penalty, but makes it so that the numbers visible at the log output are accurate numbers which go into the database.
-func dbg_CheckIfExistsInDb(postResp Response) Response {
-	t := time.Now()
-	r := Response{}
-	for _, val := range postResp.Boards {
-		if !ExistsInDB("board", val.Fingerprint, val.LastUpdate) {
-			r.Boards = append(r.Boards, val)
-		}
-	}
-	for _, val := range postResp.Threads {
-		if !ExistsInDB("thread", val.Fingerprint, val.LastUpdate) {
-			r.Threads = append(r.Threads, val)
-		}
-	}
-	for _, val := range postResp.Posts {
-		if !ExistsInDB("post", val.Fingerprint, val.LastUpdate) {
-			r.Posts = append(r.Posts, val)
-		}
-	}
-	for _, val := range postResp.Votes {
-		if !ExistsInDB("vote", val.Fingerprint, val.LastUpdate) {
-			r.Votes = append(r.Votes, val)
-		}
-	}
-	for _, val := range postResp.Keys {
-		if !ExistsInDB("key", val.Fingerprint, val.LastUpdate) {
-			r.Keys = append(r.Keys, val)
-		}
-	}
-	for _, val := range postResp.Truststates {
-		if !ExistsInDB("truststate", val.Fingerprint, val.LastUpdate) {
-			r.Truststates = append(r.Truststates, val)
-		}
-	}
-	postResp.Boards = r.Boards
-	postResp.Threads = r.Threads
-	postResp.Posts = r.Posts
-	postResp.Votes = r.Votes
-	postResp.Keys = r.Keys
-	postResp.Truststates = r.Truststates
-	elapsed := time.Since(t)
-	logging.Logf(1, "dbg_CheckIfExistsInDb time spent: %#v.", elapsed.String())
-	return postResp
-}
+// func dbg_CheckIfExistsInDb(postResp Response) Response {
+// 	t := time.Now()
+// 	r := Response{}
+// 	for _, val := range postResp.Boards {
+// 		if !ExistsInDB("board", val.Fingerprint, val.LastUpdate) {
+// 			r.Boards = append(r.Boards, val)
+// 		}
+// 	}
+// 	for _, val := range postResp.Threads {
+// 		if !ExistsInDB("thread", val.Fingerprint, val.LastUpdate) {
+// 			r.Threads = append(r.Threads, val)
+// 		}
+// 	}
+// 	for _, val := range postResp.Posts {
+// 		if !ExistsInDB("post", val.Fingerprint, val.LastUpdate) {
+// 			r.Posts = append(r.Posts, val)
+// 		}
+// 	}
+// 	for _, val := range postResp.Votes {
+// 		if !ExistsInDB("vote", val.Fingerprint, val.LastUpdate) {
+// 			r.Votes = append(r.Votes, val)
+// 		}
+// 	}
+// 	for _, val := range postResp.Keys {
+// 		if !ExistsInDB("key", val.Fingerprint, val.LastUpdate) {
+// 			r.Keys = append(r.Keys, val)
+// 		}
+// 	}
+// 	for _, val := range postResp.Truststates {
+// 		if !ExistsInDB("truststate", val.Fingerprint, val.LastUpdate) {
+// 			r.Truststates = append(r.Truststates, val)
+// 		}
+// 	}
+// 	postResp.Boards = r.Boards
+// 	postResp.Threads = r.Threads
+// 	postResp.Posts = r.Posts
+// 	postResp.Votes = r.Votes
+// 	postResp.Keys = r.Keys
+// 	postResp.Truststates = r.Truststates
+// 	elapsed := time.Since(t)
+// 	// logging.Logf(1, "dbg_CheckIfExistsInDb time spent: %#v.", elapsed.String())
+// 	return postResp
+// }
 
 // getManifestOfCache gets the manifest of a cache. Location is the url up to cache name.
 func getManifestOfCache(
-	host string, subhost string, port uint16, location string) (Response, error) {
+	host string, subhost string, port uint16, location string, reverseConn *net.Conn) (Response, error) {
 	logging.Log(2, fmt.Sprintf("Making a request to %s\n", fmt.Sprint(location, "/manifest/0.json")))
 	firstManifestPage, err := GetPageRaw(
-		host, subhost, port, fmt.Sprint(location, "/manifest/0.json"), "GET", []byte{})
+		host, subhost, port, fmt.Sprint(location, "/manifest/0.json"), "GET", []byte{}, reverseConn)
 	if err != nil {
 		return Response{}, err
 	}
@@ -908,7 +975,7 @@ func getManifestOfCache(
 		for i := uint64(1); i <= firstManifestPage.Pagination.Pages; i++ {
 			logging.Log(2, fmt.Sprintf("Making a request to %s\n", fmt.Sprint(location, "/manifest/", i, ".json")))
 			page, err := GetPageRaw(host, subhost, port,
-				fmt.Sprint(location, "/manifest/", i, ".json"), "GET", []byte{})
+				fmt.Sprint(location, "/manifest/", i, ".json"), "GET", []byte{}, reverseConn)
 			if err != nil {
 				return Response{}, err
 			}
@@ -922,9 +989,9 @@ func getManifestOfCache(
 
 // getIndexOfCache gets the index of a cache. Location is the url up to cache name.
 func getIndexOfCache(
-	host string, subhost string, port uint16, location string) (Response, error) {
+	host string, subhost string, port uint16, location string, reverseConn *net.Conn) (Response, error) {
 	firstIndexPage, err := GetPageRaw(
-		host, subhost, port, fmt.Sprint(location, "/index/0.json"), "GET", []byte{})
+		host, subhost, port, fmt.Sprint(location, "/index/0.json"), "GET", []byte{}, reverseConn)
 	if err != nil {
 		return Response{}, err
 	}
@@ -933,7 +1000,7 @@ func getIndexOfCache(
 	if firstIndexPage.Pagination.Pages > 0 {
 		for i := uint64(1); i <= firstIndexPage.Pagination.Pages; i++ {
 			page, err := GetPageRaw(host, subhost, port,
-				fmt.Sprint(location, "/index/", i, ".json"), "GET", []byte{})
+				fmt.Sprint(location, "/index/", i, ".json"), "GET", []byte{}, reverseConn)
 			if err != nil {
 				return Response{}, err
 			}
@@ -947,9 +1014,9 @@ func getIndexOfCache(
 
 // getIndexOfEndpoint gets the cache index of an endpoint.
 func getIndexOfEndpoint(
-	host string, subhost string, port uint16, endpoint string) (Response, error) {
+	host string, subhost string, port uint16, endpoint string, reverseConn *net.Conn) (Response, error) {
 	EndpointIndexResponse, err := GetPageRaw(
-		host, subhost, port, fmt.Sprint(endpoint, "/index.json"), "GET", []byte{})
+		host, subhost, port, fmt.Sprint(endpoint, "/index.json"), "GET", []byte{}, reverseConn)
 	var resp Response
 	resp = InsertApiResponseToResponse(resp, EndpointIndexResponse)
 	if err != nil {
@@ -1025,12 +1092,12 @@ func inTimeRange(oldest Timestamp, newest Timestamp, val Timestamp) bool {
 }
 
 // pullFullEntityFromCache returns the item you have requested by fingerprint from the cache you are pointing at. If no result is found, it will return an empty interface. This could be implemented as a normal GetCache and then search, but that requires the entire cache to be downloaded, whereas this method stops and returns as soon as it can.
-func pullFullEntityFromCache(cacheUrl string, cachePage int, fingerprint Fingerprint, t string, host string, subhost string, port uint16) (interface{}, error) {
+func pullFullEntityFromCache(cacheUrl string, cachePage int, fingerprint Fingerprint, t string, host string, subhost string, port uint16, reverseConn *net.Conn) (interface{}, error) {
 	if cachePage == 0 {
 		// If the cache page is zero, the item we need is either in the first page, or we don't know the cache page, so we need to search.
 
 		// Get the first raw page (because we need to access pagination),
-		pageResp, err := GetPageRaw(host, subhost, port, fmt.Sprint(cacheUrl, "/0.json"), "GET", []byte{})
+		pageResp, err := GetPageRaw(host, subhost, port, fmt.Sprint(cacheUrl, "/0.json"), "GET", []byte{}, reverseConn)
 		if err != nil {
 			return nil, errors.New(
 				fmt.Sprint(
@@ -1048,7 +1115,7 @@ func pullFullEntityFromCache(cacheUrl string, cachePage int, fingerprint Fingerp
 			// We haven't found what we wanted on the first page, so we go forward on searching other pages.
 			for i := uint64(1); i <= pageCount; i++ { // Pagination starts from 0
 				pageResp2, err := GetPageRaw(host, subhost, port,
-					fmt.Sprint(cacheUrl, "/", i, ".json"), "GET", []byte{})
+					fmt.Sprint(cacheUrl, "/", i, ".json"), "GET", []byte{}, reverseConn)
 				if err != nil {
 					return nil, errors.New(
 						fmt.Sprint(
@@ -1071,7 +1138,7 @@ func pullFullEntityFromCache(cacheUrl string, cachePage int, fingerprint Fingerp
 		}
 	} else {
 		// If we know the cache page, we can just directly fetch the item.
-		pageResp, err := GetPageRaw(host, subhost, port, fmt.Sprint(cacheUrl, "/", cachePage, ".json"), "GET", []byte{})
+		pageResp, err := GetPageRaw(host, subhost, port, fmt.Sprint(cacheUrl, "/", cachePage, ".json"), "GET", []byte{}, reverseConn)
 		if err != nil {
 			return nil, errors.New(
 				fmt.Sprint(
@@ -1103,16 +1170,11 @@ type QueryData struct {
 }
 
 // Query requests an entity from the remote provided. It takes an index form struct. It only returns the requested item or an empty answer.
-func Query(host string, subhost string, port uint16, q QueryData) (Response, error) {
-	// TODO: Look at the timestamps (update if present, if not, creation, if not, go linear starting from most recent)
+func Query(host string, subhost string, port uint16, q QueryData, reverseConn *net.Conn) (Response, error) {
 	var r Response
 	// Before doing anything else, if the type is thread or post, disable LastUpdate. Those items are not updateable.
-	updateFieldEnabled := true
-	if q.EntityType == "posts" || q.EntityType == "threads" {
-		updateFieldEnabled = false
-	}
 	epAddress := mapEndpointToEndpointAddress(q.EntityType)
-	result, err := getIndexOfEndpoint(host, subhost, port, epAddress)
+	result, err := getIndexOfEndpoint(host, subhost, port, epAddress, reverseConn)
 	endpointIndex := result.CacheLinks
 	if err != nil {
 		return r, nil
@@ -1120,34 +1182,22 @@ func Query(host string, subhost string, port uint16, q QueryData) (Response, err
 	// Do a range search within all caches that include the last update and creation timestamps. This is where we figure out which caches we need to search.
 	var cachesSlice []ResultCache
 	for _, cache := range endpointIndex {
-		if updateFieldEnabled {
-			if inTimeRange(cache.StartsFrom, cache.EndsAt, q.Creation) || inTimeRange(cache.StartsFrom, cache.EndsAt, q.LastUpdate) {
-				// This adds the endpoints which declare themselves to be in the time range of either Creation, LastUpdate or both. Mind that the creation will be only on one cache, but there may be more than one update.
-				cachesSlice = append(cachesSlice, cache)
-				// TODO: If there is a LastUpdate, checking Creation is inefficient as the result found in the cache pointed at by Creation will not be used. will not be used. But for purposes of simplicity and to avoid checking for the corner conditions created by having LastUpdate stopping Creation check, I'm leaving it there to be made more efficient in a future refactoring.
-			}
-		} else {
-			// In the case of posts or threads, there is no update field. In that case, a mistakenly provided update field would expand the search into a location that can't possible have it. This section below is here to guard against that waste of resources.
-			if inTimeRange(cache.StartsFrom, cache.EndsAt, q.Creation) {
-				cachesSlice = append(cachesSlice, cache)
-			}
+		if inTimeRange(cache.StartsFrom, cache.EndsAt, q.Creation) || inTimeRange(cache.StartsFrom, cache.EndsAt, q.LastUpdate) {
+			// This adds the endpoints which declare themselves to be in the time range of either Creation, LastUpdate or both. Mind that the creation will be only on one cache, but there may be more than one update.
+			cachesSlice = append(cachesSlice, cache)
+			// FUTURE: If there is a LastUpdate, checking Creation is inefficient as the result found in the cache pointed at by Creation will not be used. But for purposes of simplicity and to avoid checking for the corner conditions created by having LastUpdate stopping Creation check, I'm leaving it there to be made more efficient in a future refactoring.
 		}
 	}
-	if updateFieldEnabled {
-		if q.Creation == 0 && q.LastUpdate == 0 {
-			// If no data is provided as to when the entity could be, we have to go through all of the data to find it.
-			cachesSlice = endpointIndex
-		}
-	} else { // Same as above, guarding against non-updateable entities.
-		if q.Creation == 0 {
-			cachesSlice = endpointIndex
-		}
-	} // cachesSlice has all of the caches we have to search now.
+	if q.Creation == 0 && q.LastUpdate == 0 {
+		// If no data is provided as to when the entity could be, we have to go through all of the data to find it.
+		cachesSlice = endpointIndex
+	}
+	// cachesSlice has all of the caches we have to search now.
 
 CacheIterator: // Naming the for loop CacheIterator.
 	for _, cache := range cachesSlice {
 		cacheLocation := fmt.Sprint(epAddress, "/", cache.ResponseUrl)
-		cIndex, err := getIndexOfCache(host, subhost, port, cacheLocation)
+		cIndex, err := getIndexOfCache(host, subhost, port, cacheLocation, reverseConn)
 		if err != nil {
 			logging.Log(1, fmt.Sprintf("Error in CacheIterator coming from GetIndexOfCache. Error: %s", err))
 		}
@@ -1160,7 +1210,7 @@ CacheIterator: // Naming the for loop CacheIterator.
 				// Check if this is what we want.
 				if entityIndex.Fingerprint == q.Fingerprint {
 					// If so, pull the result from cache.
-					obj, err := pullFullEntityFromCache(cacheLocation, entityIndex.PageNumber, q.Fingerprint, q.EntityType, host, subhost, port)
+					obj, err := pullFullEntityFromCache(cacheLocation, entityIndex.PageNumber, q.Fingerprint, q.EntityType, host, subhost, port, reverseConn)
 					if err != nil {
 						return r, errors.New(
 							fmt.Sprint(
@@ -1184,7 +1234,7 @@ CacheIterator: // Naming the for loop CacheIterator.
 				// Check if this is what we want.
 				if entityIndex.Fingerprint == q.Fingerprint {
 					// If so, pull the result from cache.
-					obj, err := pullFullEntityFromCache(cacheLocation, entityIndex.PageNumber, q.Fingerprint, q.EntityType, host, subhost, port)
+					obj, err := pullFullEntityFromCache(cacheLocation, entityIndex.PageNumber, q.Fingerprint, q.EntityType, host, subhost, port, reverseConn)
 					if err != nil {
 						return r, errors.New(
 							fmt.Sprint(
@@ -1208,7 +1258,7 @@ CacheIterator: // Naming the for loop CacheIterator.
 				// Check if this is what we want.
 				if entityIndex.Fingerprint == q.Fingerprint {
 					// If so, pull the result from cache.
-					obj, err := pullFullEntityFromCache(cacheLocation, entityIndex.PageNumber, q.Fingerprint, q.EntityType, host, subhost, port)
+					obj, err := pullFullEntityFromCache(cacheLocation, entityIndex.PageNumber, q.Fingerprint, q.EntityType, host, subhost, port, reverseConn)
 					if err != nil {
 						return r, errors.New(
 							fmt.Sprint(
@@ -1232,7 +1282,7 @@ CacheIterator: // Naming the for loop CacheIterator.
 				// Check if this is what we want.
 				if entityIndex.Fingerprint == q.Fingerprint {
 					// If so, pull the result from cache.
-					obj, err := pullFullEntityFromCache(cacheLocation, entityIndex.PageNumber, q.Fingerprint, q.EntityType, host, subhost, port)
+					obj, err := pullFullEntityFromCache(cacheLocation, entityIndex.PageNumber, q.Fingerprint, q.EntityType, host, subhost, port, reverseConn)
 					if err != nil {
 						return r, errors.New(
 							fmt.Sprint(
@@ -1259,7 +1309,7 @@ CacheIterator: // Naming the for loop CacheIterator.
 				// Check if this is what we want.
 				if entityIndex.Fingerprint == q.Fingerprint {
 					// If so, pull the result from cache.
-					obj, err := pullFullEntityFromCache(cacheLocation, entityIndex.PageNumber, q.Fingerprint, q.EntityType, host, subhost, port)
+					obj, err := pullFullEntityFromCache(cacheLocation, entityIndex.PageNumber, q.Fingerprint, q.EntityType, host, subhost, port, reverseConn)
 					if err != nil {
 						return r, errors.New(
 							fmt.Sprint(
@@ -1283,7 +1333,7 @@ CacheIterator: // Naming the for loop CacheIterator.
 				// Check if this is what we want.
 				if entityIndex.Fingerprint == q.Fingerprint {
 					// If so, pull the result from cache.
-					obj, err := pullFullEntityFromCache(cacheLocation, entityIndex.PageNumber, q.Fingerprint, q.EntityType, host, subhost, port)
+					obj, err := pullFullEntityFromCache(cacheLocation, entityIndex.PageNumber, q.Fingerprint, q.EntityType, host, subhost, port, reverseConn)
 					if err != nil {
 						return r, errors.New(
 							fmt.Sprint(

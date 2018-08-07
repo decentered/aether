@@ -159,7 +159,7 @@ func reconstructFilters(filterset FilterSet) api.Filter {
 	} else {
 		// If no filters are given, this is by default a time range search.
 		filter.Type = "timestamp"
-		begin, end, err := persistence.SanitiseTimeRange(filterset.TimeStart, filterset.TimeEnd, api.Timestamp(time.Now().Unix()))
+		begin, end, err := persistence.SanitiseTimeRange(filterset.TimeStart, filterset.TimeEnd, api.Timestamp(time.Now().Unix()), false)
 		if err != nil {
 			logging.Log(1, fmt.Sprintf("SanitiseTimeRange errored out. Error: %#v", err))
 		}
@@ -225,8 +225,8 @@ func generateContainer(
 		foldername = fmt.Sprint("cache_", dirname)
 	}
 	entityType := findEntityTypeInApiResponse((*entityPages)[0], respType)
-	fmt.Println("entityType")
-	fmt.Println(entityType)
+	// fmt.Println("entityType")
+	// fmt.Println(entityType)
 	// Create the index and manifest pages.
 	if indexPages != nil {
 		bakeIndexes(indexPages, entityCounts, &flt, foldername, isPOST, respType, entityType)

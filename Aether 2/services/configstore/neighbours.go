@@ -57,7 +57,7 @@ type Address struct {
 
 type NeighboursList struct {
 	lock       sync.Mutex
-	Neighbours []Address // todo make adjustable @ permanent.go
+	Neighbours []Address
 }
 
 // Internal helpers

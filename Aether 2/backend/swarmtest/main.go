@@ -58,11 +58,12 @@ var settings settingsStruct
 
 func setDefaults() {
 	toolbox.CreatePath("Runtime-Generated-Files")
-	settings.swarmsize = 3
+	settings.swarmsize = 2
 	settings.testdurationsec = 180 //5/450 is the test
 	// xs (20k obj per node), s (0.5m obj/n), m
 	settings.dbsize = "xs"
-	settings.staticnodeloc = "Runtime-Generated-Files/temp_generated_data"
+	// settings.staticnodeloc = "Runtime-Generated-Files/temp_generated_data"
+	settings.staticnodeloc = "/Users/Helios/Documents/temp_generated_data"
 	spl, err := filepath.Abs("Runtime-Generated-Files/swarm-plan.json")
 	if err != nil {
 		log.Fatal(fmt.Sprintf("Converting the swarm plan to an absolute file path has failed. Error: %s", err))
@@ -113,6 +114,9 @@ func generateNodeData(n *node) {
 	if _, err := os.Stat(abspath); os.IsNotExist(err) {
 		cmd := exec.Command("node", "main.js", getDbSize(), "--nosign", abspath)
 		cmd.Dir = "../../../Documentation/database-generator/"
+		// cmd.Stdout = os.Stdout
+		// cmd.Stderr = os.Stderr
+		// Uncomment above to see the generator output
 		cmd.Run()
 		log.Printf("Random database generation for %s is complete.", n.appname)
 	} else {
@@ -215,7 +219,7 @@ func generateSwarmSchedules(nodes []node, testType string) {
 		for _, n := range nodes {
 			if n.appname != bsNodeName {
 				// If not bootstrap node, make a call to bootstrap node in 30 secs
-				cr := generateConnectionRequest(n.appname, bsPort, 30, false)
+				cr := generateConnectionRequest(n.appname, bsPort, 10, false)
 				planCommands = append(planCommands, cr)
 			}
 		}
@@ -269,8 +273,17 @@ func generateSwarmSchedules(nodes []node, testType string) {
 		if len(nodes) != 1 {
 			log.Fatal("This test requires 1 node.")
 		}
-		planCmd := generateCacheGenRequest(nodes[0].appname, 10)
+		planCmd := generateCacheGenRequest(nodes[0].appname, 2)
 		planCommands = append(planCommands, planCmd)
+	} else if testType == "reverseopen" {
+		// This is where other tests go in.
+		for _, n := range nodes {
+			if n.appname != bsNodeName {
+				// If not bootstrap node, make a call to bootstrap node in 30 secs
+				cr := generateReverseOpenRequest(n.appname, bsPort, 10, false)
+				planCommands = append(planCommands, cr)
+			}
+		}
 	} else if testType == "" {
 		// This is where other tests go in.
 	}
@@ -299,6 +312,18 @@ func generateConnectionRequest(originName string, toPort int, triggerAfter int, 
 
 func generateCacheGenRequest(appname string, triggerAfter int) PlanCommand {
 	return PlanCommand{FromNodeAppName: appname, CommandName: "cachegen", TriggerAfter: time.Duration(triggerAfter) * time.Second}
+}
+
+func generateReverseOpenRequest(originName string, toPort int, triggerAfter int, force bool) PlanCommand {
+	r := PlanCommand{}
+	r.FromNodeAppName = originName
+	r.ToIp = "127.0.0.1"
+	r.ToPort = toPort
+	r.ToType = 2
+	r.TriggerAfter = time.Duration(triggerAfter) * time.Second
+	r.Force = force
+	r.CommandName = "reverseopen"
+	return r
 }
 
 // collectAndSaveResults saves collates and saves the metrics at the end of th e test. This is where we get the insights we want out.
@@ -362,6 +387,8 @@ func main() {
 	start := time.Now()
 	startTime = start.Unix()
 	setDefaults()
+	durAstDur := time.Duration(settings.testdurationsec) * time.Second
+	fmt.Printf("Started at: %s with Nodes: %v, DbSize (each): %v, Duration: %s. End~: %s \n", start.Format(time.RFC1123), settings.swarmsize, settings.dbsize, durAstDur, time.Now().Add(durAstDur*12/10).Format(time.RFC1123))
 	go sms.StartListening()
 	// For each node that we have requested
 	nodes := generateSwarmNames()
@@ -374,13 +401,11 @@ func main() {
 		serverInstance.Shutdown(nil)
 	}
 	// Here, generate the list of connection requests we want to inject to the swarm nodes. This is where we create the connection mapping we want to test live.
-	// generateSwarmSchedules(nodes, "simple")
 	generateSwarmSchedules(nodes, "simple")
+	// generateSwarmSchedules(nodes, "reverseopen")
 	// Start the nodes, this time without a kill-switch at the end of the load.
 	startSwarmNodes(nodes, settings.testdurationsec)
 	spew.Dump(nodes)
 	collectAndSaveResults(startTime)
-	fmt.Printf("It took %d to run this swarm test. It was set to run for %d seconds.", int(time.Since(start).Seconds()), settings.testdurationsec)
-	fmt.Printf("%#v\n", nodes)
-	// select {}
+	fmt.Printf("It took %d to run this swarm test. It was set to run for %d seconds. Time is now %s\n", int(time.Since(start).Seconds()), settings.testdurationsec, time.Now().Format(time.RFC1123))
 }

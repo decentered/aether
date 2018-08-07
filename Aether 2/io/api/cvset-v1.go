@@ -5,8 +5,10 @@ package api
 
 import (
 	// "fmt"
+	"aether-core/services/ca"
 	"aether-core/services/fingerprinting"
 	"aether-core/services/globals"
+	// "aether-core/services/logging"
 	"aether-core/services/proofofwork"
 	"aether-core/services/signaturing"
 	"encoding/json"
@@ -158,6 +160,22 @@ func createTruststatePoW_V1(ts *Truststate, keyPair *ed25519.PrivateKey, difficu
 	return nil
 }
 
+func createApiResponsePoW_V1(ar *ApiResponse, keyPair *ed25519.PrivateKey, difficulty int) error {
+	cpI := *ar
+	// Remove the existing proof of work if any exists so as to not accidentally take it as an input to the new proof of work about to be calculated.
+	cpI.ProofOfWork = ""
+	// Convert to JSON
+	res, _ := json.Marshal(cpI)
+	// Create PoW
+	pow, err := proofofwork.Create(string(res), difficulty, keyPair)
+	if err != nil {
+		return err
+	}
+	ar.ProofOfWork = ProofOfWork(pow)
+	// logging.Logf(1, "We created an ApiResponse PoW. PoW: %v", ar.ProofOfWork)
+	return nil
+}
+
 // // Create UpdatePoW
 
 func createBoardUpdatePoW_V1(b *Board, keyPair *ed25519.PrivateKey, difficulty int) error {
@@ -262,7 +280,11 @@ func verifyBoardPoW_V1(b *Board, pubKey string) (bool, error) {
 		// Updateable
 		// Save PoW to be verified
 		pow = string(cpI.UpdateProofOfWork)
-		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		if isFrontend() {
+			neededStrength = globals.FrontendConfig.GetMinimumPoWStrengths().BoardUpdate
+		} else {
+			neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().BoardUpdate
+		}
 		// Delete PoW so that the PoW will match
 		cpI.UpdateProofOfWork = ""
 	} else {
@@ -274,7 +296,11 @@ func verifyBoardPoW_V1(b *Board, pubKey string) (bool, error) {
 		cpI.UpdateSignature = ""
 		// Save PoW to be verified
 		pow = string(cpI.ProofOfWork)
-		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		if isFrontend() {
+			neededStrength = globals.FrontendConfig.GetMinimumPoWStrengths().Board
+		} else {
+			neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		}
 		// Delete PoW so that the PoW will match
 		cpI.ProofOfWork = ""
 	}
@@ -310,7 +336,11 @@ func verifyThreadPoW_V1(t *Thread, pubKey string) (bool, error) {
 		// Updateable
 		// Save PoW to be verified
 		pow = string(cpI.UpdateProofOfWork)
-		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		if isFrontend() {
+			neededStrength = globals.FrontendConfig.GetMinimumPoWStrengths().ThreadUpdate
+		} else {
+			neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().ThreadUpdate
+		}
 		// Delete PoW so that the PoW will match
 		cpI.UpdateProofOfWork = ""
 	} else {
@@ -322,7 +352,11 @@ func verifyThreadPoW_V1(t *Thread, pubKey string) (bool, error) {
 		cpI.UpdateSignature = ""
 		// Save PoW to be verified
 		pow = string(cpI.ProofOfWork)
-		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		if isFrontend() {
+			neededStrength = globals.FrontendConfig.GetMinimumPoWStrengths().Thread
+		} else {
+			neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Thread
+		}
 		// Delete PoW so that the PoW will match
 		cpI.ProofOfWork = ""
 	}
@@ -358,7 +392,11 @@ func verifyPostPoW_V1(p *Post, pubKey string) (bool, error) {
 		// Updateable
 		// Save PoW to be verified
 		pow = string(cpI.UpdateProofOfWork)
-		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		if isFrontend() {
+			neededStrength = globals.FrontendConfig.GetMinimumPoWStrengths().PostUpdate
+		} else {
+			neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().PostUpdate
+		}
 		// Delete PoW so that the PoW will match
 		cpI.UpdateProofOfWork = ""
 	} else {
@@ -370,7 +408,11 @@ func verifyPostPoW_V1(p *Post, pubKey string) (bool, error) {
 		cpI.UpdateSignature = ""
 		// Save PoW to be verified
 		pow = string(cpI.ProofOfWork)
-		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		if isFrontend() {
+			neededStrength = globals.FrontendConfig.GetMinimumPoWStrengths().Post
+		} else {
+			neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Post
+		}
 		// Delete PoW so that the PoW will match
 		cpI.ProofOfWork = ""
 	}
@@ -406,7 +448,11 @@ func verifyVotePoW_V1(v *Vote, pubKey string) (bool, error) {
 		// Updateable
 		// Save PoW to be verified
 		pow = string(cpI.UpdateProofOfWork)
-		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		if isFrontend() {
+			neededStrength = globals.FrontendConfig.GetMinimumPoWStrengths().VoteUpdate
+		} else {
+			neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().VoteUpdate
+		}
 		// Delete PoW so that the PoW will match
 		cpI.UpdateProofOfWork = ""
 	} else {
@@ -418,7 +464,11 @@ func verifyVotePoW_V1(v *Vote, pubKey string) (bool, error) {
 		cpI.UpdateSignature = ""
 		// Save PoW to be verified
 		pow = string(cpI.ProofOfWork)
-		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		if isFrontend() {
+			neededStrength = globals.FrontendConfig.GetMinimumPoWStrengths().Vote
+		} else {
+			neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Vote
+		}
 		// Delete PoW so that the PoW will match
 		cpI.ProofOfWork = ""
 	}
@@ -454,7 +504,11 @@ func verifyKeyPoW_V1(k *Key, pubKey string) (bool, error) {
 		// Updateable
 		// Save PoW to be verified
 		pow = string(cpI.UpdateProofOfWork)
-		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		if isFrontend() {
+			neededStrength = globals.FrontendConfig.GetMinimumPoWStrengths().KeyUpdate
+		} else {
+			neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().KeyUpdate
+		}
 		// Delete PoW so that the PoW will match
 		cpI.UpdateProofOfWork = ""
 	} else {
@@ -466,7 +520,11 @@ func verifyKeyPoW_V1(k *Key, pubKey string) (bool, error) {
 		cpI.UpdateSignature = ""
 		// Save PoW to be verified
 		pow = string(cpI.ProofOfWork)
-		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		if isFrontend() {
+			neededStrength = globals.FrontendConfig.GetMinimumPoWStrengths().Key
+		} else {
+			neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Key
+		}
 		// Delete PoW so that the PoW will match
 		cpI.ProofOfWork = ""
 	}
@@ -492,6 +550,7 @@ func verifyKeyPoW_V1(k *Key, pubKey string) (bool, error) {
 	}
 }
 
+// Special case below: we drop the PoW requirement to a minimum if it's a CA-specific TypeClassed Truststate, and we trust that CA.
 func verifyTruststatePoW_V1(ts *Truststate, pubKey string) (bool, error) {
 	cpI := *ts
 	var pow string
@@ -502,7 +561,19 @@ func verifyTruststatePoW_V1(ts *Truststate, pubKey string) (bool, error) {
 		// Updateable
 		// Save PoW to be verified
 		pow = string(cpI.UpdateProofOfWork)
-		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		if isFrontend() {
+			neededStrength = globals.FrontendConfig.GetMinimumPoWStrengths().TruststateUpdate
+		} else {
+			neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().TruststateUpdate
+		}
+		// The process below allows for trusted CAs to be able to issue entities with lower PoW. Since this acceptance pass is done at the backend, the frontend verification does not need to care about this.
+		if !isFrontend() && (ts.TypeClass == 2 || ts.TypeClass == 3) &&
+			ca.IsTrustedCAKey(pubKey) {
+			// This truststate is using a CA-specific TypeClass.
+			// If it is a CA that we trust, we drop the truststate PoW requirement to minimum.
+			neededStrength = globals.BackendTransientConfig.MinimumTrustedPoWStrength
+			// If not, we retain the original TS minimum. We'll fail this for not having the entitlement for the CA-specific TypeClass in the future, but not failing it here just to not create confusing error messages.
+		}
 		// Delete PoW so that the PoW will match
 		cpI.UpdateProofOfWork = ""
 	} else {
@@ -514,10 +585,19 @@ func verifyTruststatePoW_V1(ts *Truststate, pubKey string) (bool, error) {
 		cpI.UpdateSignature = ""
 		// Save PoW to be verified
 		pow = string(cpI.ProofOfWork)
-		neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Board
+		if isFrontend() {
+			neededStrength = globals.FrontendConfig.GetMinimumPoWStrengths().Truststate
+		} else {
+			neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().Truststate
+		}
+		if !isFrontend() && (ts.TypeClass == 2 || ts.TypeClass == 3) &&
+			ca.IsTrustedCAKey(pubKey) {
+			neededStrength = globals.BackendTransientConfig.MinimumTrustedPoWStrength
+		}
 		// Delete PoW so that the PoW will match
 		cpI.ProofOfWork = ""
 	}
+
 	// Convert to JSON
 	res, _ := json.Marshal(cpI)
 	// Verify PoW
@@ -525,6 +605,38 @@ func verifyTruststatePoW_V1(ts *Truststate, pubKey string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// If the PoW is valid
+	if verifyResult {
+		// Check if satisfies required minimum
+		if strength >= neededStrength {
+			return true, nil
+		} else {
+			return false, errors.New(fmt.Sprint(
+				"This proof of work is not strong enough. PoW: ", pow))
+		}
+	} else {
+		return false, errors.New(fmt.Sprint(
+			"This proof of work is invalid, but no reason given as to why. PoW: ", pow))
+	}
+}
+
+func verifyApiResponsePoW_V1(ar *ApiResponse, pubKey string) (bool, error) {
+	cpI := *ar
+	var pow string
+	var neededStrength int
+	// Save PoW to be verified
+	pow = string(cpI.ProofOfWork)
+	neededStrength = globals.BackendConfig.GetMinimumPoWStrengths().ApiResponse
+	// Delete PoW so that the PoW will match
+	cpI.ProofOfWork = ""
+	// Convert to JSON
+	res, _ := json.Marshal(cpI)
+	// Verify PoW
+	verifyResult, strength, err := proofofwork.Verify(string(res), pow, pubKey)
+	if err != nil {
+		return false, err
+	}
+	// logging.Logf(1, "We verified an ApiResponse PoW. PoW: %v Result: %v", pow, verifyResult)
 	// If the PoW is valid
 	if verifyResult {
 		// Check if satisfies required minimum
@@ -644,7 +756,6 @@ func createTruststateFp_V1(ts *Truststate) {
 	cpI.UpdateSignature = ""
 	// Remove ALL mutable fields
 	cpI.Type = 0
-	cpI.Domains = []Fingerprint{}
 	cpI.Expiry = 0
 	cpI.Meta = ""
 	// Remove the existing fingerprint if any exists so as to not accidentally take it as an input to the new fingerprint about to be calculated.
@@ -659,7 +770,7 @@ func createTruststateFp_V1(ts *Truststate) {
 // // Verify Fp
 
 func verifyBoardFingerprint_V1(b *Board) bool {
-	if !globals.BackendTransientConfig.FingerprintCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.FingerprintCheckEnabled {
 		return true
 	}
 	cpI := *b
@@ -683,7 +794,7 @@ func verifyBoardFingerprint_V1(b *Board) bool {
 }
 
 func verifyThreadFingerprint_V1(t *Thread) bool {
-	if !globals.BackendTransientConfig.FingerprintCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.FingerprintCheckEnabled {
 		return true
 	}
 	cpI := *t
@@ -706,7 +817,7 @@ func verifyThreadFingerprint_V1(t *Thread) bool {
 }
 
 func verifyPostFingerprint_V1(p *Post) bool {
-	if !globals.BackendTransientConfig.FingerprintCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.FingerprintCheckEnabled {
 		return true
 	}
 	cpI := *p
@@ -729,7 +840,7 @@ func verifyPostFingerprint_V1(p *Post) bool {
 }
 
 func verifyVoteFingerprint_V1(v *Vote) bool {
-	if !globals.BackendTransientConfig.FingerprintCheckEnabled {
+	if !isFrontend() && globals.BackendTransientConfig.FingerprintCheckEnabled {
 		return true
 	}
 	cpI := *v
@@ -752,7 +863,7 @@ func verifyVoteFingerprint_V1(v *Vote) bool {
 }
 
 func verifyKeyFingerprint_V1(k *Key) bool {
-	if !globals.BackendTransientConfig.FingerprintCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.FingerprintCheckEnabled {
 		return true
 	}
 	cpI := *k
@@ -776,7 +887,7 @@ func verifyKeyFingerprint_V1(k *Key) bool {
 }
 
 func verifyTruststateFingerprint_V1(ts *Truststate) bool {
-	if !globals.BackendTransientConfig.FingerprintCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.FingerprintCheckEnabled {
 		return true
 	}
 	cpI := *ts
@@ -788,7 +899,6 @@ func verifyTruststateFingerprint_V1(ts *Truststate) bool {
 	cpI.UpdateSignature = ""
 	// Remove ALL mutable fields
 	cpI.Type = 0
-	cpI.Domains = []Fingerprint{}
 	cpI.Expiry = 0
 	cpI.Meta = ""
 	// Remove the existing fingerprint so that it won't be included as part of the input to be verified.

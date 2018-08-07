@@ -1,0 +1,60 @@
+// This is the style file that handles the styling of markdownified text fragments in thread bodies and posts. This also handles the styling of creation fields.
+@import "./typefaces.scss";
+.markdowned {
+
+  strong,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "SSP Bold"
+  }
+
+  &.code {
+    strong {
+      font-family: "SCP Bold"
+    }
+  }
+
+  code {
+    font-family: "SCP Light"; // font-size: 100%;
+    padding-left: 3px;
+    padding-right: 3px;
+    border-radius: 2px;
+    font-size: 90%;
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    tr {
+      border-bottom: 3px solid rgba(255, 255, 255, 0.25);
+    }
+    th,
+    td {
+      padding: 10px;
+      min-width: 75px;
+      &:first-of-type {
+        padding-left: 0;
+        min-width: 200px;
+      }
+      &:last-of-type {
+        padding-right: 0;
+        white-space: nowrap;
+      }
+    }
+    th {
+      text-align: left;
+      &:last-of-type {
+        text-align: right;
+      }
+    }
+    td {
+      &:last-of-type {
+        text-align: right;
+      }
+    }
+  }
+}

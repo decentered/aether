@@ -20,7 +20,7 @@ const (
 
 func getBootstrappers() []api.Address {
 	// defaultBootstrapper := constructBootstrapper(bsLoc, bsSubloc, bsPort)
-	resp, err := api.GetPageRaw(bsLoc, bsSubloc, bsPort, "bootstrappers", "GET", []byte{})
+	resp, err := api.GetPageRaw(bsLoc, bsSubloc, bsPort, "bootstrappers", "GET", []byte{}, nil)
 	if err != nil {
 		logging.Logf(1, "Getting bootstrappers failed from this address. Error: %v, Address: %v/%v:%v", err, bsLoc, bsSubloc, bsPort)
 	}
@@ -88,14 +88,14 @@ func doBootstrap() {
 	errs := []error{}
 	// Go through each remote in the exec plans and call them based on the types we want to pull from it.
 	for key, _ := range execPlans {
-		err := Sync(execPlans[key].addr, execPlans[key].endpoints)
+		err := Sync(execPlans[key].addr, execPlans[key].endpoints, nil)
 		if err != nil {
 			errs = append(errs, err)
 		}
 	}
 	// Go through each remote in the exec plan and call all endpoints in them. This should cause a manifest scan and not much download, and a timestamp setting. This is insurance to make sure that the data we have is the union of all bootstrappers we connected to.
 	for key, _ := range execPlans {
-		err := Sync(execPlans[key].addr, []string{})
+		err := Sync(execPlans[key].addr, []string{}, nil)
 		if err != nil {
 			errs = append(errs, err)
 		}

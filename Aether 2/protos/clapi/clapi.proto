@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package clapi;
+option go_package = "aether-core/protos/clapi";
+
+import "feobjects/feobjects.proto";
+import "mimapi/structprotos.proto";
+
+// These "Set", "Get" verbs are written from the viewpoint of the consumer of this api.
+service ClientAPI {
+  rpc FrontendReady (FEReadyRequest) returns (FEReadyResponse) {}
+  rpc DeliverAmbients(AmbientsRequest) returns (AmbientsResponse) {}
+  rpc SendAmbientStatus(AmbientStatusPayload) returns (AmbientStatusResponse) {}
+  rpc SendAmbientLocalUserEntity(AmbientLocalUserEntityPayload) returns (AmbientLocalUserEntityResponse) {}
+}
+
+message FEReadyRequest {
+  string address = 1;
+  int32 port = 2;
+}
+
+message FEReadyResponse {}
+
+// This delivers the updated ambients to the client.
+message AmbientsRequest {
+  repeated feobjects.AmbientBoardEntity Boards = 1;
+}
+
+message AmbientsResponse {}
+
+// This is the status of the backend and what it is doing
+message BackendAmbientStatus {
+
+}
+
+// General status of the frontend
+message FrontendAmbientStatus {
+
+}
+
+/*----------  Inflight pool delivery  ----------*/
+
+message InflightStatus {
+  int32 CompletionPercent = 1;
+  string StatusText = 2;
+  int64 RequestedTimestamp = 4;
+  int64 LastActionTimestamp = 5;
+  string EventType = 6;
+}
+
+message InflightBoard {
+  InflightStatus Status = 1;
+  structprotos.Board Entity = 2;
+}
+
+message InflightThread {
+  InflightStatus Status = 1;
+  structprotos.Thread Entity = 2;
+}
+
+message InflightPost {
+  InflightStatus Status = 1;
+  structprotos.Post Entity = 2;
+}
+
+message InflightVote {
+  InflightStatus Status = 1;
+  structprotos.Vote Entity = 2;
+}
+
+message InflightKey {
+  InflightStatus Status = 1;
+  structprotos.Key Entity = 2;
+}
+
+message InflightTruststate {
+  InflightStatus Status = 1;
+  structprotos.Truststate Entity = 2;
+}
+
+// The objects currently being processed.
+message Inflights {
+  repeated InflightBoard Boards = 1;
+  repeated InflightThread Threads = 2;
+  repeated InflightPost Posts = 3;
+  repeated InflightVote Votes = 4;
+  repeated InflightKey Keys = 5;
+  repeated InflightTruststate Truststates = 6;
+}
+
+message AmbientStatusPayload {
+  /* Health data from the backend, only provided to its admin frontend */
+  BackendAmbientStatus BackendAmbientStatus = 1;
+  /* Health data from the frontend */
+  FrontendAmbientStatus FrontendAmbientStatus = 2;
+  /* Lisf ot items currently being processed */
+  Inflights Inflights = 3;
+}
+
+/*
+  This is the list of statuses
+
+  - Sent to frontend, waiting for processing
+  - (Optional) Querying backend determining CREATE or EDIT
+  - Minting the proof of work token
+  - Waiting for backend insertion acknowledgement
+  - Regenerating frontend caches
+  - Waiting to receive served to remotes confirmation
+  - Waiting to discover post in remote nodes
+  - Delivery and distribution complete. Content is available globally.
+
+*/
+
+message AmbientStatusResponse {}
+
+/*----------  Ambient Local User Data  ----------*/
+
+message AmbientLocalUserEntityPayload {
+  bool LocalUserExists = 1;
+  feobjects.CompiledUserEntity LocalUserEntity = 2;
+}
+
+message AmbientLocalUserEntityResponse {}

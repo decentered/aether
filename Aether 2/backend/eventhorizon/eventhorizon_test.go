@@ -142,7 +142,7 @@ func deleteAllPosts() {
 	globals.DbInstance.Exec("DELETE FROM Posts")
 }
 
-// func cnvToCutoff(days int) int64 {
+// func CnvToCutoffDays(days int) int64 {
 // 	return time.Now().Add(-(time.Duration(days) * time.Hour * time.Duration(24))).Unix()
 // }
 func setEventHorizonToNow() {
@@ -151,7 +151,7 @@ func setEventHorizonToNow() {
 
 func setEventHorizonToEndOfLocalMemory() {
 	lmD := globals.BackendConfig.GetLocalMemoryDays()
-	lmCutoff := Timestamp(toolbox.CnvToCutoff(lmD))
+	lmCutoff := Timestamp(toolbox.CnvToCutoffDays(lmD))
 	globals.BackendConfig.SetEventHorizonTimestamp(lmCutoff)
 }
 
@@ -256,7 +256,7 @@ func TestPruneDB_NonBacktrack_Success(t *testing.T) {
 	eventhorizon.PruneDB()
 	newEh := globals.BackendConfig.GetEventHorizonTimestamp()
 	lmD := globals.BackendConfig.GetLocalMemoryDays()
-	lmCutoff := Timestamp(toolbox.CnvToCutoff(lmD))
+	lmCutoff := Timestamp(toolbox.CnvToCutoffDays(lmD))
 	newSupposedEh := lmCutoff
 	if newEh != newSupposedEh {
 		t.Errorf("Event horizon failed to not backtrack backtrack on 3 runs. EH: %v, Supposed EH: %v", newEh, newSupposedEh)

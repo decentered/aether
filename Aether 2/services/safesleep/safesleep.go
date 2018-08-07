@@ -11,27 +11,38 @@ import (
 	"time"
 )
 
-func Sleep(dur time.Duration) error {
+func Sleep(dur time.Duration, terminator *bool) error {
+	var shutdownIndicator bool
+	if globals.BackendTransientConfig != nil {
+		shutdownIndicator = globals.BackendTransientConfig.ShutdownInitiated
+	}
+	if globals.FrontendTransientConfig != nil {
+		shutdownIndicator = globals.FrontendTransientConfig.ShutdownInitiated
+	}
+	if terminator == nil {
+		f := false
+		terminator = &f
+	}
 	// Split time.duration into 10 second intervals
 	sec := int(dur.Seconds())
 	var blocks int
-	if sec <= 10 {
+	if sec <= 5 {
 		// Sleep for the exact time if it's less than or exactly 10 seconds.
 		time.Sleep(dur)
-		if globals.BackendTransientConfig.ShutdownInitiated {
-			logging.Log(2, fmt.Sprintf("Shutdown in progress. SafeSleep is exiting. Duration was: %s", dur))
-			return errors.New("The application is shutting down. Please exit gracefully.")
+		if *terminator || shutdownIndicator {
+			logging.Log(2, fmt.Sprintf("Sleep terminator was flipped true, so SafeSleep is exiting. Duration was: %s", dur))
+			return errors.New("Sleep terminator was flipped true. Please exit gracefully.")
 		} else {
 			return nil
 		}
 	} else {
-		blocks = sec / 10
+		blocks = sec / 5
 	}
 	for i := 0; i < blocks; i++ {
-		time.Sleep(time.Duration(10) * time.Second)
-		if globals.BackendTransientConfig.ShutdownInitiated {
-			logging.Log(2, fmt.Sprintf("Shutdown in progress. SafeSleep is exiting. Duration was: %s", dur))
-			return errors.New("The application is shutting down. Please exit gracefully.")
+		time.Sleep(time.Duration(5) * time.Second)
+		if *terminator || shutdownIndicator {
+			logging.Log(2, fmt.Sprintf("Sleep terminator was flipped true, SafeSleep is exiting. Duration was: %s", dur))
+			return errors.New("Sleep terminator was flipped true. Please exit gracefully.")
 		}
 	}
 	return nil

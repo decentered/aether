@@ -25,6 +25,8 @@ import (
 	"time"
 )
 
+// Tests will be run with the current protocol version.
+
 // USAGE
 // go test -nodeloc=/Users/Helios/Desktop/generated\ nodes/node-newest_4/static_mim_node
 
@@ -33,12 +35,14 @@ import (
 var testNodeAddress string
 var testNodePort uint16
 var nodeLocation string
+var protv string
 
 func TestMain(m *testing.M) {
 	// Create the database and configs.
 	cmd.EstablishConfigs(nil)
 	persistence.CreateDatabase()
 	persistence.CheckDatabaseReady()
+	protv = globals.BackendConfig.GetProtURLVersion()
 	globals.BackendTransientConfig.FingerprintCheckEnabled = false
 	globals.BackendTransientConfig.SignatureCheckEnabled = false
 	globals.BackendTransientConfig.ProofOfWorkCheckEnabled = false
@@ -100,7 +104,7 @@ func getValidEntity(entityType string) (string, api.Timestamp, api.Timestamp) {
 	var creation api.Timestamp
 	var lastUpdate api.Timestamp
 	if entityType == "cache" { // Heads up you're in api_test. This is just for testing - Don't get freaked out by this only being for posts.
-		postsDir := fmt.Sprint(nodeLocation, "/v0/c0/posts")
+		postsDir := fmt.Sprint(nodeLocation, "/", protv, "/c0/posts")
 		flist := []string{}
 		// Get all paths in that directory.
 		filepath.Walk(postsDir,
@@ -120,13 +124,13 @@ func getValidEntity(entityType string) (string, api.Timestamp, api.Timestamp) {
 	} else {
 		var dir string
 		if entityType == "boards" {
-			dir = fmt.Sprint(nodeLocation, "/v0/c0/boards")
+			dir = fmt.Sprint(nodeLocation, "/", protv, "/c0/boards")
 		} else if entityType == "posts" {
-			dir = fmt.Sprint(nodeLocation, "/v0/c0/posts")
+			dir = fmt.Sprint(nodeLocation, "/", protv, "/c0/posts")
 		} else if entityType == "truststates" {
-			dir = fmt.Sprint(nodeLocation, "/v0/c0/truststates")
+			dir = fmt.Sprint(nodeLocation, "/", protv, "/c0/truststates")
 		} else if entityType == "threads_index" { // this is so that we can pull a nonexistent entity from index, delete it from the actual source. This is a test case to have index but not data.
-			dir = fmt.Sprint(nodeLocation, "/v0/c0/threads")
+			dir = fmt.Sprint(nodeLocation, "/", protv, "/c0/threads")
 		} else {
 			log.Fatal("The type of entity that is requested to bring a valid instance of could not be determined.")
 		}
@@ -192,7 +196,7 @@ func setup(testNodeAddress string, testNodePort uint16) {
 
 	// This breaks the index.json of the vote endpoint. This is to test how the protocol behaves under broken endpoints.
 
-	votesIndex := fmt.Sprint(nodeLocation, "/v0/c0/votes/index.json")
+	votesIndex := fmt.Sprint(nodeLocation, "/", protv, "/c0/votes/index.json")
 	vI, _ := ioutil.ReadFile(votesIndex)
 	var votesIndexResp api.ApiResponse
 	json.Unmarshal(vI, &votesIndexResp)
@@ -210,7 +214,7 @@ func setup(testNodeAddress string, testNodePort uint16) {
 
 	threadIndexFp, _, _ := getValidEntity("threads_index")
 	// fmt.Printf("threadIndexFp: %#v\n", threadIndexFp)
-	dir := fmt.Sprint(nodeLocation, "/v0/c0/threads")
+	dir := fmt.Sprint(nodeLocation, "/", protv, "/c0/threads")
 	fileList := []string{}
 	// Get all paths in that directory.
 	filepath.Walk(dir,
@@ -243,7 +247,7 @@ func setup(testNodeAddress string, testNodePort uint16) {
 	// 2) Cache: Missing cache
 	// 3) Cache: Huge pages count as a DDoS attack on oneself?
 	// Build the directory. We're using posts because it usually has a lot of items.
-	postsDir := fmt.Sprint(nodeLocation, "/v0/c0/posts")
+	postsDir := fmt.Sprint(nodeLocation, "/", protv, "/c0/posts")
 	fileList2 := []string{}
 	// Get all paths in that directory.
 	filepath.Walk(postsDir,
@@ -285,7 +289,7 @@ func setup(testNodeAddress string, testNodePort uint16) {
 
 	// // Endpoint tests setup start.
 
-	// votesEndpointIndex := fmt.Sprint(nodeLocation, "/v0/c0/votes/index.json")
+	// votesEndpointIndex := fmt.Sprint(nodeLocation, "/",protv,"/c0/votes/index.json")
 	// editExistingJson(
 	// 	votesEndpointIndex,
 	// 	`cache_20fd7dc96e6ec13b3afcb2d417709e7e407fb47a6d2f6e0c1914af0df17b41a1`, `broken_cache_20fd7dc96e6ec13b3afcb2d417709e7e407fb47a6d2f6e0c1914af0df17b41a1`)
@@ -299,13 +303,13 @@ func setup(testNodeAddress string, testNodePort uint16) {
 	// 	votesEndpointIndex,
 	// 	`cache_c71472ac4d44c1a90e7656f2b0783182a4e07dbe7e584e5900083425ac9a3a50`, `broken_cache_c71472ac4d44c1a90e7656f2b0783182a4e07dbe7e584e5900083425ac9a3a50`)
 
-	fakeEndpointDir := fmt.Sprint(nodeLocation, "/v0/c0/invalidendpoint")
+	fakeEndpointDir := fmt.Sprint(nodeLocation, "/", protv, "/c0/invalidendpoint")
 	copyDirectory(postsDir, fakeEndpointDir)
 
 	// // Endpoint tests setup end.
 
 	// // Query tests setup start.
-	threadsDir := fmt.Sprint(nodeLocation, "/v0/c0/threads")
+	threadsDir := fmt.Sprint(nodeLocation, "/", protv, "/c0/threads")
 	flist := []string{}
 	// Get all paths in that directory.
 	filepath.Walk(threadsDir,
@@ -327,10 +331,10 @@ func setup(testNodeAddress string, testNodePort uint16) {
 	// Create a HTTP server serving the nodeloc.
 	fs := http.FileServer(http.Dir(nodeLocation))
 	http.Handle("/", fs)
-	http.HandleFunc("/v0/timeouter", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/", protv, "/timeouter", func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(30000 * time.Second)
 	})
-	http.HandleFunc("/v0/c0/invalid_data.json", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/", protv, "/c0/invalid_data.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("This is some invalid JSON."))
 	})
 	go http.ListenAndServe(fmt.Sprint(testNodeAddress, ":", testNodePort), nil)
@@ -352,7 +356,7 @@ func ValidateTest(expected interface{}, actual interface{}, t *testing.T) {
 
 func TestFetch_Success(t *testing.T) {
 	httpResp, err :=
-		api.Fetch(testNodeAddress, "", testNodePort, "status", "GET", []byte{})
+		api.Fetch(testNodeAddress, "", testNodePort, "status", "GET", []byte{}, nil)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	}
@@ -362,21 +366,21 @@ func TestFetch_Success(t *testing.T) {
 }
 
 func TestFetch_404(t *testing.T) {
-	_, err := api.Fetch(testNodeAddress, "", testNodePort, "this is a nonexistent location", "GET", []byte{})
+	_, err := api.Fetch(testNodeAddress, "", testNodePort, "this is a nonexistent location", "GET", []byte{}, nil)
 	expected := "Non-200 status code returned from Fetch. Received status code: 404, Host: 127.0.0.1, Subhost: , Port: 8089, Location: this is a nonexistent location, Method: GET"
 	actual := err.Error()
 	ValidateTest(expected, actual, t)
 }
 
 func TestFetch_Refused(t *testing.T) {
-	_, err := api.Fetch(testNodeAddress, "", 48915, "this is a nonexistent location", "GET", []byte{})
+	_, err := api.Fetch(testNodeAddress, "", 48915, "this is a nonexistent location", "GET", []byte{}, nil)
 	expected := "The host refused the connection. Host:127.0.0.1, Subhost: , Port: 48915, Location: this is a nonexistent location"
 	actual := err.Error()
 	ValidateTest(expected, actual, t)
 }
 
 func TestFetch_Timeout(t *testing.T) {
-	_, err := api.Fetch(testNodeAddress, "", testNodePort, "timeouter", "GET", []byte{})
+	_, err := api.Fetch(testNodeAddress, "", testNodePort, "timeouter", "GET", []byte{}, nil)
 	expected := "Timeout exceeded. Host:127.0.0.1, Subhost: , Port: 8089, Location: timeouter"
 	actual := err.Error()
 	ValidateTest(expected, actual, t)
@@ -384,7 +388,7 @@ func TestFetch_Timeout(t *testing.T) {
 
 // Get Page tests
 func TestGetPageRaw_Success(t *testing.T) {
-	resp, err := api.GetPageRaw(testNodeAddress, "", testNodePort, "c0/boards/index.json", "GET", []byte{})
+	resp, err := api.GetPageRaw(testNodeAddress, "", testNodePort, "c0/boards/index.json", "GET", []byte{}, nil)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Results) == 0 {
@@ -393,14 +397,14 @@ func TestGetPageRaw_Success(t *testing.T) {
 }
 
 func TestGetPageRaw_Unparsable(t *testing.T) {
-	_, err := api.GetPageRaw(testNodeAddress, "", testNodePort, "c0/invalid_data.json", "GET", []byte{})
+	_, err := api.GetPageRaw(testNodeAddress, "", testNodePort, "c0/invalid_data.json", "GET", []byte{}, nil)
 	expected := "The JSON that arrived over the network is malformed. JSON: This is some invalid JSON., Host: 127.0.0.1, Subhost: , Port: 8089, Location: c0/invalid_data.json"
 	actual := err.Error()
 	ValidateTest(expected, actual, t)
 }
 
 func TestGetPage_Success(t *testing.T) {
-	resp, _, err := api.GetPage(testNodeAddress, "", testNodePort, "c0/boards/index.json", "GET", []byte{})
+	resp, _, err := api.GetPage(testNodeAddress, "", testNodePort, "c0/boards/index.json", "GET", []byte{}, nil)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.CacheLinks) == 0 {
@@ -414,7 +418,7 @@ func TestGetCache_Success(t *testing.T) {
 	cacheName, _, _ := getValidEntity("cache")
 	// fmt.Printf("cachename: %#v\n", cacheName)
 	resp, err := api.GetCache(testNodeAddress, "", testNodePort, cacheName)
-	// TODO: pointing out the name directly here is brittle. We have no others, so fix this.
+	// Pointing out the name directly here is brittle. We have no others, so fix this.
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Posts) == 0 {
@@ -454,8 +458,8 @@ func TestGetCache_MissingPage(t *testing.T) {
 
 // Get Endpoint tests
 
-func TestGetEndpoint_Success(t *testing.T) {
-	resp, err := api.GetEndpoint(testNodeAddress, "", testNodePort, "threads", 0)
+func TestGetGETEndpoint_Success(t *testing.T) {
+	resp, err := api.GetGETEndpoint(testNodeAddress, "", testNodePort, "threads", 0)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Threads) == 0 {
@@ -463,8 +467,8 @@ func TestGetEndpoint_Success(t *testing.T) {
 	}
 }
 
-func TestGetEndpoint_3ConsequentCachesMissingFailure(t *testing.T) {
-	_, err := api.GetEndpoint(testNodeAddress, "", testNodePort, "votes", 0)
+func TestGetGETEndpoint_3ConsequentCachesMissingFailure(t *testing.T) {
+	_, err := api.GetGETEndpoint(testNodeAddress, "", testNodePort, "votes", 0)
 	errMessage := "3 or more cache failures"
 	if err == nil {
 		t.Errorf("Did not notice the cache being missing.")
@@ -473,8 +477,8 @@ func TestGetEndpoint_3ConsequentCachesMissingFailure(t *testing.T) {
 	}
 }
 
-func TestGetEndpoint_NonexistentEndpoint(t *testing.T) {
-	_, err := api.GetEndpoint(testNodeAddress, "", testNodePort, "fakeendpoint", 0)
+func TestGetGETEndpoint_NonexistentEndpoint(t *testing.T) {
+	_, err := api.GetGETEndpoint(testNodeAddress, "", testNodePort, "fakeendpoint", 0)
 	errMessage := "Get Endpoint failed because it couldn't get the index of the endpoint."
 	if err == nil {
 		t.Errorf("Did not notice the endpoint being missing.")
@@ -483,9 +487,9 @@ func TestGetEndpoint_NonexistentEndpoint(t *testing.T) {
 	}
 }
 
-func TestGetEndpoint_EndpointNameAndContentsMismatch(t *testing.T) {
+func TestGetGETEndpoint_EndpointNameAndContentsMismatch(t *testing.T) {
 	// This test is present to make sure that endpoints have no dependence on their names. The parsing logic should be global.
-	resp, err := api.GetEndpoint(testNodeAddress, "", testNodePort, "invalidendpoint", 0)
+	resp, err := api.GetGETEndpoint(testNodeAddress, "", testNodePort, "invalidendpoint", 0)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
 	} else if len(resp.Posts) == 0 {

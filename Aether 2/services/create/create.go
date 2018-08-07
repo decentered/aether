@@ -6,6 +6,7 @@ package create
 import (
 	"aether-core/io/api"
 	"aether-core/services/globals"
+	// "aether-core/services/logging"
 	// "aether-core/services/verify"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ func Bake(entity api.Provable) error {
 	// 1) Signature
 	// 2) PoW
 	// 3) Fingerprint
+	// logging.Logf(1, "globals.FrontendConfig.GetUserKeyPair(): %#s", globals.FrontendConfig.GetUserKeyPair())
 	err := entity.CreateSignature(globals.FrontendConfig.GetUserKeyPair())
 	if err != nil {
 		return errors.New(fmt.Sprintf(
@@ -25,17 +27,17 @@ func Bake(entity api.Provable) error {
 	err2 := *new(error)
 	switch ent := entity.(type) {
 	case *api.Board:
-		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().Board)
+		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.FrontendConfig.GetMinimumPoWStrengths().Board)
 	case *api.Thread:
-		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().Thread)
+		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.FrontendConfig.GetMinimumPoWStrengths().Thread)
 	case *api.Post:
-		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().Post)
+		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.FrontendConfig.GetMinimumPoWStrengths().Post)
 	case *api.Vote:
-		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().Vote)
+		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.FrontendConfig.GetMinimumPoWStrengths().Vote)
 	case *api.Key:
-		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().Key)
+		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.FrontendConfig.GetMinimumPoWStrengths().Key)
 	case *api.Truststate:
-		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().Truststate)
+		err2 = ent.CreatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.FrontendConfig.GetMinimumPoWStrengths().Truststate)
 	}
 	if err2 != nil {
 		return errors.New(fmt.Sprintf(
@@ -56,17 +58,17 @@ func Rebake(entity api.Updateable) error {
 	err2 := *new(error)
 	switch ent := entity.(type) {
 	case *api.Board:
-		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().BoardUpdate)
+		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.FrontendConfig.GetMinimumPoWStrengths().BoardUpdate)
 	case *api.Thread:
-		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().ThreadUpdate)
+		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.FrontendConfig.GetMinimumPoWStrengths().ThreadUpdate)
 	case *api.Post:
-		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().PostUpdate)
+		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.FrontendConfig.GetMinimumPoWStrengths().PostUpdate)
 	case *api.Vote:
-		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().VoteUpdate)
+		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.FrontendConfig.GetMinimumPoWStrengths().VoteUpdate)
 	case *api.Key:
-		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().KeyUpdate)
+		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.FrontendConfig.GetMinimumPoWStrengths().KeyUpdate)
 	case *api.Truststate:
-		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().TruststateUpdate)
+		err2 = ent.CreateUpdatePoW(globals.FrontendConfig.GetUserKeyPair(), globals.FrontendConfig.GetMinimumPoWStrengths().TruststateUpdate)
 	}
 	if err2 != nil {
 		return errors.New(fmt.Sprintf(
@@ -109,7 +111,7 @@ func CreateBoard(
 	entity.OwnerPublicKey = ownerPk
 	entity.BoardOwners = boardOwners
 	entity.Description = description
-	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Board
+	entity.EntityVersion = globals.FrontendTransientConfig.EntityVersions.Board
 	entity.Meta = meta
 	entity.RealmId = realmId
 	err := Bake(&entity)
@@ -139,7 +141,7 @@ func CreateThread(
 	entity.Link = link
 	entity.Owner = ownerFp
 	entity.OwnerPublicKey = ownerPk
-	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Thread
+	entity.EntityVersion = globals.FrontendTransientConfig.EntityVersions.Thread
 	entity.Meta = meta
 	entity.RealmId = realmId
 	err := Bake(&entity)
@@ -169,7 +171,7 @@ func CreatePost(
 	entity.Body = body
 	entity.Owner = ownerFp
 	entity.OwnerPublicKey = ownerPk
-	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Post
+	entity.EntityVersion = globals.FrontendTransientConfig.EntityVersions.Post
 	entity.Meta = meta
 	entity.RealmId = realmId
 	err := Bake(&entity)
@@ -186,6 +188,7 @@ func CreateVote(
 	targetFp api.Fingerprint,
 	ownerFp api.Fingerprint,
 	ownerPk string,
+	voteTypeclass int,
 	voteType int,
 	meta string,
 	realmId api.Fingerprint,
@@ -198,8 +201,9 @@ func CreateVote(
 	entity.Target = targetFp
 	entity.Owner = ownerFp
 	entity.OwnerPublicKey = ownerPk
+	entity.TypeClass = voteTypeclass
 	entity.Type = voteType
-	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Vote
+	entity.EntityVersion = globals.FrontendTransientConfig.EntityVersions.Vote
 	entity.Meta = meta
 	entity.RealmId = realmId
 	err := Bake(&entity)
@@ -247,29 +251,30 @@ func CreateAddress(
 	client.ClientName = clientName
 	entity.Protocol = prot
 	entity.Client = client
-	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Thread
+	entity.EntityVersion = globals.FrontendTransientConfig.EntityVersions.Address
 	entity.RealmId = realmId
 	return entity, nil
 }
 
 func CreateKey(
-	keyType string,
 	key string,
 	name string,
 	info string,
+	expiry api.Timestamp,
 	meta string,
 	realmId api.Fingerprint,
 ) (api.Key, error) {
 
 	var entity api.Key
 	entity.Creation = api.Timestamp(time.Now().Unix())
-	entity.Type = keyType
+	entity.Type = globals.FrontendTransientConfig.DefaultKeyType
 	entity.Key = key
 	entity.Name = name
 	entity.Info = info
-	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Thread
+	entity.EntityVersion = globals.FrontendTransientConfig.EntityVersions.Key
+	entity.Expiry = expiry
 	entity.Meta = meta
-	entity.RealmId = realmId
+	entity.RealmId = realmId // todo expiry
 	err := Bake(&entity)
 	if err != nil {
 		var blankEntity api.Key
@@ -282,8 +287,9 @@ func CreateTruststate(
 	targetFp api.Fingerprint,
 	ownerFp api.Fingerprint,
 	ownerPk string,
+	tsTypeclass int,
 	tsType int,
-	domains []api.Fingerprint,
+	domain api.Fingerprint,
 	expiry api.Timestamp,
 	meta string,
 	realmId api.Fingerprint,
@@ -294,10 +300,11 @@ func CreateTruststate(
 	entity.Target = targetFp
 	entity.Owner = ownerFp
 	entity.OwnerPublicKey = ownerPk
+	entity.TypeClass = tsType
 	entity.Type = tsType
-	entity.Domains = domains
+	entity.Domain = domain
 	entity.Expiry = expiry
-	entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Thread
+	entity.EntityVersion = globals.FrontendTransientConfig.EntityVersions.Truststate
 	entity.Meta = meta
 	entity.RealmId = realmId
 	err := Bake(&entity)
@@ -388,14 +395,19 @@ func UpdateVote(request VoteUpdateRequest) error {
 }
 
 type KeyUpdateRequest struct {
-	Entity      *api.Key
-	InfoUpdated bool
-	NewInfo     string
+	Entity        *api.Key
+	InfoUpdated   bool
+	NewInfo       string
+	ExpiryUpdated bool
+	NewExpiry     api.Timestamp
 }
 
 func UpdateKey(request KeyUpdateRequest) error {
 	if request.InfoUpdated {
 		request.Entity.Info = request.NewInfo
+	}
+	if request.ExpiryUpdated {
+		request.Entity.Expiry = request.NewExpiry
 	}
 	request.Entity.LastUpdate = api.Timestamp(time.Now().Unix())
 	err := Rebake(request.Entity)
@@ -406,21 +418,16 @@ func UpdateKey(request KeyUpdateRequest) error {
 }
 
 type TruststateUpdateRequest struct {
-	Entity         *api.Truststate
-	TypeUpdated    bool
-	NewType        int
-	DomainsUpdated bool
-	NewDomains     []api.Fingerprint
-	ExpiryUpdated  bool
-	NewExpiry      api.Timestamp
+	Entity        *api.Truststate
+	TypeUpdated   bool
+	NewType       int
+	ExpiryUpdated bool
+	NewExpiry     api.Timestamp
 }
 
 func UpdateTruststate(request TruststateUpdateRequest) error {
 	if request.TypeUpdated {
 		request.Entity.Type = request.NewType
-	}
-	if request.DomainsUpdated {
-		request.Entity.Domains = request.NewDomains
 	}
 	if request.ExpiryUpdated {
 		request.Entity.Expiry = request.NewExpiry

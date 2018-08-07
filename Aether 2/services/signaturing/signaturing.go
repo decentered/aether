@@ -78,15 +78,14 @@ func Verify(input string, signature string, pubKey string) bool {
 	hasher := sha256.New()
 	hasher.Write(inputByte)
 	hash := hasher.Sum(nil)
-	pubKeyAsByte, err := hex.DecodeString(pubKey)
-	if err != nil {
-		return false
-	}
 	sigAsByte, err := hex.DecodeString(signature)
 	if err != nil {
 		return false
 	}
-	pk := ed25519.PublicKey(pubKeyAsByte)
+	pk, err := UnmarshalPublicKey(pubKey)
+	if err != nil {
+		return false
+	}
 	valid := ed25519.Verify(pk, hash, sigAsByte)
 	return valid
 }

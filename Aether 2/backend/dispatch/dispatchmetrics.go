@@ -86,15 +86,17 @@ type CurrentOutboundSyncMetrics struct {
 	LocalClientName         string
 	RemoteClientName        string
 	SyncHistory             string
+	IsReverseConn           bool
 }
 
 func startMetricsContainer(
 	resp api.ApiResponse,
 	remoteAddr api.Address,
-	n persistence.DbNode) *CurrentOutboundSyncMetrics {
+	n persistence.DbNode, isReverseConn bool) *CurrentOutboundSyncMetrics {
 	var c CurrentOutboundSyncMetrics
 	c.RemoteIp = string(remoteAddr.Location)
 	c.RemotePort = int(remoteAddr.Port)
+	c.IsReverseConn = isReverseConn
 	c.LocalIp = string(globals.BackendConfig.GetExternalIp())
 	c.LocalPort = int(globals.BackendConfig.GetExternalPort())
 	c.LocalClientName = globals.BackendTransientConfig.AppIdentifier
@@ -164,12 +166,16 @@ func generateCloseMessage(c *CurrentOutboundSyncMetrics, clr *color.Color, ims *
 			singlePageSprinter(c, "Truststates"),
 			singlePageSprinter(c, "Addresses"))
 	}
-	longTimeDetailString := ""
-	shortTimeDetailString := ""
-	timeDetailString := ""
+	var longTimeDetailString string
+	var shortTimeDetailString string
+	var timeDetailString string
+	var reverseConnString string
+	if c.IsReverseConn {
+		reverseConnString = "(Reverse Connection)"
+	}
 	if c.TotalDurationSeconds > 0 {
 		// This is where we collect db time metrics.
-		dbTimeDetailString := fmt.Sprintf("\n    Boards:      %.1fs, \n    Threads:     %.1fs, \n    Posts:       %.1fs, \n    Votes:       %.1fs, \n    Keys:        %.1fs, \n    Truststates: %.1fs, \n    Addresses:   %.1fs, \n    Multitype:   %.1fs (likely through purgatory).", c.BoardsDBCommitTime, c.ThreadsDBCommitTime, c.PostsDBCommitTime, c.VotesDBCommitTime, c.KeysDBCommitTime, c.TruststatesDBCommitTime, c.AddressesDBCommitTime, c.MultipleInsertDBCommitTime)
+		dbTimeDetailString := fmt.Sprintf("\n    Boards:      %.1fs, \n    Threads:     %.1fs, \n    Posts:       %.1fs, \n    Votes:       %.1fs, \n    Keys:        %.1fs, \n    Truststates: %.1fs, \n    Addresses:   %.1fs, \n    Multitype:   %.1fs (likely through purgatory)", c.BoardsDBCommitTime, c.ThreadsDBCommitTime, c.PostsDBCommitTime, c.VotesDBCommitTime, c.KeysDBCommitTime, c.TruststatesDBCommitTime, c.AddressesDBCommitTime, c.MultipleInsertDBCommitTime)
 		// network time metrics for GET and POST.
 		networkTimeDetailString := fmt.Sprintf("\n    Boards:      G: %.1fs P: %.1fs (PWait: %.1f), \n    Threads:     G: %.1fs P: %.1fs (PWait: %.1f), \n    Posts:       G: %.1fs P: %.1fs (PWait: %.1f), \n    Votes:       G: %.1fs P: %.1fs (PWait: %.1f), \n    Keys:        G: %.1fs P: %.1fs (PWait: %.1f), \n    Truststates: G: %.1fs P: %.1fs (PWait: %.1f), \n    Addresses:   G: %.1fs P: %.1fs (PWait: %.1f).",
 			c.BoardsGETNetworkTime, c.BoardsPOSTNetworkTime, c.BoardsPOSTTimeToFirstResponse,
@@ -188,8 +194,8 @@ func generateCloseMessage(c *CurrentOutboundSyncMetrics, clr *color.Color, ims *
 			timeDetailString = shortTimeDetailString
 		}
 	}
-	closeMessage := clr.Sprintf("\nCLOSE: %s >>> %s (%s) \n(%s:%d >>> %s:%d) \nReceived: Total: %d. \n%s \nTime: Total: %ds. %s",
-		c.LocalClientName, c.RemoteClientName, c.SyncHistory,
+	closeMessage := clr.Sprintf("\nCLOSE: %s >>> %s (%s) %s \n(%s:%d >>> %s:%d) \nReceived: Total: %d. \n%s \nTime: Total: %ds. %s",
+		c.LocalClientName, c.RemoteClientName, c.SyncHistory, reverseConnString,
 		c.LocalIp, c.LocalPort, c.RemoteIp, c.RemotePort,
 		totalEntitiesReceived, insertDbDetailString,
 		c.TotalDurationSeconds, timeDetailString)

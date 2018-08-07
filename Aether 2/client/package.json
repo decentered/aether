@@ -1,0 +1,62 @@
+{
+  "name": "aethercl",
+  "version": "1.0.0",
+  "description": "Aether Client is the GUI of the Aether app that communicates with the Aether Frontend, and in some limited cases, with the runtime environment (backend).",
+  "main": "src/app/mainmain.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "../../../../../../../../usr/local/lib/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron .",
+    "sasswatch": "node-sass --watch ./src/app/scss/main.scss -o ./src/app/scss/compiled --output-style=compressed --source-map=true --source-map-contents=scss || echo To use this watcher, please install node-sass. For that, do: npm install -g node-sass",
+    "tswatch": "../../tsc -w || echo To use the TypeScript watcher, please install Typescript. For that, do: npm install -g typescript",
+    "wpbuild": "webpack",
+    "wpwatch": "webpack --watch"
+  },
+  "author": "Burak Nehbit",
+  "license": "SEE LICENSE IN license.md",
+  "devDependencies": {
+    "electron-rebuild": "^1.7.3",
+    "file-loader": "^1.1.11",
+    "node-sass": "^4.9.0",
+    "resolve-url-loader": "^2.3.0",
+    "sass-loader": "^7.0.3",
+    "style-loader": "^0.21.0",
+    "ts-loader": "^4.4.1",
+    "typescript": "^2.9.2",
+    "vue-devtools": "^4.1.4",
+    "vue-loader": "^15.2.4",
+    "vue-template-compiler": "^2.5.16",
+    "webpack": "^4.12.1",
+    "webpack-cli": "^3.0.8",
+    "webpack-node-externals": "^1.7.2"
+  },
+  "dependencies": {
+    "ajv": "^6.5.1",
+    "autosize": "^4.0.2",
+    "bulma": "^0.7.1",
+    "css-loader": "^0.28.11",
+    "dompurify": "^1.0.6",
+    "electron": "^2.0.3",
+    "electron-better-ipc": "^0.1.1",
+    "electron-context-menu": "^0.10.0",
+    "electron-reload": "^1.2.3",
+    "google-protobuf": "^3.6.0",
+    "grpc": "^1.12.4",
+    "hard-source-webpack-plugin": "^0.9.0",
+    "marked": "^0.4.0",
+    "minimatch": "^3.0.4",
+    "module-alias": "^2.1.0",
+    "mousetrap": "^1.6.2",
+    "tippy.js": "^2.5.3",
+    "v-click-outside": "^1.0.5",
+    "vue": "^2.5.16",
+    "vue-awesome": "^3.0.3",
+    "vue-router": "^3.0.1",
+    "vue-simple-spinner": "^1.2.8",
+    "vuex": "^3.0.1",
+    "vuex-router-sync": "^5.0.0"
+  },
+  "_moduleAliases": {
+    "vue": "node_modules/vue/dist/vue.js",
+    "vue-router": "node_modules/vue-router/dist/vue-router.js"
+  }
+}

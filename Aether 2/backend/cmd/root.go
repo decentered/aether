@@ -10,9 +10,10 @@ import (
 	"github.com/fatih/color"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
+	// "github.com/spf13/pflag"
 	"os"
-	"strings"
+	"path/filepath"
+	// "strings"
 )
 
 // cmdRoot represents the base command when called without any subcommands
@@ -83,8 +84,8 @@ func showIntro() {
     \/_/  \/_/   \/_/   \/_/  \/_/
 
      Mim Runtime Environment.
-     App version: %#s
-     Protocol version: %#s
+     App version: %s
+     Protocol version: %s
 
 `, fmt.Sprintf(
 		"v%d.%d.%d",
@@ -109,8 +110,8 @@ func EstablishConfigs(cmd *cobra.Command) flags {
 	// Transient configs are established before permanent (saved to file) configs because appname and orgname in the transient configs determine where permanent configs get saved to. This is useful when running swarm tests, because specifying these effectively makes a swarm spawn save configs and caches into a different location than what it would normally not save.
 	globals.BackendTransientConfig = &configstore.Btc
 	globals.BackendTransientConfig.SetDefaults()
-	globals.FrontendTransientConfig = &configstore.Ftc
-	globals.FrontendTransientConfig.SetDefaults()
+	// globals.FrontendTransientConfig = &configstore.Ftc
+	// globals.FrontendTransientConfig.SetDefaults()
 	// Set the transient config data.
 	if cmd != nil {
 		if flgs.appName.changed {
@@ -129,18 +130,18 @@ func EstablishConfigs(cmd *cobra.Command) flags {
 	}
 	becfg.Cycle()
 	globals.BackendConfig = becfg
-	fecfg, err := configstore.EstablishFrontendConfig()
-	if err != nil {
-		logging.LogCrash(err)
-	}
-	fecfg.Cycle()
-	globals.FrontendConfig = fecfg
+	// fecfg, err := configstore.EstablishFrontendConfig()
+	// if err != nil {
+	// 	logging.LogCrash(err)
+	// }
+	// fecfg.Cycle()
+	// globals.FrontendConfig = fecfg
 	// Generate TLS keys
 	tlscerts.Generate()
 	// Determine whether the configs have been manipulated by flags. If so, disable editing of permanent configs for this session.
 	if cmd != nil && flagsChanged(cmd) {
 		globals.BackendTransientConfig.PermConfigReadOnly = true
-		globals.FrontendTransientConfig.PermConfigReadOnly = true
+		// globals.FrontendTransientConfig.PermConfigReadOnly = true
 	}
 	if cmd != nil && flgs.loggingLevel.changed {
 		// Start setting permanent configs. These are NO-OPs if the permament config is read only.
@@ -154,6 +155,7 @@ func EstablishConfigs(cmd *cobra.Command) flags {
 		logging.Log(1, fmt.Sprint("Configuration read only. Configuration for both backend and the frontend will be treated as read only because command line flags were provided for this run."))
 	}
 	if flgs.port.changed {
+		// Heads up: this looks like it's not working because we have a global switch that disables writes to the config file if any cl flags are given. We need to make that switch a little less aggressive.
 		globals.BackendConfig.SetExternalPort(flgs.port.value.(int))
 	}
 	if flgs.externalIp.changed {
@@ -190,9 +192,24 @@ func EstablishConfigs(cmd *cobra.Command) flags {
 	if flgs.tlsEnabled.changed {
 		globals.BackendTransientConfig.TLSEnabled = flgs.tlsEnabled.value.(bool)
 	}
+	if flgs.backendAPIPort.changed {
+		globals.BackendConfig.SetBackendAPIPort(flgs.backendAPIPort.value.(int))
+	}
+	if flgs.backendAPIPublic.changed {
+		globals.BackendConfig.SetBackendAPIPublic(flgs.backendAPIPublic.value.(bool))
+	}
+
+	if flgs.adminFeAddr.changed {
+		globals.BackendConfig.SetAdminFrontendAddress(flgs.adminFeAddr.value.(string))
+	}
+
+	if flgs.adminFePk.changed {
+		globals.BackendConfig.SetAdminFrontendPublicKey(flgs.adminFePk.value.(string))
+	}
+
 	// Set up the DB Instance so that we get access to the database.
 	if globals.BackendConfig.GetDbEngine() == "sqlite" {
-		dbLoc := fmt.Sprintf("%s/AetherDB.db", globals.BackendConfig.GetUserDirectory())
+		dbLoc := filepath.Join(globals.BackendConfig.GetUserDirectory(), "backend", "AetherDB.db")
 		if !toolbox.FileExists(dbLoc) {
 			// Db doesn't exist. Make sure that the bootstrap timer and event horizon is reset. Those values depend on the database, and if the DB is deleted while the user settings are not, they can prevent a bootstrap from happening as it should. In the other case where the database isn't created yet, these calls are idempotent.
 			logging.Logf(1, "The database was deleted or is not created yet. Setting event horizon and last successful live, static, bootstrap timestamps to 0.\n")
@@ -202,9 +219,7 @@ func EstablishConfigs(cmd *cobra.Command) flags {
 			globals.BackendConfig.ResetLastBootstrapAddressConnectionTimestamp()
 		}
 		conn, err := sqlx.Connect(
-			"sqlite3",
-			fmt.Sprintf(
-				"%s/AetherDB.db", globals.BackendConfig.GetUserDirectory()))
+			"sqlite3", dbLoc)
 		if err != nil {
 			logging.LogCrash(err)
 		}
@@ -248,208 +263,4 @@ func EstablishConfigs(cmd *cobra.Command) flags {
 	// Delete all cached post responses from the last run if it wasn't cleaned properly.
 	globals.BackendTransientConfig.POSTResponseRepo.DeleteAllFromDisk()
 	return flgs
-}
-
-// Instructions: If you're adding a flag anywhere in the app, please add it to flags struct, render flags, and flagschanged.
-
-type flag struct {
-	value   interface{}
-	changed bool
-}
-
-// Struct for flags. When there's a new flag, add it here.
-type flags struct {
-	loggingLevel        flag // int
-	orgName             flag // string
-	appName             flag // string
-	port                flag // int
-	externalIp          flag // string
-	bootstrapIp         flag // string
-	bootstrapPort       flag // int
-	bootstrapType       flag // int
-	syncAndQuit         flag // bool
-	printToStdout       flag // bool
-	metricsDebugMode    flag // bool
-	swarmPlan           flag // string
-	killTimeout         flag // int
-	swarmNodeId         flag // int
-	fpCheckEnabled      flag //bool
-	sigCheckEnabled     flag //bool
-	powCheckEnabled     flag //bool
-	pageSigCheckEnabled flag //bool
-	tlsEnabled          flag //bool
-	// Flags will be all lowercase in terminal input, heads up.
-}
-
-// When there's a new flag, add the parsing logic here underneath.
-// I'm aware that this one sets the changed field, and yet, there's another method to check changed fields underneath that doesn't use this. It's because without using reflect package Go doesn't allow iteration over struct fields, and reflect, when used, does slow things down.
-func renderFlags(cmd *cobra.Command) flags {
-	var fl flags
-	ll, err := cmd.Flags().GetInt("logginglevel")
-	if err != nil && !strings.Contains(err.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err)
-	}
-	fl.loggingLevel.value = ll
-	fl.loggingLevel.changed = cmd.Flags().Changed("logginglevel")
-	on, err2 := cmd.Flags().GetString("orgname")
-	if err2 != nil && !strings.Contains(
-		err2.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err2)
-	}
-	fl.orgName.value = on
-	fl.orgName.changed = cmd.Flags().Changed("orgname")
-	an, err3 := cmd.Flags().GetString("appname")
-	if err3 != nil && !strings.Contains(
-		err3.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err3)
-	}
-	fl.appName.value = an
-	fl.appName.changed = cmd.Flags().Changed("appname")
-
-	p, err4 := cmd.Flags().GetInt("port")
-	if err4 != nil && !strings.Contains(
-		err4.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err4)
-	}
-	fl.port.value = p
-	fl.port.changed = cmd.Flags().Changed("port")
-
-	ei, err5 := cmd.Flags().GetString("externalip")
-	if err5 != nil && !strings.Contains(
-		err5.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err5)
-	}
-	fl.externalIp.value = ei
-	fl.externalIp.changed = cmd.Flags().Changed("externalip")
-
-	bi, err6 := cmd.Flags().GetString("bootstrapip")
-	if err6 != nil && !strings.Contains(
-		err6.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err6)
-	}
-	fl.bootstrapIp.value = bi
-	fl.bootstrapIp.changed = cmd.Flags().Changed("bootstrapip")
-
-	bp, err7 := cmd.Flags().GetInt("bootstrapport")
-	if err7 != nil && !strings.Contains(
-		err7.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err7)
-	}
-	fl.bootstrapPort.value = bp
-	fl.bootstrapPort.changed = cmd.Flags().Changed("bootstrapport")
-
-	bt, err8 := cmd.Flags().GetInt("bootstraptype")
-	if err8 != nil && !strings.Contains(
-		err8.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err8)
-	}
-	fl.bootstrapType.value = bt
-	fl.bootstrapType.changed = cmd.Flags().Changed("bootstraptype")
-
-	se, err9 := cmd.Flags().GetBool("syncandquit")
-	if err9 != nil && !strings.Contains(
-		err9.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err9)
-	}
-	fl.syncAndQuit.value = se
-	fl.syncAndQuit.changed = cmd.Flags().Changed("syncandquit")
-
-	so, err10 := cmd.Flags().GetBool("printtostdout")
-	if err10 != nil && !strings.Contains(
-		err10.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err10)
-	}
-	fl.printToStdout.value = so
-	fl.printToStdout.changed = cmd.Flags().Changed("printtostdout")
-
-	dm, err11 := cmd.Flags().GetBool("metricsdebugmode")
-	if err11 != nil && !strings.Contains(
-		err11.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err11)
-	}
-	fl.metricsDebugMode.value = dm
-	fl.metricsDebugMode.changed = cmd.Flags().Changed("metricsdebugmode")
-
-	sp, err12 := cmd.Flags().GetString("swarmplan")
-	if err12 != nil && !strings.Contains(
-		err12.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err12)
-	}
-	fl.swarmPlan.value = sp
-	fl.swarmPlan.changed = cmd.Flags().Changed("swarmplan")
-
-	kt, err13 := cmd.Flags().GetInt("killtimeout")
-	if err13 != nil && !strings.Contains(
-		err13.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err13)
-	}
-	fl.killTimeout.value = kt
-	fl.killTimeout.changed = cmd.Flags().Changed("killtimeout")
-
-	sni, err14 := cmd.Flags().GetInt("swarmnodeid")
-	if err14 != nil && !strings.Contains(
-		err14.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err14)
-	}
-	fl.swarmNodeId.value = sni
-	fl.swarmNodeId.changed = cmd.Flags().Changed("swarmnodeid")
-
-	fp, err15 := cmd.Flags().GetBool("fpcheckenabled")
-	if err15 != nil && !strings.Contains(
-		err15.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err15)
-	}
-	fl.fpCheckEnabled.value = fp
-	fl.fpCheckEnabled.changed = cmd.Flags().Changed("fpcheckenabled")
-
-	sig, err16 := cmd.Flags().GetBool("sigcheckenabled")
-	if err16 != nil && !strings.Contains(
-		err16.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err16)
-	}
-	fl.sigCheckEnabled.value = sig
-	fl.sigCheckEnabled.changed = cmd.Flags().Changed("sigcheckenabled")
-
-	pow, err17 := cmd.Flags().GetBool("powcheckenabled")
-	if err17 != nil && !strings.Contains(
-		err17.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err17)
-	}
-	fl.powCheckEnabled.value = pow
-	fl.powCheckEnabled.changed = cmd.Flags().Changed("powcheckenabled")
-
-	psig, err18 := cmd.Flags().GetBool("pagesigcheckenabled")
-	if err18 != nil && !strings.Contains(
-		err18.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err18)
-	}
-	fl.pageSigCheckEnabled.value = psig
-	fl.pageSigCheckEnabled.changed = cmd.Flags().Changed("pagesigcheckenabled")
-
-	tls, err19 := cmd.Flags().GetBool("tlsenabled")
-	if err19 != nil && !strings.Contains(
-		err19.Error(), "flag accessed but not defined") {
-		logging.LogCrash(err19)
-	}
-	fl.tlsEnabled.value = tls
-	fl.tlsEnabled.changed = cmd.Flags().Changed("tlsenabled")
-
-	return fl
-}
-
-// When there's a new flag, add it underneath so that it'll be checked if a value was provided. If it is, we want to disable the writes.
-func flagsChanged(cmd *cobra.Command) bool {
-	var result bool
-	changeChecker := func(flag *pflag.Flag) {
-		if flag.Changed {
-			result = true
-		}
-	}
-	cmd.Flags().VisitAll(changeChecker)
-	return result
-
-	// ... For every flag, we need this, because if a flag is given we need to stop writing to config store file, and only keep the config store object in memory.
-
-	// What that means is that if you provide ANY flags, the app won't commit ANYTHING to the file - not just the flag you set, but anything else, too. It will effectively operate in read-only mode in terms of configuration. This read-only mode will activate only after the init of the configstore is complete, so it does not prevent initial creation or fixing of missing values.
-	return false
 }

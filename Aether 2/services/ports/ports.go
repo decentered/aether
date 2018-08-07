@@ -70,20 +70,49 @@ func CheckPortAvailability(port uint16) bool {
 	return true
 }
 
-// VerifyLocalPort verifies the local port available in the config, and if it is not available, replaces it with one that is. Then it flips the bit to mark the local port as verified.
-func VerifyExternalPort() {
-  logging.Log(2,"VerifyExternalPort check is running.")
+// VerifyBackendPorts verifies the local port available in the config, and if it is not available, replaces it with one that is. Then it flips the bit to mark the local port as verified. Backend ports are the external port that talks to other Mim nodes, and the backend api port that talks to frontends.
+func VerifyBackendPorts() {
+	logging.Log(2, "VerifyBackendPorts check is running.")
+	defer logging.Log(2, "VerifyBackendPorts check is done.")
 	// This check only runs once per start.
+	// Check the external port that talks to other Mim nodes
 	if !globals.BackendTransientConfig.ExternalPortVerified {
 		// Prevent race condition in which any number of calls can enter this before CheckPortAvailability returns.
 		globals.BackendTransientConfig.ExternalPortVerified = true
 		if CheckPortAvailability(globals.BackendConfig.GetExternalPort()) {
-			logging.Log(1, fmt.Sprintf("The external port %d is verified to be open and available for use.", globals.BackendConfig.GetExternalPort()))
+			logging.Log(1, fmt.Sprintf("The backend external port %d is verified to be open and available for use.", globals.BackendConfig.GetExternalPort()))
 		} else {
 			freeport := GetFreePort()
-			logging.Log(1, fmt.Sprintf("The port number for this node has changed. New external port for this node is: %d", freeport))
+			logging.Log(1, fmt.Sprintf("The backend external port number for this node has changed. New external port for this node is: %d", freeport))
 			globals.BackendConfig.SetExternalPort(freeport)
 		}
 	}
-  logging.Log(2,"VerifyExternalPort check is done.")
+	// Check the backend API port that talks to frontends
+	if !globals.BackendTransientConfig.BackendAPIPortVerified {
+		globals.BackendTransientConfig.BackendAPIPortVerified = true
+		if CheckPortAvailability(globals.BackendConfig.GetBackendAPIPort()) {
+			logging.Log(1, fmt.Sprintf("The backend backend port %d is verified to be open and available for use.", globals.BackendConfig.GetBackendAPIPort()))
+		} else {
+			freeport := GetFreePort()
+			logging.Log(1, fmt.Sprintf("The backend external port number for this node has changed. New external port for this node is: %d", freeport))
+			globals.BackendConfig.SetBackendAPIPort(freeport)
+		}
+	}
+}
+
+// VerifyFrontendPorts verifies the frontend ports for use, and if they are not available, replaces with ones that are. Frontend ports are: frontend API port that talks to clients and backends.
+func VerifyFrontendPorts() {
+	logging.Log(1, "VerifyFrontendPorts check is running.")
+	defer logging.Log(1, "VerifyFrontendPorts check is done.")
+	// Check the frontend API server port that talks to clients and backends.
+	if !globals.FrontendTransientConfig.FrontendAPIPortVerified {
+		globals.FrontendTransientConfig.FrontendAPIPortVerified = true
+		if CheckPortAvailability(globals.FrontendConfig.GetFrontendAPIPort()) {
+			logging.Log(1, fmt.Sprintf("The frontend API server port %d is verified to be open and available for use.", globals.FrontendConfig.GetFrontendAPIPort()))
+		} else {
+			freeport := GetFreePort()
+			logging.Log(1, fmt.Sprintf("The frontend API server port number for this node has changed. New external port for this node is: %d", freeport))
+			globals.FrontendConfig.SetFrontendAPIPort(freeport)
+		}
+	}
 }

@@ -1,0 +1,110 @@
+<template>
+  <div class="location" id="scrolltarget-container-target">
+    <div class="settingsscope">
+      <div class="settings-navigation">
+        <router-link class="nav-item" to="/intro">Beginner's guide</router-link>
+        <router-link class="nav-item" to="/settings">Settings</router-link>
+        <!-- <router-link class="nav-item" to="/settings/advanced">Advanced</router-link> -->
+        <router-link class="nav-item" to="/membership">Membership</router-link>
+        <div class="spacer"></div>
+        <router-link class="nav-item" to="/about">About</router-link>
+        <router-link class="nav-item" to="/changelog">Changelog</router-link>
+        <div class="spacer"></div>
+        <router-link v-if="!localUserExists" class="nav-item" to="/newuser">Create new user</router-link>
+        <router-link class="nav-item" to="/adminsquickstart">Admin's quickstart</router-link>
+        <a class="nav-item" href="https://www.getaether.net/faq">FAQ
+          <span class="icon-container">
+            <icon name="external-link-alt"></icon>
+          </span>
+        </a>
+        <a class="nav-item" href="https://www.getaether.net/forums">Forums
+          <span class="icon-container">
+            <icon name="external-link-alt"></icon>
+          </span>
+        </a>
+        <div class="spacer"></div>
+
+      </div>
+      <router-view></router-view>
+    </div>
+  </div>
+</template>
+
+<script lang="ts">
+  var mixins = require('../../mixins/mixins')
+  export default {
+    name: 'settingsscope',
+    mixins: [mixins.localUserMixin],
+    data() {
+      return {}
+    }
+  }
+</script>
+
+<style lang="scss">
+  .settings-sublocation {
+    // flex: 1;
+    width: 770px; // 80 characters monospaced
+    font-size: 110%;
+  }
+</style>
+
+<style lang="scss" scoped>
+  @import "../../scss/globals";
+  .location {
+    display: flex;
+  }
+
+  .settingsscope {
+    font-family: "SSP Regular";
+    display: flex; // flex-direction: column;
+    margin: auto;
+    margin-top: 100px;
+    padding: 30px; // width: 800px;
+    margin: 20px 20px 0 20px; // background-color: rgba(255, 255, 255, 0.05); // border: 1px solid rgba(0, 0, 0, 0.25);
+    background-color: rgba(0, 0, 0, 0.25);
+    border-radius: 2px; // padding-left: 20%;
+    // padding-right: 20%;
+    width: fit-content;
+  }
+
+  .settings-navigation {
+    font-family: "SSP Regular";
+    color: $a-grey-500;
+    width: 150px;
+    display: flex;
+    flex-direction: column; // padding: 0 10px;
+    margin-right: 20px; // color: $a-grey-500;
+    padding-top: 77px;
+    a {
+      color: inherit;
+    }
+  }
+
+  a.router-link-exact-active {
+    font-family: "SSP Black";
+    color: $a-grey-800;
+    letter-spacing: 0px;
+  }
+
+  a.router-link-active {
+    @extend a.router-link-exact-active;
+  }
+
+  .spacer {
+    height: 24px;
+  }
+
+  .nav-item {
+    // font-family: "SCP Regular";
+    // font-size: 100%;
+    letter-spacing: 0.65px;
+    .icon-container {
+      svg {
+        margin: auto;
+        width: 12px;
+        height: 12px;
+      }
+    }
+  }
+</style>

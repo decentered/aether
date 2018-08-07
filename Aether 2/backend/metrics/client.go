@@ -264,6 +264,7 @@ func generateReceipts(ims *[]persistence.InsertMetrics) pb.Objects {
 
 // SendDbState sends the counts of all DB entities to the metrics server for debugging purposes. This should be only used for testing, not on prod instances.
 func SendDbState() {
+	return // do not send any for now.
 	client, conn := StartConnection()
 	defer conn.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

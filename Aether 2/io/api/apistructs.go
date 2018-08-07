@@ -24,6 +24,7 @@ import (
 
 // type Fingerprint [64]byte // 64 char ASCII
 type Fingerprint string // 64 char ASCII
+type Nonce string       // max 64 char ASCII
 type Timestamp int64    // UNIX Timestamp
 // type ProofOfWork [1024]byte
 type ProofOfWork string // temp
@@ -187,28 +188,13 @@ type Vote struct { // Mutables: Type, Meta
 	Target         Fingerprint `json:"target"`
 	Owner          Fingerprint `json:"owner"`
 	OwnerPublicKey string      `json:"owner_publickey"`
+	TypeClass      int         `json:"typeclass"`
 	Type           int         `json:"type"`
 	EntityVersion  int         `json:"entity_version"`
 	Meta           string      `json:"meta"`
 	RealmId        Fingerprint `json:"realm_id"`
 	EncrContent    string      `json:"encrcontent"`
 	UpdateableFieldSet
-}
-
-// TODO: blocking the json output might be a good way to prevent values leaking out or in.
-type Address struct { // Mutables: None
-	Location           Location    `json:"location"`
-	Sublocation        Location    `json:"sublocation"`
-	LocationType       uint8       `json:"location_type"`
-	Port               uint16      `json:"port"`
-	Type               uint8       `json:"type"`
-	LastSuccessfulPing Timestamp   `json:"-"`
-	LastSuccessfulSync Timestamp   `json:"-"`
-	Protocol           Protocol    `json:"protocol"`
-	Client             Client      `json:"client"`
-	EntityVersion      int         `json:"entity_version"`
-	RealmId            Fingerprint `json:"realm_id"`
-	Verified           bool        `json:"-"` // This is normally part of the provable field set, but address is not provable, so provided here separately.
 }
 
 type Key struct { // Mutables: Expiry, Info, Meta
@@ -225,19 +211,35 @@ type Key struct { // Mutables: Expiry, Info, Meta
 	UpdateableFieldSet
 }
 
-type Truststate struct { // Mutables: Type, Domains, Expiry, Meta
+type Truststate struct { // Mutables: Type, Expiry, Meta (Domain is immutable)
 	ProvableFieldSet
-	Target         Fingerprint   `json:"target"`
-	Owner          Fingerprint   `json:"owner"`
-	OwnerPublicKey string        `json:"owner_publickey"`
-	Type           int           `json:"type"`
-	Domains        []Fingerprint `json:"domain"` // max 100 domains fingerprint
-	Expiry         Timestamp     `json:"expiry"`
-	EntityVersion  int           `json:"entity_version"`
-	Meta           string        `json:"meta"`
-	RealmId        Fingerprint   `json:"realm_id"`
-	EncrContent    string        `json:"encrcontent"`
+	Target         Fingerprint `json:"target"`
+	Owner          Fingerprint `json:"owner"`
+	OwnerPublicKey string      `json:"owner_publickey"`
+	TypeClass      int         `json:"typeclass"`
+	Type           int         `json:"type"`
+	Domain         Fingerprint `json:"domain"`
+	Expiry         Timestamp   `json:"expiry"`
+	EntityVersion  int         `json:"entity_version"`
+	Meta           string      `json:"meta"`
+	RealmId        Fingerprint `json:"realm_id"`
+	EncrContent    string      `json:"encrcontent"`
 	UpdateableFieldSet
+}
+
+type Address struct { // Mutables: None
+	Location           Location    `json:"location"`
+	Sublocation        Location    `json:"sublocation"`
+	LocationType       uint8       `json:"location_type"`
+	Port               uint16      `json:"port"`
+	Type               uint8       `json:"type"`
+	LastSuccessfulPing Timestamp   `json:"-,omitempty"`
+	LastSuccessfulSync Timestamp   `json:"-,omitempty"`
+	Protocol           Protocol    `json:"protocol"`
+	Client             Client      `json:"client"`
+	EntityVersion      int         `json:"entity_version"`
+	RealmId            Fingerprint `json:"realm_id"`
+	Verified           bool        `json:"-,omitempty"` // This is normally part of the provable field set, but address is not provable, so provided here separately.
 }
 
 // Index Form Entities: These are index forms of the entities above.
@@ -456,11 +458,14 @@ type PageManifestEntity struct {
 	LastUpdate  Timestamp   `json:"last_update"`
 }
 
-// ApiResponse is the blueprint of all requests and responses. This is the 'external' communication structure backend uses to talk to other backends.
+// ApiResponse is the blueprint of all requests and responses. This is the 'external' communication structure backend uses to talk to other backends. Ideally, this should have been called ApiPayload, since api requests are also somewhat confusingly of the type ApiResponse
 type ApiResponse struct {
 	NodeId        Fingerprint   `json:"-"` // Generated and used at the ApiResponse signature verification, from the NodePublicKey. It doesn't transmit in or out, only generated on the fly. This blocks both inbound and outbound.
 	NodePublicKey string        `json:"node_public_key,omitempty"`
 	Signature     Signature     `json:"page_signature,omitempty"`
+	ProofOfWork   ProofOfWork   `json:"proof_of_work"`
+	Nonce         Nonce         `json:"nonce,omitempty"`
+	EntityVersion int           `json:"entity_version,omitempty"`
 	Address       Address       `json:"address,omitempty"`
 	Entity        string        `json:"entity,omitempty"`
 	Endpoint      string        `json:"endpoint,omitempty"`
@@ -580,7 +585,7 @@ func (r *ApiResponse) Prefill() {
 	r.NodePublicKey = globals.BackendConfig.GetMarshaledBackendPublicKey()
 	addr := Address{}
 	addr.LocationType = globals.BackendConfig.GetExternalIpType()
-	addr.Type = 2 // This is a live node.
+	addr.Type = globals.BackendConfig.GetNodeType()
 	addr.Port = uint16(globals.BackendConfig.GetExternalPort())
 	addr.Protocol.VersionMajor = globals.BackendConfig.GetProtocolVersionMajor()
 	addr.Protocol.VersionMinor = globals.BackendConfig.GetProtocolVersionMinor()
@@ -590,7 +595,10 @@ func (r *ApiResponse) Prefill() {
 	addr.Client.VersionPatch = globals.BackendConfig.GetClientVersionPatch()
 	addr.Client.ClientName = globals.BackendConfig.GetClientName()
 	addr.EntityVersion = globals.BackendTransientConfig.EntityVersions.Address
+	r.EntityVersion = globals.BackendTransientConfig.EntityVersions.ApiResponse
 	r.Address = addr
+	r.CreateNonce()
+	r.Timestamp = Timestamp(time.Now().Unix())
 }
 
 // // Interfaces
@@ -625,6 +633,7 @@ type Verifiable interface {
 	BoundsCheckable
 	SetVerified(bool)
 	GetVerified() bool
+	VerifyEntitlements() bool
 }
 
 type Encryptable interface {
@@ -661,13 +670,14 @@ type Versionable interface {
 
 // Version accessors
 
-func (entity *Board) GetVersion() int      { return entity.EntityVersion }
-func (entity *Thread) GetVersion() int     { return entity.EntityVersion }
-func (entity *Post) GetVersion() int       { return entity.EntityVersion }
-func (entity *Vote) GetVersion() int       { return entity.EntityVersion }
-func (entity *Key) GetVersion() int        { return entity.EntityVersion }
-func (entity *Truststate) GetVersion() int { return entity.EntityVersion }
-func (entity *Address) GetVersion() int    { return entity.EntityVersion }
+func (entity *Board) GetVersion() int       { return entity.EntityVersion }
+func (entity *Thread) GetVersion() int      { return entity.EntityVersion }
+func (entity *Post) GetVersion() int        { return entity.EntityVersion }
+func (entity *Vote) GetVersion() int        { return entity.EntityVersion }
+func (entity *Key) GetVersion() int         { return entity.EntityVersion }
+func (entity *Truststate) GetVersion() int  { return entity.EntityVersion }
+func (entity *Address) GetVersion() int     { return entity.EntityVersion }
+func (entity *ApiResponse) GetVersion() int { return entity.EntityVersion }
 
 // Fingerprint accessors
 
@@ -708,6 +718,7 @@ func (entity *Address) GetEntityType() string    { return "address" }
 
 // LastModified accessors (LM: the larger of creation / lastupdate)
 
+// (get last modified)
 func glm(entity Provable) Timestamp {
 	if entity.GetCreation() > entity.GetLastUpdate() {
 		return entity.GetCreation()

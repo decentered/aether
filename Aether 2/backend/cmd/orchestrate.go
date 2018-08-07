@@ -92,7 +92,7 @@ var cmdOrchestrate = &cobra.Command{
 			}
 			// First, verify external port, so that our metrics will report the right port.
 			// We just want to connect, pull and quit.
-			err := dispatch.Sync(addr, []string{})
+			err := dispatch.Sync(addr, []string{}, nil)
 			if err != nil {
 				logging.LogCrash(err)
 			}
@@ -109,7 +109,7 @@ var cmdOrchestrate = &cobra.Command{
 					shutdown()
 				}, time.Duration(flags.killTimeout.value.(int))*time.Second)
 			}
-			server.Serve()
+			server.StartMimServer()
 		}
 	},
 }
@@ -167,6 +167,9 @@ func scheduleSwarmPlan(planloc string) {
 		} else if plan.CommandName == "cachegen" {
 			logging.Log(1, fmt.Sprintf("This node is going to generate caches in %v", plan.TriggerAfter))
 			scheduling.ScheduleOnce(selectCmdFunc("cachegen", plan), plan.TriggerAfter)
+		} else if plan.CommandName == "reverseopen" {
+			logging.Logf(1, "This node will attempt to request inbound sync from remote: %s:%v", plan.ToIp, plan.ToPort)
+			scheduling.ScheduleOnce(selectCmdFunc("reverseopen", plan), plan.TriggerAfter)
 		}
 
 	}

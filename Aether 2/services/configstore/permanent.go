@@ -26,6 +26,8 @@ import (
 	"log"
 	// "runtime"
 	// "sync"
+	"io/ioutil"
+	"path/filepath"
 	"time"
 )
 
@@ -125,6 +127,7 @@ type MinimumPoWStrengths struct {
 	KeyUpdate        int
 	Truststate       int
 	TruststateUpdate int
+	ApiResponse      int
 }
 
 /*
@@ -305,6 +308,9 @@ How many nodes we are interested in keeping in touch with on a rolling basis.
 # MaxInboundConns
 How many nodes do we allow to be simultaneously connected to this node. This number depends on your bandwidth and CPU resources. Setting this number to zero renders the config invalid (same as most things in config) and it will automatically regenerate from scratch, removing all prior config data.
 
+# MaxOutboundConns
+How many outbounds do we allow. Otherwise same as MaxInboundConns.
+
 # MaxDbSizeMb
 This is the size that the user has allotted the application to use in the computer. Mind that this is only the database, and it is only the threshold where the event horizon starts to delete. Even when this threshold is not reached, if entities's last references reach the threshold of local memory, they will still be deleted.
 
@@ -347,12 +353,71 @@ This is the address of the proxy that is going ot be used if the proxy is enable
 # SOCKS5ProxyPassword
 Username and password for the SOCKS5 proxy if required.
 
+# NodeType
+
+This value sets the node class. See below for potential values. Currently extant options: 2, 3, 254, 255
+
+## NodeType: 2 (LiveNode)
+This is the default setting. This means your node will act as a standard member of the network.
+
+## NodeType: 255 (StaticNode)
+This means your node is a static node. Other people will only be able to make you GET requests, not POST requests. This in effect renders you a static web server for the remote. The other nodes will be able to sync with you, but only up to the point of your last cache generation. This saves CPU, because it's only POST requests that need processing and database seeks.
+
+Note: While setting this here and running the backend to serve a static node is possible, one great thing about static nodes is that they don't depend on the backend running to be static nodes. You can export your whole node as a folder that contains only json files, and stick it to any http server, and that server *will* be a static Aether node. So this allows you to just post a copy of your node into any web host without any sort of application running except Apache or Nginx, and it will be a valid static node. If you want to update the data in the stash, export your node again, replace the folder on your web server and you'll have it updated. Pretty simple.
+
+Effects:
+- Remote nodes cannot make POST requests (this node's bouncer will start to autodecline all inbound POST requests)
+
+- Remotes will save you as a static node, which means their speed of attempting to sync with you will drop to every 3 hours, if they choose you as a sync target.
+
+- As a side effect of not responding to POST requests, the data you provide will be somewhat stale. If you are generating caches every 6 hours (which is default), that means your data can be stale up to 5h59m. (Normally, this period is covered by POST requests)
+
+- Reverse connections will be disabled. If you are in this node, the content you create will take more time to be distributed to the network (but it won't affect your speed of getting content others create).
+
+## NodeType: 3 (BootstrapNode)
+The node declares itself as a bootstrap node. This means the node declares itself to be fairly available and has bandwidth to help out the network by bringing newcomers into the sync state.
+
+Setting this will cause your node to use more CPU and more bandwidth. This should realistically be only set to true when this backend is running on a server somewhere.
+
+It's great for supporting the network, but it's not great as a daily-use node. If you want to help the network, stick this in an AWS (or similar) device and run it as bootstrap.
+
+Effects:
+
+- Other nodes, after their bootstrap, will connect to you less in an attempt to conserve your bandwidth and make it available for newcomers. So if this mode is set, you should not use this node as your regular day-to-day node because the content generated directly on it will take more time than usual to propagate out. (But it won't affect this node's speed of getting content others create.)
+
+- It will disable reverse connection. That means your node should be directly accessible from the Internet, not through a NAT, or so.
+
+- Node will prioritise syncs with other bootstrap nodes over standard nodes.
+
+## NodeType: 254 (StaticBootstrapNode)
+This is a combination of a static node and a bootstrap node.
+
+## NodeType: 4 (CANode)
+This node is a CA that is principally concerned with serving the CA-specific trust signals that it generates. These are things such as name mappings, or f451 assignments. These nodes have no special software, it's just a self identification so that other nodes can regularly check with them. They're checked in the same loop as bootstrap nodes, with the same caveats, which means if a node switches to this node, the inbounds to that node will drastically drop.
+
+## NodeType: 253 (StaticCANode)
+A CA node that does not respond to POST requests. Same as described above.
+
+# BackendAPIPublic
+This determines whether the backend API endpoint, which is the GRPC API for frontends(') consumption, is publicly available over the Internet. This is disabled by default. The use case for this would be that you have a personal server that you want to run your backend on 24/7, and your frontend (GUI app) on your local machine connects to that personal server. In this case, you want to make this public, so you can connect to your server over the Internet. (If you do this, make sure that you're the only person that can connect by adding your frontend key into the backend).
+
+# BackendAPIPort
+This is the port of the backend API endpoint.
+
+# AdminFrontendAddress
+This is the address of the frontend that has spawned the backend. Backend will use this address to reach out to the frontend if the need arises. Can be blank.
+
+# AdminFrontendPublicKey
+This is the public key of the frontend that has spawned the backend. This is effectively the 'admin' frontend for the backend (there can be multiple frontends). The admin frontend can run privileged requests, and change the admin fe address to a specific frontend (or to itself).
+
+# GRPCServiceTimeout
+How long does a GRPC service attempts to connect before considering the connection unusable.
 
 */
 
 // Every time you add a new item here, please add getters, setters and to blankcheck method
 
-// And before you think "hm, these would be better if they were private with lowercase letters.. that means you can't export them with JSON. Been there."
+// And before you think "hm, these would be better if they were private with lowercase letters..." that means you can't export them with JSON. Been there.
 
 // Backend config base
 type BackendConfig struct {
@@ -407,6 +472,7 @@ type BackendConfig struct {
 	NeighbourCount                          uint
 	MaxAddressTableSize                     uint
 	MaxInboundConns                         uint
+	MaxOutboundConns                        uint
 	MaxDbSizeMb                             uint
 	VotesMemoryDays                         uint // 14
 	EventHorizonTimestamp                   uint64
@@ -418,6 +484,12 @@ type BackendConfig struct {
 	SOCKS5ProxyAddress                      string // Format: "127.0.0.1:65535"
 	SOCKS5ProxyUsername                     string
 	SOCKS5ProxyPassword                     string
+	NodeType                                uint8
+	BackendAPIPublic                        bool
+	BackendAPIPort                          uint16
+	AdminFrontendAddress                    string // Format: "127.0.0.1:65535"
+	AdminFrontendPublicKey                  string
+	GRPCServiceTimeout                      time.Duration
 }
 
 // GETTERS AND SETTERS
@@ -427,7 +499,7 @@ Q: Why do we even have these?
 
 Because some of our types are not directly convertible to JSON, like the public / private key pairs.
 
-Having this kind of set interface allows us to replace storage implementations later in the process without disrupting the rest of the app. The get / setter methods might look simple now, but they have no guarantee of being so in the future.
+Having this kind of set interface allows us to replace storage implementations later in the process without disrupting the rest of the app. The get / setter methods might look simple now, but they have no guarantee of remaining so in the future.
 
 Q: Why the pain of uint as much as possible, then converting to ints?
 
@@ -438,7 +510,7 @@ Because we do not want users to provide negative values and make the application
 
 func (config *BackendConfig) InitCheck() {
 	if !config.Initialised {
-		log.Fatal(fmt.Sprintf("You've attempted to access a config before it was initialised. Trace: %s\n", toolbox.DumpStack))
+		log.Fatal(fmt.Sprintf("You've attempted to access a config before it was initialised. Trace: %v\n", toolbox.DumpStack()))
 	}
 }
 
@@ -564,7 +636,9 @@ func (config *BackendConfig) GetMinimumPoWStrengths() MinimumPoWStrengths {
 		config.MinimumPoWStrengths.Truststate < maxPOWStrength &&
 		config.MinimumPoWStrengths.Truststate > 0 &&
 		config.MinimumPoWStrengths.TruststateUpdate < maxPOWStrength &&
-		config.MinimumPoWStrengths.TruststateUpdate > 0 {
+		config.MinimumPoWStrengths.TruststateUpdate > 0 &&
+		config.MinimumPoWStrengths.ApiResponse < maxPOWStrength &&
+		config.MinimumPoWStrengths.ApiResponse > 0 {
 		return config.MinimumPoWStrengths
 	} else {
 		log.Fatal(fmt.Sprintf("%#v", invalidDataError(config.MinimumPoWStrengths)) + " Trace: " + toolbox.Trace())
@@ -766,7 +840,7 @@ func (config *BackendConfig) GetOnlineAddressFinderPageSize() int {
 }
 func (config *BackendConfig) GetDispatchExclusionExpiryForLiveAddress() time.Duration {
 	config.InitCheck()
-	if config.DispatchExclusionExpiryForLiveAddress >= 1*time.Microsecond { // Any value under is probably an attack. TODO THIS IS NORMALLY A MINUTE
+	if config.DispatchExclusionExpiryForLiveAddress >= 1*time.Minute { // Any value under is probably an attack.
 		return config.DispatchExclusionExpiryForLiveAddress
 	} else {
 		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.DispatchExclusionExpiryForLiveAddress) + " Trace: " + toolbox.Trace()))
@@ -825,7 +899,6 @@ func (config *BackendConfig) GetLastLiveAddressConnectionTimestamp() int64 {
 	log.Fatal("This should never happen." + toolbox.Trace())
 	return 0
 }
-
 func (config *BackendConfig) GetInitialised() bool {
 	return config.Initialised
 }
@@ -1034,6 +1107,18 @@ func (config *BackendConfig) GetMaxInboundConns() int {
 	return 0
 }
 
+func (config *BackendConfig) GetMaxOutboundConns() int {
+	config.InitCheck()
+	if config.MaxOutboundConns < maxInt32 &&
+		config.MaxOutboundConns > 0 {
+		return int(config.MaxOutboundConns)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.MaxOutboundConns) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
 func (config *BackendConfig) GetMaxDbSizeMb() int {
 	config.InitCheck()
 	if config.MaxDbSizeMb < maxInt64 &&
@@ -1144,6 +1229,60 @@ func (config *BackendConfig) GetSOCKS5ProxyPassword() string {
 	}
 	log.Fatal("This should never happen." + toolbox.Trace())
 	return ""
+}
+
+func (config *BackendConfig) GetNodeType() uint8 {
+	config.InitCheck()
+	if config.NodeType == 2 || config.NodeType == 3 || config.NodeType == 254 || config.NodeType == 255 {
+		return config.NodeType
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.NodeType) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *BackendConfig) GetBackendAPIPublic() bool {
+	config.InitCheck()
+	return config.BackendAPIPublic
+}
+
+func (config *BackendConfig) GetBackendAPIPort() uint16 {
+	config.InitCheck()
+	if config.BackendAPIPort < maxUint16 && config.BackendAPIPort > 0 {
+		return config.BackendAPIPort
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.BackendAPIPort) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *BackendConfig) GetAdminFrontendAddress() string {
+	config.InitCheck()
+	if len(config.AdminFrontendAddress) < maxLocationSize &&
+		len(config.AdminFrontendAddress) >= 0 {
+		return config.AdminFrontendAddress
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.AdminFrontendAddress) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return ""
+}
+
+func (config *BackendConfig) GetAdminFrontendPublicKey() string {
+	config.InitCheck()
+	return config.AdminFrontendPublicKey
+}
+func (config *BackendConfig) GetGRPCServiceTimeout() time.Duration {
+	config.InitCheck()
+	if config.GRPCServiceTimeout >= 1*time.Second { // Any value under is probably an attack.
+		return config.GRPCServiceTimeout
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.GRPCServiceTimeout) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return time.Duration(0)
 }
 
 /*****************************************************************************/
@@ -1264,7 +1403,7 @@ func (config *BackendConfig) SetEntityPageSizes(val EntityPageSizes) error {
 func (config *BackendConfig) SetMinimumPoWStrengths(powStr int) error {
 	config.InitCheck()
 	var mps MinimumPoWStrengths
-	if powStr > 4 && powStr < maxPOWStrength {
+	if powStr > 6 && powStr < maxPOWStrength {
 		mps.Board = powStr
 		mps.BoardUpdate = powStr
 		mps.Thread = powStr
@@ -1277,6 +1416,8 @@ func (config *BackendConfig) SetMinimumPoWStrengths(powStr int) error {
 		mps.KeyUpdate = powStr
 		mps.Truststate = powStr
 		mps.TruststateUpdate = powStr
+		mps.ApiResponse = powStr - 3
+		// ^ ApiResponse PoW strength is a little softer because remotes need it to make POST requests to each other. Temp value, subject to solidification or change in the future.
 		config.MinimumPoWStrengths = mps
 		commitErr := config.Commit()
 		if commitErr != nil {
@@ -1560,7 +1701,7 @@ func (config *BackendConfig) SetOnlineAddressFinderPageSize(val int) error {
 }
 func (config *BackendConfig) SetDispatchExclusionExpiryForLiveAddress(val time.Duration) error {
 	config.InitCheck()
-	if val >= 1*time.Microsecond { // TODO THIS IS NORMALLY A MINUTE Any value under is probably an attack.
+	if val >= 1*time.Minute {
 		config.DispatchExclusionExpiryForLiveAddress = val
 		commitErr := config.Commit()
 		if commitErr != nil {
@@ -1952,6 +2093,21 @@ func (config *BackendConfig) SetMaxInboundConns(val int) error {
 	log.Fatal("This should never happen." + toolbox.Trace())
 	return nil
 }
+func (config *BackendConfig) SetMaxOutboundConns(val int) error {
+	config.InitCheck()
+	if val >= 0 {
+		config.MaxOutboundConns = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
 
 func (config *BackendConfig) SetMaxDbSizeMb(val int) error {
 	config.InitCheck()
@@ -2109,6 +2265,89 @@ func (config *BackendConfig) SetSOCKS5ProxyPassword(val string) error {
 	return nil
 }
 
+func (config *BackendConfig) SetNodeType(val int) error {
+	config.InitCheck()
+	if val == 2 || val == 3 || val == 254 || val == 255 {
+		config.NodeType = uint8(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *BackendConfig) SetBackendAPIPublic(val bool) error {
+	config.InitCheck()
+	config.BackendAPIPublic = val
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+func (config *BackendConfig) SetBackendAPIPort(val int) error {
+	config.InitCheck()
+	if val > 0 && val < maxUint16 {
+		config.BackendAPIPort = uint16(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *BackendConfig) SetAdminFrontendAddress(val string) error {
+	config.InitCheck()
+	if len(val) > 0 && len(val) < maxLocationSize {
+		config.AdminFrontendAddress = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *BackendConfig) SetAdminFrontendPublicKey(val string) error {
+	config.InitCheck()
+	config.AdminFrontendPublicKey = val
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
+func (config *BackendConfig) SetGRPCServiceTimeout(val time.Duration) error {
+	config.InitCheck()
+	if val >= 1*time.Second { // Any value under is probably an attack.
+		config.GRPCServiceTimeout = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
 /*****************************************************************************/
 
 // BlankCheck looks at all variables and if it finds they're at their zero value, sets the default value for it. This is a guard against a new item being added to the config store as a result of a version update, but it being zero value. If a zero'd value is found, we change it to its default before anything else happens. This also effectively runs at the first pass to set the defaults.
@@ -2139,7 +2378,8 @@ func (config *BackendConfig) BlankCheck() {
 		config.MinimumPoWStrengths.Key == 0 ||
 		config.MinimumPoWStrengths.KeyUpdate == 0 ||
 		config.MinimumPoWStrengths.Truststate == 0 ||
-		config.MinimumPoWStrengths.TruststateUpdate == 0 {
+		config.MinimumPoWStrengths.TruststateUpdate == 0 ||
+		config.MinimumPoWStrengths.ApiResponse == 0 {
 		config.SetMinimumPoWStrengths(defaultPowStrength)
 	}
 	if config.EntityPageSizes.Boards == 0 ||
@@ -2306,6 +2546,9 @@ func (config *BackendConfig) BlankCheck() {
 	if config.MaxInboundConns == 0 {
 		config.SetMaxInboundConns(defaultMaxInboundConns)
 	}
+	if config.MaxOutboundConns == 0 {
+		config.SetMaxOutboundConns(defaultMaxOutboundConns)
+	}
 	if config.MaxDbSizeMb == 0 {
 		config.SetMaxDbSizeMb(defaultMaxDbSizeMb)
 	}
@@ -2325,6 +2568,18 @@ func (config *BackendConfig) BlankCheck() {
 	// ::SOCKS5ProxyAddress: can be blank, no need to blank check.
 	// ::SOCKS5ProxyUsername: can be blank, no need to blank check.
 	// ::SOCKS5ProxyPassword: can be blank, no need to blank check.
+	if config.NodeType == 0 {
+		config.SetNodeType(defaultNodeType)
+	}
+	// ::BackendAPIPublic: can be false, no need to blank check.
+	if config.BackendAPIPort == 0 {
+		config.SetBackendAPIPort(defaultBackendAPIPort)
+	}
+	// ::AdminFrontendAddress: can be blank, no need to blank check.
+	// ::AdminFrontendPublicKey: can be blank, no need to blank check.
+	if config.GRPCServiceTimeout == 0 {
+		config.SetGRPCServiceTimeout(defaultGRPCServiceTimeout)
+	}
 }
 
 // Resets
@@ -2382,6 +2637,7 @@ func (config *BackendConfig) SanityCheck() {
 		config.GetDispatchExclusionExpiryForStaticAddress()
 		config.GetLoggingLevel()
 		config.GetExternalIp()
+		config.GetExternalPort()
 		config.GetLastStaticAddressConnectionTimestamp()
 		config.GetLastLiveAddressConnectionTimestamp()
 		config.GetServingSubprotocols()
@@ -2392,13 +2648,13 @@ func (config *BackendConfig) SanityCheck() {
 		config.GetMetricsLevel()
 		config.GetMetricsToken()
 		config.GetBackendKeyPair()
-		// Below are location sensitive. Needs to happen after Backend Key Pair generation (above).
-		config.GetMarshaledBackendPublicKey()
-		config.GetNodeId()
+		config.GetMarshaledBackendPublicKey() // location sensitive, needs to happen after getbackendkeypair
+		config.GetNodeId()                    // location sensitive, needs to happen after getbackendkeypair
 		config.GetMaxInboundPageSizeKb()
 		config.GetNeighbourCount()
 		config.GetMaxAddressTableSize()
 		config.GetMaxInboundConns()
+		config.GetMaxOutboundConns()
 		config.GetMaxDbSizeMb()
 		config.GetVotesMemoryDays()
 		config.GetEventHorizonTimestamp()
@@ -2408,6 +2664,11 @@ func (config *BackendConfig) SanityCheck() {
 		config.GetSOCKS5ProxyAddress()
 		config.GetSOCKS5ProxyUsername()
 		config.GetSOCKS5ProxyPassword()
+		config.GetNodeType()
+		config.GetBackendAPIPublic()
+		config.GetAdminFrontendAddress()
+		config.GetAdminFrontendPublicKey()
+		config.GetGRPCServiceTimeout()
 	}
 }
 
@@ -2426,7 +2687,8 @@ func (config *BackendConfig) Commit() error {
 	}
 	configDirs := cdir.New(Btc.OrgIdentifier, Btc.AppIdentifier)
 	folders := configDirs.QueryFolders(cdir.Global)
-	err := folders[0].WriteFile("backend_config.json", confAsByte)
+	toolbox.CreatePath(filepath.Join(folders[0].Path, "backend"))
+	err := ioutil.WriteFile(filepath.Join(folders[0].Path, "backend", "backend_config.json"), confAsByte, 0644)
 	if err != nil {
 		return err
 	}
@@ -2471,23 +2733,86 @@ func (config *BackendConfig) setDefaultEntityPageSizes() {
 	config.SetEntityPageSizes(eps)
 }
 
+// Methods that have no specific direct backing in the config store but calculated from it.
+
+var protv string
+
+// GetProtURLVersion returns the protocol version to be used in the URL scheme. If the major version of mim is 1, the url scheme will be based on v0.
+func (config *BackendConfig) GetProtURLVersion() string {
+	if len(protv) > 0 {
+		return protv
+	}
+	config.InitCheck()
+	switch config.GetProtocolVersionMajor() {
+	case 1:
+		return "v0"
+	default:
+		return "v0"
+	}
+	return "v0"
+}
+
 // ===========================================
 
 // 2) FRONTEND
 
+/*
+Frontend configuration.
+
+# UserKeyPair
+# MarshaledUserPublicKey
+This is the key of the user residing in this frontend. Every user has their own frontend, but backends can be shared. Every device is their own frontend.
+
+# FrontendKeyPair
+# MarshaledFrontendPublicKey
+This is the 'admin' key for either the local backend, or if this frontend is the maintainer of a remote backend, the key used to be authenticated with that backend. If multiple people are maintaining a backend, they can share this key between them without sharing their user accounts (their user keys).
+
+# DehydratedLocalUserKeyEntity
+This is the actual Key entity that the localUser owns (not just the PK, but also the actual entity, with its username, creation, etc.) This is a dehydrated (jsonified) copy of the entity. This is useful when you move your frontend to a different backend - it can push it to the new backend if it doesn't have it already.
+
+## PoWBailoutTimeSeconds
+How long does it take before a PoW timestamp is marked unattainable by the local computer. This is to make sure that the app doesn't keep attempting forever for an unattainably strong PoW it attempted to generate.
+*/
+
 // Frontend config base
 type FrontendConfig struct {
-	UserKeyPair  string
-	Initialised  bool   // False by default, init to set true
-	MetricsLevel uint8  // 0: no metrics transmitted
-	MetricsToken string // If metrics level is not zero, metrics token is the anonymous identifier for the metrics server. Resetting this to 0 makes this node behave like a new node as far as metrics go, but if you don't want metrics to be collected, you can set it through the application or set the metrics level to zero in the JSON settings file.
+	UserKeyPair                             string
+	MarshaledUserPublicKey                  string
+	Initialised                             bool   // False by default, init to set true
+	MetricsLevel                            uint8  // 0: no metrics transmitted
+	MetricsToken                            string // If metrics level is not zero, metrics token is the anonymous identifier for the metrics server. Resetting this to 0 makes this node behave like a new node as far as metrics go, but if you don't want metrics to be collected, you can set it through the application or set the metrics level to zero in the JSON settings file.
+	LoggingLevel                            uint
+	FrontendKeyPair                         string
+	MarshaledFrontendPublicKey              string
+	ExternalIp                              string
+	ExternalIpType                          uint8
+	FrontendAPIPort                         uint16
+	UserDirectory                           string
+	BackendAPIAddress                       string // This is IP - but it can also be a URL. That's why it's called an address and not an IP outright.
+	BackendAPIPort                          uint16
+	ClientAPIAddress                        string // almost always 127.0.0.1 because frontend and client usually run in the same machine.
+	ClientPort                              uint16
+	GRPCServiceTimeout                      time.Duration
+	UserRelations                           UserRelations    // e.g. Local user's followed, mademod users
+	ContentRelations                        ContentRelations // e.g. Local user's subbed boards, threads
+	NetworkHeadDays                         uint             // 14
+	NetworkMemoryDays                       uint             // 180
+	LocalMemoryDays                         uint             // 180
+	ThresholdForElectionValidityPercent     uint             // 5%
+	ThresholdForElectionWinPercent          uint             // 51%
+	BloomFilterSize                         uint             // 10000
+	BloomFilterFalsePositiveRatePercent     uint             // 50%
+	MinimumVoteThresholdForElectionValidity uint             // 100
+	DehydratedLocalUserKeyEntity            string
+	MinimumPoWStrengths                     MinimumPoWStrengths //
+	PoWBailoutTimeSeconds                   uint                // 30
 }
 
 // Init check gate
 
 func (config *FrontendConfig) InitCheck() {
 	if !config.Initialised {
-		log.Fatal(fmt.Sprintf("You've attempted to access a config before it was initialised. Trace: %s\n", toolbox.DumpStack))
+		log.Fatal(fmt.Sprintf("You've attempted to access a config before it was initialised. Trace: %v\n", toolbox.DumpStack()))
 	}
 }
 
@@ -2495,14 +2820,27 @@ func (config *FrontendConfig) InitCheck() {
 
 // Getters
 
+// func (config *FrontendConfig) GetUserKeyPair() *ed25519.PrivateKey {
+// 	config.InitCheck()
+// 	keyPair := ed25519.PrivateKey([]byte(config.UserKeyPair))
+// 	return &keyPair
+// }
+
 func (config *FrontendConfig) GetUserKeyPair() *ed25519.PrivateKey {
 	config.InitCheck()
-	keyPair := ed25519.PrivateKey([]byte(config.UserKeyPair))
+	keyPair, err := signaturing.UnmarshalPrivateKey(config.UserKeyPair)
+	if err != nil {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.UserKeyPair) + " Trace: " + toolbox.Trace() + "Error: " + err.Error()))
+	}
 	return &keyPair
 }
 
-func (config *FrontendConfig) GetInitialised() bool {
+func (config *FrontendConfig) GetMarshaledUserPublicKey() string {
 	config.InitCheck()
+	return config.MarshaledUserPublicKey
+}
+
+func (config *FrontendConfig) GetInitialised() bool {
 	return config.Initialised
 }
 
@@ -2529,6 +2867,306 @@ func (config *FrontendConfig) GetMetricsToken() string {
 	return ""
 }
 
+func (config *FrontendConfig) GetLoggingLevel() int {
+	config.InitCheck()
+	if config.LoggingLevel < maxInt32 { // can be zero
+		return int(config.LoggingLevel)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.LoggingLevel) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *FrontendConfig) GetFrontendKeyPair() *ed25519.PrivateKey {
+	config.InitCheck()
+	keyPair, err := signaturing.UnmarshalPrivateKey(config.FrontendKeyPair)
+	if err != nil {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.GetFrontendKeyPair) + " Trace: " + toolbox.Trace() + "Error: " + err.Error()))
+	}
+	return &keyPair
+}
+
+func (config *FrontendConfig) GetMarshaledFrontendPublicKey() string {
+	config.InitCheck()
+	return config.MarshaledFrontendPublicKey
+}
+
+func (config *FrontendConfig) GetExternalIp() string {
+	config.InitCheck()
+	if len(config.ExternalIp) < maxLocationSize &&
+		len(config.ExternalIp) > 0 {
+		return config.ExternalIp
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.ExternalIp) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return ""
+}
+func (config *FrontendConfig) GetExternalIpType() uint8 {
+	config.InitCheck()
+	if config.ExternalIpType == 6 || config.ExternalIpType == 4 || config.ExternalIpType == 3 { // 6: ipv6, 4: ipv4, 3: URL (useful in static nodes)
+		return config.ExternalIpType
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.ExternalIpType) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+func (config *FrontendConfig) GetFrontendAPIPort() uint16 {
+	config.InitCheck()
+	if config.FrontendAPIPort < maxUint16 && config.FrontendAPIPort > 0 {
+		return config.FrontendAPIPort
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.FrontendAPIPort) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *FrontendConfig) GetUserDirectory() string {
+	config.InitCheck()
+	if len(config.UserDirectory) < maxUint16 &&
+		len(config.UserDirectory) > 0 {
+		return config.UserDirectory
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.UserDirectory) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return ""
+}
+
+func (config *FrontendConfig) GetBackendAPIAddress() string {
+	config.InitCheck()
+	if len(config.BackendAPIAddress) < maxLocationSize &&
+		len(config.BackendAPIAddress) > 0 {
+		return config.BackendAPIAddress
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.BackendAPIAddress) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return ""
+}
+
+func (config *FrontendConfig) GetBackendAPIPort() uint16 {
+	config.InitCheck()
+	if config.BackendAPIPort < maxUint16 && config.BackendAPIPort > 0 {
+		return config.BackendAPIPort
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.BackendAPIPort) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *FrontendConfig) GetClientAPIAddress() string {
+	config.InitCheck()
+	if len(config.ClientAPIAddress) < maxLocationSize &&
+		len(config.ClientAPIAddress) > 0 {
+		return config.ClientAPIAddress
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.ClientAPIAddress) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return ""
+}
+
+func (config *FrontendConfig) GetClientPort() uint16 {
+	config.InitCheck()
+	if config.ClientPort < maxUint16 && config.ClientPort > 0 {
+		return config.ClientPort
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.ClientPort) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *FrontendConfig) GetGRPCServiceTimeout() time.Duration {
+	config.InitCheck()
+	if config.GRPCServiceTimeout >= 1*time.Second { // Any value under is probably an attack.
+		return config.GRPCServiceTimeout
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.GRPCServiceTimeout) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return time.Duration(0)
+}
+
+func (config *FrontendConfig) GetLocalMemoryDays() int {
+	config.InitCheck()
+	if config.LocalMemoryDays < night &&
+		config.LocalMemoryDays > 0 {
+		return int(config.LocalMemoryDays)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.LocalMemoryDays) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+func (config *FrontendConfig) GetNetworkMemoryDays() int {
+	config.InitCheck()
+	if config.NetworkMemoryDays < night &&
+		config.NetworkMemoryDays > 0 {
+		return int(config.NetworkMemoryDays)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.NetworkMemoryDays) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+func (config *FrontendConfig) GetNetworkHeadDays() int {
+	config.InitCheck()
+	if config.NetworkHeadDays < night &&
+		config.NetworkHeadDays > 0 {
+		return int(config.NetworkHeadDays)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.NetworkHeadDays) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+func (config *FrontendConfig) GetThresholdForElectionValidityPercent() int {
+	config.InitCheck()
+	if config.ThresholdForElectionValidityPercent < 100 &&
+		config.ThresholdForElectionValidityPercent > 0 {
+		return int(config.ThresholdForElectionValidityPercent)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.ThresholdForElectionValidityPercent) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *FrontendConfig) GetThresholdForElectionWinPercent() int {
+	config.InitCheck()
+	if config.ThresholdForElectionWinPercent < 100 &&
+		config.ThresholdForElectionWinPercent > 50 {
+		return int(config.ThresholdForElectionWinPercent)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.ThresholdForElectionWinPercent) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *FrontendConfig) GetBloomFilterSize() int {
+	config.InitCheck()
+	if config.BloomFilterSize < 10000000 &&
+		config.BloomFilterSize > 100 {
+		return int(config.BloomFilterSize)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.BloomFilterSize) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *FrontendConfig) GetBloomFilterFalsePositiveRatePercent() int {
+	config.InitCheck()
+	if config.BloomFilterFalsePositiveRatePercent < 100 &&
+		config.BloomFilterFalsePositiveRatePercent > 0 {
+		return int(config.BloomFilterFalsePositiveRatePercent)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.BloomFilterFalsePositiveRatePercent) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *FrontendConfig) GetMinimumVoteThresholdForElectionValidity() int {
+	config.InitCheck()
+	if config.MinimumVoteThresholdForElectionValidity < 10000000 &&
+		config.MinimumVoteThresholdForElectionValidity > 0 {
+		return int(config.MinimumVoteThresholdForElectionValidity)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.MinimumVoteThresholdForElectionValidity) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *FrontendConfig) GetUserRelations() UserRelations {
+	config.InitCheck()
+	if config.UserRelations.Initialised {
+		return config.UserRelations
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.UserRelations) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return UserRelations{}
+}
+
+func (config *FrontendConfig) GetContentRelations() ContentRelations {
+	config.InitCheck()
+	if config.ContentRelations.Initialised {
+		return config.ContentRelations
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.ContentRelations) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return ContentRelations{}
+}
+
+func (config *FrontendConfig) GetDehydratedLocalUserKeyEntity() string {
+	config.InitCheck()
+	if len(config.DehydratedLocalUserKeyEntity) < maxUint32 {
+		return config.DehydratedLocalUserKeyEntity
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.DehydratedLocalUserKeyEntity) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return ""
+}
+
+func (config *FrontendConfig) GetMinimumPoWStrengths() MinimumPoWStrengths {
+	config.InitCheck()
+	if config.MinimumPoWStrengths.Board < maxPOWStrength &&
+		config.MinimumPoWStrengths.Board > 0 &&
+		config.MinimumPoWStrengths.BoardUpdate < maxPOWStrength &&
+		config.MinimumPoWStrengths.BoardUpdate > 0 &&
+		config.MinimumPoWStrengths.Thread < maxPOWStrength &&
+		config.MinimumPoWStrengths.Thread > 0 &&
+		config.MinimumPoWStrengths.ThreadUpdate < maxPOWStrength &&
+		config.MinimumPoWStrengths.ThreadUpdate > 0 &&
+		config.MinimumPoWStrengths.Post < maxPOWStrength &&
+		config.MinimumPoWStrengths.Post > 0 &&
+		config.MinimumPoWStrengths.PostUpdate < maxPOWStrength &&
+		config.MinimumPoWStrengths.PostUpdate > 0 &&
+		config.MinimumPoWStrengths.Vote < maxPOWStrength &&
+		config.MinimumPoWStrengths.Vote > 0 &&
+		config.MinimumPoWStrengths.VoteUpdate < maxPOWStrength &&
+		config.MinimumPoWStrengths.VoteUpdate > 0 &&
+		config.MinimumPoWStrengths.Key < maxPOWStrength &&
+		config.MinimumPoWStrengths.Key > 0 &&
+		config.MinimumPoWStrengths.KeyUpdate < maxPOWStrength &&
+		config.MinimumPoWStrengths.KeyUpdate > 0 &&
+		config.MinimumPoWStrengths.Truststate < maxPOWStrength &&
+		config.MinimumPoWStrengths.Truststate > 0 &&
+		config.MinimumPoWStrengths.TruststateUpdate < maxPOWStrength &&
+		config.MinimumPoWStrengths.TruststateUpdate > 0 &&
+		config.MinimumPoWStrengths.ApiResponse < maxPOWStrength &&
+		config.MinimumPoWStrengths.ApiResponse > 0 {
+		return config.MinimumPoWStrengths
+	} else {
+		log.Fatal(fmt.Sprintf("%#v", invalidDataError(config.MinimumPoWStrengths)) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return MinimumPoWStrengths{}
+}
+
+func (config *FrontendConfig) GetPoWBailoutTimeSeconds() int {
+	config.InitCheck()
+	if config.PoWBailoutTimeSeconds < maxPOWBailoutSeconds &&
+		config.PoWBailoutTimeSeconds > 0 {
+		return int(config.PoWBailoutTimeSeconds)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.PoWBailoutTimeSeconds) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
 /*****************************************************************************/
 
 // Setters
@@ -2536,6 +3174,18 @@ func (config *FrontendConfig) GetMetricsToken() string {
 func (config *FrontendConfig) SetUserKeyPair(val *ed25519.PrivateKey) error {
 	config.InitCheck()
 	config.UserKeyPair = signaturing.MarshalPrivateKey(*val)
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
+// The only way to set this is to set frontend key pair first.
+func (config *FrontendConfig) SetMarshaledUserPublicKey(val *ed25519.PrivateKey) error {
+	config.InitCheck()
+	marshaledPk := signaturing.MarshalPublicKey(val.Public().(ed25519.PublicKey))
+	config.MarshaledUserPublicKey = marshaledPk
 	commitErr := config.Commit()
 	if commitErr != nil {
 		return commitErr
@@ -2585,6 +3235,406 @@ func (config *FrontendConfig) SetMetricsToken(val string) error {
 	return nil
 }
 
+func (config *FrontendConfig) SetLoggingLevel(val int) error {
+	config.InitCheck()
+	if val >= 0 {
+		config.LoggingLevel = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetFrontendKeyPair(val *ed25519.PrivateKey) error {
+	config.InitCheck()
+	config.FrontendKeyPair = signaturing.MarshalPrivateKey(*val)
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
+// The only way to set this is to set frontend key pair first.
+func (config *FrontendConfig) SetMarshaledFrontendPublicKey(val *ed25519.PrivateKey) error {
+	config.InitCheck()
+	marshaledPk := signaturing.MarshalPublicKey(val.Public().(ed25519.PublicKey))
+	config.MarshaledFrontendPublicKey = marshaledPk
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
+func (config *FrontendConfig) SetExternalIp(val string) error {
+	config.InitCheck()
+	if len(val) > 0 && len(val) < maxLocationSize {
+		config.ExternalIp = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetExternalIpType(val int) error {
+	config.InitCheck()
+	if val == 6 || val == 4 || val == 3 {
+		config.ExternalIpType = uint8(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetFrontendAPIPort(val int) error {
+	config.InitCheck()
+	if val > 0 && val < maxUint16 {
+		config.FrontendAPIPort = uint16(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetUserDirectory(val string) error {
+	config.InitCheck()
+	if len(val) > 0 && len(val) < maxUint16 {
+		config.UserDirectory = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetBackendAPIAddress(val string) error {
+	config.InitCheck()
+	if len(val) > 0 && len(val) < maxLocationSize {
+		config.BackendAPIAddress = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetBackendAPIPort(val int) error {
+	config.InitCheck()
+	if val > 0 && val < maxUint16 {
+		config.BackendAPIPort = uint16(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetClientAPIAddress(val string) error {
+	config.InitCheck()
+	if len(val) > 0 && len(val) < maxLocationSize {
+		config.ClientAPIAddress = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetClientPort(val int) error {
+	config.InitCheck()
+	if val > 0 && val < maxUint16 {
+		config.ClientPort = uint16(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetGRPCServiceTimeout(val time.Duration) error {
+	config.InitCheck()
+	if val >= 1*time.Second { // Any value under is probably an attack.
+		config.GRPCServiceTimeout = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+}
+
+func (config *FrontendConfig) SetLocalMemoryDays(val int) error {
+	if val > 0 {
+		config.InitCheck()
+		config.LocalMemoryDays = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+func (config *FrontendConfig) SetNetworkMemoryDays(val int) error {
+	config.InitCheck()
+	if val > 0 {
+		config.NetworkMemoryDays = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+func (config *FrontendConfig) SetNetworkHeadDays(val int) error {
+	config.InitCheck()
+	if val > 0 {
+		config.NetworkHeadDays = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetThresholdForElectionValidityPercent(val int) error {
+	if val > 0 && val < 100 {
+		config.InitCheck()
+		config.ThresholdForElectionValidityPercent = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetThresholdForElectionWinPercent(val int) error {
+	if val > 50 && val < 100 {
+		config.InitCheck()
+		config.ThresholdForElectionWinPercent = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetBloomFilterSize(val int) error {
+	if val > 100 && val < 10000000 {
+		config.InitCheck()
+		config.BloomFilterSize = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetBloomFilterFalsePositiveRatePercent(val int) error {
+	if val > 0 && val < 100 {
+		config.InitCheck()
+		config.BloomFilterFalsePositiveRatePercent = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetMinimumVoteThresholdForElectionValidity(val int) error {
+	if val > 0 && val < 10000000 {
+		config.InitCheck()
+		config.MinimumVoteThresholdForElectionValidity = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetUserRelations(val UserRelations) error {
+	if config.UserRelations.Initialised {
+		config.InitCheck()
+		config.UserRelations = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetContentRelations(val ContentRelations) error {
+	if config.ContentRelations.Initialised {
+		config.InitCheck()
+		config.ContentRelations = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetDehydratedLocalUserKeyEntity(val string) error {
+	config.InitCheck()
+	if len(val) < maxUint32 {
+		config.DehydratedLocalUserKeyEntity = val
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetMinimumPoWStrengths(powStr int) error {
+	config.InitCheck()
+	var mps MinimumPoWStrengths
+	if powStr > 6 && powStr < maxPOWStrength {
+		mps.Board = powStr
+		mps.BoardUpdate = powStr
+		mps.Thread = powStr
+		mps.ThreadUpdate = powStr
+		mps.Post = powStr
+		mps.PostUpdate = powStr
+		mps.Vote = powStr
+		mps.VoteUpdate = powStr
+		mps.Key = powStr
+		mps.KeyUpdate = powStr
+		mps.Truststate = powStr
+		mps.TruststateUpdate = powStr
+		mps.ApiResponse = powStr - 3
+		// ^ ApiResponse PoW strength is a little softer because remotes need it to make POST requests to each other. Temp value, subject to solidification or change in the future.
+		config.MinimumPoWStrengths = mps
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		} else {
+			return invalidDataError(fmt.Sprintf("%#v", powStr) + " Trace: " + toolbox.Trace())
+		}
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
+func (config *FrontendConfig) SetPoWBailoutTimeSeconds(val int) error {
+	config.InitCheck()
+	if val > 0 {
+		config.PoWBailoutTimeSeconds = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
 /*****************************************************************************/
 
 // Frontend config methods
@@ -2598,9 +3648,98 @@ func (config *FrontendConfig) BlankCheck() {
 		privKey, _ := signaturing.CreateKeyPair()
 		config.SetUserKeyPair(privKey)
 	}
-
+	// This needs to be after Frontend user key pair generation.
+	if len(config.MarshaledUserPublicKey) == 0 {
+		config.SetMarshaledUserPublicKey(config.GetUserKeyPair())
+	}
 	// ::MetricsLevel: can be zero, no need to blank check.
 	// ::MetricsToken: can be zero, no need to blank check.
+	if len(config.FrontendKeyPair) == 0 {
+		privKey, _ := signaturing.CreateKeyPair()
+		config.SetFrontendKeyPair(privKey)
+	}
+	// This needs to be after SpawnerFE  key pair generation.
+	if len(config.MarshaledFrontendPublicKey) == 0 {
+		config.SetMarshaledFrontendPublicKey(config.GetFrontendKeyPair())
+	}
+	if len(config.ExternalIp) == 0 {
+		config.SetExternalIp(defaultFrontendExternalIp)
+	}
+	if config.ExternalIpType == 0 {
+		config.SetExternalIpType(defaultFrontendExternalIpType)
+	}
+	if config.FrontendAPIPort == 0 {
+		config.SetFrontendAPIPort(defaultFrontendAPIPort)
+	}
+	if len(config.UserDirectory) == 0 {
+		config.SetUserDirectory(cdir.New(Ftc.OrgIdentifier, Ftc.AppIdentifier).QueryFolders(cdir.Global)[0].Path)
+	}
+	if len(config.BackendAPIAddress) == 0 {
+		config.SetBackendAPIAddress(defaultBackendAPIAddress)
+	}
+	if config.BackendAPIPort == 0 {
+		config.SetBackendAPIPort(defaultBackendAPIPort)
+	}
+	if len(config.ClientAPIAddress) == 0 {
+		config.SetClientAPIAddress(defaultClientAPIAddress)
+	}
+	if config.ClientPort == 0 {
+		config.SetClientPort(defaultClientPort)
+	}
+	if config.GRPCServiceTimeout == 0 {
+		config.SetGRPCServiceTimeout(defaultGRPCServiceTimeout)
+	}
+	if config.NetworkHeadDays == 0 {
+		config.SetNetworkHeadDays(defaultNetworkHeadDays)
+	}
+	if config.NetworkMemoryDays == 0 {
+		config.SetNetworkMemoryDays(defaultNetworkMemoryDays)
+	}
+	if config.LocalMemoryDays == 0 {
+		config.SetLocalMemoryDays(defaultLocalMemoryDays)
+	}
+	if config.ThresholdForElectionValidityPercent == 0 {
+		config.SetThresholdForElectionValidityPercent(defaultThresholdForElectionValidityPercent)
+	}
+	if config.ThresholdForElectionWinPercent == 0 {
+		config.SetThresholdForElectionWinPercent(defaultThresholdForElectionWinPercent)
+	}
+	if config.BloomFilterSize == 0 {
+		config.SetBloomFilterSize(defaultBloomFilterSize)
+	}
+	if config.BloomFilterFalsePositiveRatePercent == 0 {
+		config.SetBloomFilterFalsePositiveRatePercent(defaultBloomFilterFalsePositiveRatePercent)
+	}
+	if config.MinimumVoteThresholdForElectionValidity == 0 {
+		config.SetMinimumVoteThresholdForElectionValidity(defaultMinimumVoteThresholdForElectionValidity)
+	}
+	if config.UserRelations.Initialised == false {
+		config.UserRelations.Init()
+		config.SetUserRelations(config.UserRelations)
+	}
+	if config.ContentRelations.Initialised == false {
+		config.ContentRelations.Init()
+		config.SetContentRelations(config.ContentRelations)
+	}
+	// ::DehydratedLocalUserKeyEntity: can be empty, no need to blank check.
+	if config.MinimumPoWStrengths.Board == 0 ||
+		config.MinimumPoWStrengths.BoardUpdate == 0 ||
+		config.MinimumPoWStrengths.Thread == 0 ||
+		config.MinimumPoWStrengths.ThreadUpdate == 0 ||
+		config.MinimumPoWStrengths.Post == 0 ||
+		config.MinimumPoWStrengths.PostUpdate == 0 ||
+		config.MinimumPoWStrengths.Vote == 0 ||
+		config.MinimumPoWStrengths.VoteUpdate == 0 ||
+		config.MinimumPoWStrengths.Key == 0 ||
+		config.MinimumPoWStrengths.KeyUpdate == 0 ||
+		config.MinimumPoWStrengths.Truststate == 0 ||
+		config.MinimumPoWStrengths.TruststateUpdate == 0 ||
+		config.MinimumPoWStrengths.ApiResponse == 0 {
+		config.SetMinimumPoWStrengths(defaultPowStrength)
+	}
+	if config.PoWBailoutTimeSeconds == 0 {
+		config.SetPoWBailoutTimeSeconds(defaultPoWBailoutTimeSeconds)
+	}
 }
 func (config *FrontendConfig) SanityCheck() {
 	if !config.GetInitialised() {
@@ -2609,6 +3748,24 @@ func (config *FrontendConfig) SanityCheck() {
 		config.GetUserKeyPair()
 		config.GetMetricsLevel()
 		config.GetMetricsToken()
+		config.GetFrontendKeyPair()
+		config.GetExternalIp()
+		config.GetFrontendAPIPort()
+		config.GetBackendAPIAddress()
+		config.GetBackendAPIPort()
+		config.GetClientAPIAddress()
+		config.GetClientPort()
+		config.GetGRPCServiceTimeout()
+		config.GetLocalMemoryDays()
+		config.GetNetworkMemoryDays()
+		config.GetNetworkHeadDays()
+		config.GetThresholdForElectionValidityPercent()
+		config.GetThresholdForElectionWinPercent()
+		config.GetBloomFilterSize()
+		config.GetBloomFilterFalsePositiveRatePercent()
+		config.GetMinimumVoteThresholdForElectionValidity()
+		config.GetMinimumPoWStrengths()
+		config.GetPoWBailoutTimeSeconds()
 	}
 }
 
@@ -2625,9 +3782,10 @@ func (config *FrontendConfig) Commit() error {
 	if err3 != nil {
 		log.Fatal(fmt.Sprintf("JSON marshaler encountered an error while marshaling this config into JSON. Config: %#v, Error: %#v", config, err3))
 	}
-	configDirs := cdir.New(Btc.OrgIdentifier, Btc.AppIdentifier)
+	configDirs := cdir.New(Ftc.OrgIdentifier, Ftc.AppIdentifier)
 	folders := configDirs.QueryFolders(cdir.Global)
-	err := folders[0].WriteFile("frontend_config.json", confAsByte)
+	toolbox.CreatePath(filepath.Join(folders[0].Path, "frontend"))
+	err := ioutil.WriteFile(filepath.Join(folders[0].Path, "frontend", "frontend_config.json"), confAsByte, 0644)
 	if err != nil {
 		return err
 	}
@@ -2653,9 +3811,9 @@ EstablishBackendConfig establishes the connection with the config file, and make
 func EstablishBackendConfig() (*BackendConfig, error) {
 	// var config BackendConfig
 	configDirs := cdir.New(Btc.OrgIdentifier, Btc.AppIdentifier)
-	folder := configDirs.QueryFolderContainsFile("backend_config.json")
+	folder := configDirs.QueryFolderContainsFile("backend/backend_config.json")
 	if folder != nil {
-		configJson, _ := folder.ReadFile("backend_config.json")
+		configJson, _ := folder.ReadFile("backend/backend_config.json")
 		err := json.Unmarshal(configJson, &bc)
 		if err != nil || fmt.Sprintf("%#v", string(configJson)) == "\"{}\"" {
 			return &bc, errors.New(fmt.Sprintf("Back-end configuration file is corrupted. Please fix the configuration file, or delete it. If deleted a new configuration will be generated with default values. Error: %#v, ConfigJson: %#v", err, string(configJson)))
@@ -2672,10 +3830,10 @@ EstablishFrontendConfig establishes the connection with the config file, and mak
 */
 func EstablishFrontendConfig() (*FrontendConfig, error) {
 	// var config FrontendConfig
-	configDirs := cdir.New(Btc.OrgIdentifier, Btc.AppIdentifier)
-	folder := configDirs.QueryFolderContainsFile("frontend_config.json")
+	configDirs := cdir.New(Ftc.OrgIdentifier, Ftc.AppIdentifier)
+	folder := configDirs.QueryFolderContainsFile("frontend/frontend_config.json")
 	if folder != nil {
-		configJson, _ := folder.ReadFile("frontend_config.json")
+		configJson, _ := folder.ReadFile("frontend/frontend_config.json")
 		err := json.Unmarshal(configJson, &fc)
 		if err != nil || fmt.Sprintf("%#v", string(configJson)) == "\"{}\"" {
 			return &fc, errors.New(fmt.Sprintf("Front-end configuration file is corrupted. Please fix the configuration file, or delete it. If deleted a new configuration will be generated with default values. Error: %#v, ConfigJson: %#v", err, string(configJson)))

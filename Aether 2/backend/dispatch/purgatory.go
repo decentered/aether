@@ -8,7 +8,7 @@
 
   What can happen is this — you hit a malicious node where all data is three years old, but it acts as if it is current. In other words, you ask for the network head, and it sends you very old stuff, stuff outside *your* network head.
 
-  Now, the node might not be explicitly malicious. It might be misconfigured. Some guy might have gottent he wrong idea and set his / her network head to 3 years, thinking it will help the network (it won't). But for all intents and purposes that is the same for the receiver.
+  Now, the node might not be explicitly malicious. It might be misconfigured. Some guy might have gotten the wrong idea and set his / her network head to 3 years, thinking it will help the network (it won't). But for all intents and purposes that is the same for the receiver.
 
   What the receiver needs to do is to accept entities that are legitimate ancestors of data that is being sent, and decline those that are not. In more concrete terms:
 
@@ -260,7 +260,7 @@ func getMostRecentLastModified(vs []vertex) api.Timestamp {
   truststates owner
   truststates target
 
-  trusttate is updated by
+  truststate is updated by
   nothing
 */
 
@@ -268,7 +268,7 @@ func getMostRecentLastModified(vs []vertex) api.Timestamp {
 func (p *Purgatory) verify(item api.Provable) bool {
 	cutoff := api.Timestamp(globals.BackendConfig.GetEventHorizonTimestamp())
 	// nhD := globals.BackendConfig.GetNetworkHeadDays()
-	// nhCutoff := api.Timestamp(toolbox.CnvToCutoff(nhD))
+	// nhCutoff := api.Timestamp(toolbox.CnvToCutoffDays(nhD))
 	v := cnvToVertex(item)
 	toBeSearched := []vertex{v}
 	itercount := 0
@@ -392,8 +392,8 @@ func (p *Purgatory) Process() []interface{} {
 func (p *Purgatory) accept(items []api.Provable) {
 	// takenIn := []api.Fingerprint{}
 	// nhD := globals.BackendConfig.GetNetworkHeadDays()
-	// nhCutoff := api.Timestamp(toolbox.CnvToCutoff(nhD))
-	cutoff := api.Timestamp(globals.BackendConfig.GetEventHorizonTimestamp())
+	// nhCutoff := api.Timestamp(toolbox.CnvToCutoffDays(nhD))
+	cutoff := api.Timestamp(globals.BackendConfig.GetEventHorizonTimestamp()) // todo: should purgatory be gated on network head or event horizon?
 	for key, _ := range items {
 		// gate := calcGate(items[key])
 		if cutoff > items[key].GetLastModified() {

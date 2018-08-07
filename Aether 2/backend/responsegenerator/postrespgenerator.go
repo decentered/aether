@@ -142,7 +142,8 @@ func bakeFinalPOSTApiResponse(
 			len(resp.ResponseBody.Addresses))
 		return resp, nil
 	} else {
-		logging.LogCrash(fmt.Sprintf("This post request produced both no results and no resulting apiResponses. []ApiResponse: %#v", *resultPages))
+		logging.Logf(1, "This post request produced both no results and no resulting apiResponses. []ApiResponse: %#v", *resultPages)
+		// logging.LogCrash(fmt.Sprintf("This post request produced both no results and no resulting apiResponses. []ApiResponse: %#v", *resultPages))
 		return &api.ApiResponse{}, nil
 	}
 }
@@ -160,7 +161,7 @@ func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) 
 	logging.Logf(2, "Filters reconstructed: %#v", filter)
 	filters := []api.Filter{filter}
 	// Create a random SHA256 hash as folder name to use in the case the response has more than one page.
-	dirname, err := randomhashgen.GenerateRandomHash()
+	dirname, err := randomhashgen.GenerateInsecureRandomHash()
 	if err != nil {
 		logging.Log(1, err)
 	}
@@ -186,7 +187,7 @@ func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) 
 		// test end
 		logging.Logf(2, "Chain: %#v, Start: %v, End: %v Chain Count: %#v Time: %s", chain, start, chainEnd, chainCount, time.Now())
 		logging.Logf(2, "These are the values being fed to the persistence.Read. RespType: %s, filterset.Fingerprints: %v, filterset.Embeds: %v, dbReadStartLoc: %v, filterset.TimeEnd: %v", respType, filterset.Fingerprints, filterset.Embeds, dbReadStartLoc, filterset.TimeEnd)
-		localData, dbError := persistence.Read(respType, filterset.Fingerprints, filterset.Embeds, dbReadStartLoc, filterset.TimeEnd)
+		localData, dbError := persistence.Read(respType, filterset.Fingerprints, filterset.Embeds, dbReadStartLoc, filterset.TimeEnd, false, nil)
 
 		if dbError != nil {
 			return []byte{}, errors.New(fmt.Sprintf("The query coming from the remote caused an error in the local database while trying to respond to this request. Error: %#v\n, Request: %#v\n", dbError, req))
@@ -198,7 +199,7 @@ func GeneratePOSTResponse(respType string, req api.ApiResponse) ([]byte, error) 
 		entityCounts := countEntities(&localData)
 		// mergedEntityCounts should be used ONLY by the post face response.
 		mergedEntityCounts := mergeCounts(entityCounts, chainCount)
-		// TODO: merge entity counts here. also mind the addresses under this, that also needs update.
+		// FUTURE: If there's an entity count bug that surfaces, this is the first place to look. As well as its Address counterpart below.
 
 		/*
 		   Future optimisation: we might want to avoid generating indexes and manifests in the case we know the response is going to be only 1 page, thus directly served. That said, if the response is 1 page, then the effort to generate the indexes and the manifest is negligible, so it doesn't matter that much. It's a tradeoff for code clarity, helps us punt the decision whether to paginate until the last moment possible.

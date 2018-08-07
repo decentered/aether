@@ -6,8 +6,10 @@ package api
 import (
 	// "fmt"
 	// "aether-core/services/fingerprinting"
+	"aether-core/services/ca"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
+	"aether-core/services/randomhashgen"
 	"aether-core/services/signaturing"
 	"encoding/json"
 	"errors"
@@ -15,6 +17,13 @@ import (
 	"golang.org/x/crypto/ed25519"
 	// "github.com/davecgh/go-spew/spew"
 )
+
+func isFrontend() bool {
+	if globals.BackendTransientConfig == nil {
+		return true
+	}
+	return false
+}
 
 // // Create ProofOfWork
 func (b *Board) CreatePoW(keyPair *ed25519.PrivateKey, difficulty int) error {
@@ -118,7 +127,7 @@ func (ts *Truststate) CreateUpdatePoW(keyPair *ed25519.PrivateKey, difficulty in
 // Verify ProofOfWork
 
 func (b *Board) VerifyPoW(pubKey string) (bool, error) {
-	if !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
 		return true, nil
 	}
 	if b.GetVersion() == 1 {
@@ -130,7 +139,7 @@ func (b *Board) VerifyPoW(pubKey string) (bool, error) {
 }
 
 func (t *Thread) VerifyPoW(pubKey string) (bool, error) {
-	if !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
 		return true, nil
 	}
 	if t.GetVersion() == 1 {
@@ -142,7 +151,7 @@ func (t *Thread) VerifyPoW(pubKey string) (bool, error) {
 }
 
 func (p *Post) VerifyPoW(pubKey string) (bool, error) {
-	if !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
 		return true, nil
 	}
 	if p.GetVersion() == 1 {
@@ -154,7 +163,7 @@ func (p *Post) VerifyPoW(pubKey string) (bool, error) {
 }
 
 func (v *Vote) VerifyPoW(pubKey string) (bool, error) {
-	if !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
 		return true, nil
 	}
 	if v.GetVersion() == 1 {
@@ -166,7 +175,7 @@ func (v *Vote) VerifyPoW(pubKey string) (bool, error) {
 }
 
 func (k *Key) VerifyPoW(pubKey string) (bool, error) {
-	if !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
 		return true, nil
 	}
 	if k.GetVersion() == 1 {
@@ -178,7 +187,7 @@ func (k *Key) VerifyPoW(pubKey string) (bool, error) {
 }
 
 func (ts *Truststate) VerifyPoW(pubKey string) (bool, error) {
-	if !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
 		return true, nil
 	}
 	if ts.GetVersion() == 1 {
@@ -247,7 +256,7 @@ func (ts *Truststate) CreateFingerprint() error {
 
 // Verify Fingerprint
 func (b *Board) VerifyFingerprint() bool {
-	if !globals.BackendTransientConfig.FingerprintCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.FingerprintCheckEnabled {
 		return true
 	}
 	if b.GetVersion() == 1 {
@@ -259,7 +268,7 @@ func (b *Board) VerifyFingerprint() bool {
 }
 
 func (t *Thread) VerifyFingerprint() bool {
-	if !globals.BackendTransientConfig.FingerprintCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.FingerprintCheckEnabled {
 		return true
 	}
 	if t.GetVersion() == 1 {
@@ -271,7 +280,7 @@ func (t *Thread) VerifyFingerprint() bool {
 }
 
 func (p *Post) VerifyFingerprint() bool {
-	if !globals.BackendTransientConfig.FingerprintCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.FingerprintCheckEnabled {
 		return true
 	}
 	if p.GetVersion() == 1 {
@@ -283,7 +292,7 @@ func (p *Post) VerifyFingerprint() bool {
 }
 
 func (v *Vote) VerifyFingerprint() bool {
-	if !globals.BackendTransientConfig.FingerprintCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.FingerprintCheckEnabled {
 		return true
 	}
 	if v.GetVersion() == 1 {
@@ -295,7 +304,7 @@ func (v *Vote) VerifyFingerprint() bool {
 }
 
 func (k *Key) VerifyFingerprint() bool {
-	if !globals.BackendTransientConfig.FingerprintCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.FingerprintCheckEnabled {
 		return true
 	}
 	if k.GetVersion() == 1 {
@@ -307,7 +316,7 @@ func (k *Key) VerifyFingerprint() bool {
 }
 
 func (ts *Truststate) VerifyFingerprint() bool {
-	if !globals.BackendTransientConfig.FingerprintCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.FingerprintCheckEnabled {
 		return true
 	}
 	if ts.GetVersion() == 1 {
@@ -421,11 +430,11 @@ func (ts *Truststate) CreateUpdateSignature(keyPair *ed25519.PrivateKey) error {
 // Verify Signature
 
 func (b *Board) VerifySignature(pubKey string) (bool, error) {
-	if !globals.BackendTransientConfig.SignatureCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.SignatureCheckEnabled {
 		// If signature check is disabled with a debug flag, then we unconditionally return true.
 		return true, nil
 	}
-	if globals.BackendConfig.GetAllowUnsignedEntities() && len(b.Signature) == 0 {
+	if !isFrontend() && globals.BackendConfig.GetAllowUnsignedEntities() && len(b.Signature) == 0 {
 		// If Allow Unsigned Entities is true, we allow for anonymous posts without signature, but if there is a signature present, we still want to do the signature check. Allow Unsigned Entities does not mean that we will allow invalid signatures.
 		return true, nil
 	}
@@ -438,11 +447,11 @@ func (b *Board) VerifySignature(pubKey string) (bool, error) {
 }
 
 func (t *Thread) VerifySignature(pubKey string) (bool, error) {
-	if !globals.BackendTransientConfig.SignatureCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.SignatureCheckEnabled {
 		// If signature check is disabled with a debug flag, then we unconditionally return true.
 		return true, nil
 	}
-	if globals.BackendConfig.GetAllowUnsignedEntities() && len(t.Signature) == 0 {
+	if !isFrontend() && globals.BackendConfig.GetAllowUnsignedEntities() && len(t.Signature) == 0 {
 		// If Allow Unsigned Entities is true, we allow for anonymous posts without signature, but if there is a signature present, we still want to do the signature check. Allow Unsigned Entities does not mean that we will allow invalid signatures.
 		return true, nil
 	}
@@ -455,11 +464,11 @@ func (t *Thread) VerifySignature(pubKey string) (bool, error) {
 }
 
 func (p *Post) VerifySignature(pubKey string) (bool, error) {
-	if !globals.BackendTransientConfig.SignatureCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.SignatureCheckEnabled {
 		// If signature check is disabled with a debug flag, then we unconditionally return true.
 		return true, nil
 	}
-	if globals.BackendConfig.GetAllowUnsignedEntities() && len(p.Signature) == 0 {
+	if !isFrontend() && globals.BackendConfig.GetAllowUnsignedEntities() && len(p.Signature) == 0 {
 		// If Allow Unsigned Entities is true, we allow for anonymous posts without signature, but if there is a signature present, we still want to do the signature check. Allow Unsigned Entities does not mean that we will allow invalid signatures.
 		return true, nil
 	}
@@ -472,11 +481,11 @@ func (p *Post) VerifySignature(pubKey string) (bool, error) {
 }
 
 func (v *Vote) VerifySignature(pubKey string) (bool, error) {
-	if !globals.BackendTransientConfig.SignatureCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.SignatureCheckEnabled {
 		// If signature check is disabled with a debug flag, then we unconditionally return true.
 		return true, nil
 	}
-	if globals.BackendConfig.GetAllowUnsignedEntities() && len(v.Signature) == 0 {
+	if !isFrontend() && globals.BackendConfig.GetAllowUnsignedEntities() && len(v.Signature) == 0 {
 		// If Allow Unsigned Entities is true, we allow for anonymous posts without signature, but if there is a signature present, we still want to do the signature check. Allow Unsigned Entities does not mean that we will allow invalid signatures.
 		return true, nil
 	}
@@ -489,11 +498,11 @@ func (v *Vote) VerifySignature(pubKey string) (bool, error) {
 }
 
 func (k *Key) VerifySignature(pubKey string) (bool, error) {
-	if !globals.BackendTransientConfig.SignatureCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.SignatureCheckEnabled {
 		// If signature check is disabled with a debug flag, then we unconditionally return true.
 		return true, nil
 	}
-	if globals.BackendConfig.GetAllowUnsignedEntities() && len(k.Signature) == 0 {
+	if !isFrontend() && globals.BackendConfig.GetAllowUnsignedEntities() && len(k.Signature) == 0 {
 		// If Allow Unsigned Entities is true, we allow for anonymous posts without signature, but if there is a signature present, we still want to do the signature check. Allow Unsigned Entities does not mean that we will allow invalid signatures.
 		return true, nil
 	}
@@ -506,11 +515,11 @@ func (k *Key) VerifySignature(pubKey string) (bool, error) {
 }
 
 func (ts *Truststate) VerifySignature(pubKey string) (bool, error) {
-	if !globals.BackendTransientConfig.SignatureCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.SignatureCheckEnabled {
 		// If signature check is disabled with a debug flag, then we unconditionally return true.
 		return true, nil
 	}
-	if globals.BackendConfig.GetAllowUnsignedEntities() && len(ts.Signature) == 0 {
+	if !isFrontend() && globals.BackendConfig.GetAllowUnsignedEntities() && len(ts.Signature) == 0 {
 		// If Allow Unsigned Entities is true, we allow for anonymous posts without signature, but if there is a signature present, we still want to do the signature check. Allow Unsigned Entities does not mean that we will allow invalid signatures.
 		return true, nil
 	}
@@ -543,7 +552,7 @@ func (ar *ApiResponse) CreateSignature(keyPair *ed25519.PrivateKey) error {
 // VerifySignature verifies the signature of the page. Since the public key the page is verified by is within the page itself, it does not need the public key to be given from the outside.
 func (ar *ApiResponse) VerifySignature() (bool, error) {
 	// 1) Check if signature check is enabled.
-	if !globals.BackendTransientConfig.PageSignatureCheckEnabled {
+	if !isFrontend() && !globals.BackendTransientConfig.PageSignatureCheckEnabled {
 		return true, nil
 	}
 	// 2) Check if required fields are empty.
@@ -570,6 +579,49 @@ func (ar *ApiResponse) VerifySignature() (bool, error) {
 		return false, errors.New(fmt.Sprintf(
 			"This signature is invalid, but no reason given as to why. Signature: %s", signature))
 	}
+}
+
+/*
+	Methods below refer to the ApiResponse, which is only used by the backend. It's OK for them to refer exclusively to the backendconfig.
+*/
+
+// ApiResponse PoW Create / Verify
+
+func (ar *ApiResponse) CreatePoW() error {
+	if ar.GetVersion() == 1 {
+		return createApiResponsePoW_V1(ar, globals.BackendConfig.GetBackendKeyPair(), globals.BackendConfig.GetMinimumPoWStrengths().ApiResponse)
+	} else {
+		return errors.New(fmt.Sprintf("PoW creation of this version of this entity is not supported in this version of the app. Entity: %#v", ar))
+	}
+}
+
+func (ar *ApiResponse) VerifyPoW() (bool, error) {
+	// if !globals.BackendTransientConfig.ProofOfWorkCheckEnabled {
+	// 	return true, nil
+	// }
+	// ^ Heads up
+	if ar.GetVersion() == 1 {
+		return verifyApiResponsePoW_V1(ar, ar.NodePublicKey)
+	} else {
+		logging.Log(1, fmt.Sprintf("PoW verification of this version of this entity is not supported in this version of the app. Entity: %#v", ar))
+		return false, nil
+	}
+}
+
+// ApiResponse Nonce Create / Verify
+
+func (ar *ApiResponse) CreateNonce() {
+	rh, err := randomhashgen.GenerateInsecureRandomHash()
+	if err != nil {
+		logging.Logf(1, "There was an error in creating a nonce for this apiresponse. Error: %v, ApiResponse: %#v", err, ar)
+	}
+	ar.Nonce = Nonce(rh)
+	// logging.Logf(1, "Nonce creation request, we created this: %v", ar.Nonce)
+}
+
+func (ar *ApiResponse) VerifyNonce() bool {
+	// logging.Logf(1, "Nonce verification request, we got this: %v", ar.Nonce)
+	return globals.BackendTransientConfig.Nonces.IsValid(ar.NodePublicKey, string(ar.Nonce), int64(ar.Timestamp))
 }
 
 // Verification for the provable and for the response.
@@ -615,6 +667,11 @@ func Verify(e interface{}) error {
 				"Signature of this entity is invalid. Signature: %s, Entity: %#v\n", entity.GetSignature(), entity))
 		}
 		// Bounds ok, Fp ok, PoW ok, Sig ok
+		entOk := entity.VerifyEntitlements()
+		if !entOk {
+			return errors.New(fmt.Sprintf(
+				"Entitlements of this entity is invalid. This entity is attempting to do something that it is not authorised to do. (Ex: A CA-specific TypeClass from a CA that we do not trust.) Entity: %#v\n", entity))
+		}
 		entity.SetVerified(true)
 		return nil
 
@@ -634,4 +691,37 @@ func Verify(e interface{}) error {
 		return errors.New(fmt.Sprintf("Verify could not recognise this entity type. Entity: %#v", entity))
 	}
 
+}
+
+func (e *Board) VerifyEntitlements() bool {
+	return true
+}
+
+func (e *Thread) VerifyEntitlements() bool {
+	return true
+}
+
+func (e *Post) VerifyEntitlements() bool {
+	return true
+}
+
+func (e *Vote) VerifyEntitlements() bool {
+	return true
+}
+
+func (e *Key) VerifyEntitlements() bool {
+	return true
+}
+
+/*
+- TypeClass [2] naming ([1] nameassign) [only available for CAs]
+- TypeClass [3] f451 ([1] censorassign) [only available for CAs]
+*/
+func (e *Truststate) VerifyEntitlements() bool {
+	if e.TypeClass == 2 || e.TypeClass == 3 {
+		if !ca.IsTrustedCAKey(e.OwnerPublicKey) {
+			return false
+		}
+	}
+	return true
 }

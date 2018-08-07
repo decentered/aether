@@ -566,7 +566,7 @@ func TestCreateUpdatePoW_Success_WithKey(t *testing.T) {
 }
 
 func TestCreateUpdatePoW_SignedByTwoSeparateKeys_WithKey(t *testing.T) {
-	// TODO: This is an example of an issue that this low-level library cannot catch. In this, the user has two private keys, and it signs the creation with one and update with another. Since we are skipping the creation check after update, this library cannot know. At the higher level, what you should do is that you should look at the ownerfingerprint and check with that.
+	// FUTURE: This is an example of an issue that this low-level library cannot catch. In this, the user has two private keys, and it signs the creation with one and update with another. Since we are skipping the creation check after update, this library cannot know. At the higher level, what you should do is that you should look at the ownerfingerprint and check with that.
 	privKey, err4 := signaturing.CreateKeyPair()
 	if err4 != nil {
 		t.Errorf("Key pair creation failed. Err: '%s'", err4)

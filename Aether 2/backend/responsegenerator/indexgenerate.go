@@ -144,13 +144,14 @@ func bakeIndexes(indexPages *[]api.ApiResponse, entityCounts *[]api.EntityCount,
 		return // addresses do not generate indexes.
 	}
 	var indexdir string
+	protv := globals.BackendConfig.GetProtURLVersion()
 	if isPOST {
-		indexdir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/responses/", foldername, "/index")
+		indexdir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/", protv, "/responses/", foldername, "/index")
 	} else {
 		if respType == "addresses" {
-			indexdir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/", respType, "/", foldername, "/index")
+			indexdir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/", protv, "/", respType, "/", foldername, "/index")
 		} else {
-			indexdir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/v0/c0/", respType, "/", foldername, "/index")
+			indexdir = fmt.Sprint(globals.BackendConfig.GetCachesDirectory(), "/", protv, "/c0/", respType, "/", foldername, "/index")
 		}
 	}
 	toolbox.CreatePath(indexdir)

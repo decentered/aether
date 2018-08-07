@@ -720,12 +720,12 @@ func TestDbToApi_Success(t *testing.T) {
 	ts.Fingerprint = "my awesome truststate fingerprint"
 	ts.Target = "my target key"
 	ts.Owner = "my owner's key fingerprint"
-	ts.Domains = "my first domain fingerprint, my second domain fingerprint, my third domain fingerprint"
+	ts.Domain = "my domain fingerprint"
 	apiObj, err := persistence.DBtoAPI(ts)
 	obj := apiObj.(api.Truststate)
 	if err != nil {
 		t.Errorf("Test failed, err: '%s'", err)
-	} else if len(obj.Domains) == 0 {
+	} else if len(obj.Domain) == 0 {
 		t.Errorf("Test failed, the domains response is empty.")
 	} else if obj.Fingerprint != ts.Fingerprint {
 		t.Errorf("The response received isn't the expected one. Fingerprint: '%s'", obj.Fingerprint)
@@ -737,7 +737,7 @@ func TestDbToApi_ItemLengthLongerThanAllowed(t *testing.T) {
 	ts.Fingerprint = "my awesome truststate fingerprint"
 	ts.Target = "my target key"
 	ts.Owner = "my owner's key fingerprint"
-	ts.Domains = "my first domain fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint, my second domain fingerprint, my third domain fingerprint"
+	ts.Domain = "my first domain fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint fingerprint, my second domain fingerprint, my third domain fingerprint" // heads up we converted this from domains plural this test might get weirded out
 	_, err := persistence.DBtoAPI(ts)
 	errMessage := "This string is too long for this field."
 	if err == nil {
@@ -747,35 +747,39 @@ func TestDbToApi_ItemLengthLongerThanAllowed(t *testing.T) {
 	}
 }
 
-func TestDbToApi_RepeatedItems(t *testing.T) {
-	var ts persistence.DbTruststate
-	ts.Fingerprint = "my awesome truststate fingerprint"
-	ts.Target = "my target key"
-	ts.Owner = "my owner's key fingerprint"
-	ts.Domains = "alice,alice,alice"
-	_, err := persistence.DBtoAPI(ts)
-	errMessage := "This list includes items that are duplicates."
-	if err == nil {
-		t.Errorf("Expected an error to be raised from this test.")
-	} else if !strings.Contains(err.Error(), errMessage) {
-		t.Errorf("Test returned an error that was different than the expected one. '%s'", err)
-	}
-}
+// Heads up: This test no longer makes sense because our we converted truststate.domains from plural to singular (truststate.domain)
 
-func TestDbToApi_TooManyItems(t *testing.T) {
-	var ts persistence.DbTruststate
-	ts.Fingerprint = "my awesome truststate fingerprint"
-	ts.Target = "my target key"
-	ts.Owner = "my owner's key fingerprint"
-	ts.Domains = "a,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15,a16,a17,a18,a19,a20,a21,a22,a23,a24,a25,a26,a27,a28,a29,a30,a31,a32,a33,a34,a35,a36,a37,a38,a39,a40,a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,a60,a61,a62,a63,a64,a65,a66,a67,a68,a69,a70,a71,a72,a73,a74,a75,a76,a77,a78,a79,a80,a81,a82,a83,a84,a85,a86,a87,a88,a89,a90,a91,a92,a93,a94,a95,a96,a97,a98,a99,a100,a101,a102,a103,a104,a105"
-	_, err := persistence.DBtoAPI(ts)
-	errMessage := "The string provided has too many items"
-	if err == nil {
-		t.Errorf("Expected an error to be raised from this test.")
-	} else if !strings.Contains(err.Error(), errMessage) {
-		t.Errorf("Test returned an error that was different than the expected one. '%s'", err)
-	}
-}
+// func TestDbToApi_RepeatedItems(t *testing.T) {
+// 	var ts persistence.DbTruststate
+// 	ts.Fingerprint = "my awesome truststate fingerprint"
+// 	ts.Target = "my target key"
+// 	ts.Owner = "my owner's key fingerprint"
+// 	ts.Domains = "alice,alice,alice"
+// 	_, err := persistence.DBtoAPI(ts)
+// 	errMessage := "This list includes items that are duplicates."
+// 	if err == nil {
+// 		t.Errorf("Expected an error to be raised from this test.")
+// 	} else if !strings.Contains(err.Error(), errMessage) {
+// 		t.Errorf("Test returned an error that was different than the expected one. '%s'", err)
+// 	}
+// }
+
+// Heads up: This test no longer makes sense because our we converted truststate.domains from plural to singular (truststate.domain)
+
+// func TestDbToApi_TooManyItems(t *testing.T) {
+// 	var ts persistence.DbTruststate
+// 	ts.Fingerprint = "my awesome truststate fingerprint"
+// 	ts.Target = "my target key"
+// 	ts.Owner = "my owner's key fingerprint"
+// 	ts.Domains = "a,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15,a16,a17,a18,a19,a20,a21,a22,a23,a24,a25,a26,a27,a28,a29,a30,a31,a32,a33,a34,a35,a36,a37,a38,a39,a40,a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,a60,a61,a62,a63,a64,a65,a66,a67,a68,a69,a70,a71,a72,a73,a74,a75,a76,a77,a78,a79,a80,a81,a82,a83,a84,a85,a86,a87,a88,a89,a90,a91,a92,a93,a94,a95,a96,a97,a98,a99,a100,a101,a102,a103,a104,a105"
+// 	_, err := persistence.DBtoAPI(ts)
+// 	errMessage := "The string provided has too many items"
+// 	if err == nil {
+// 		t.Errorf("Expected an error to be raised from this test.")
+// 	} else if !strings.Contains(err.Error(), errMessage) {
+// 		t.Errorf("Test returned an error that was different than the expected one. '%s'", err)
+// 	}
+// }
 
 func TestApiToDb_Success(t *testing.T) {
 	var a api.Address

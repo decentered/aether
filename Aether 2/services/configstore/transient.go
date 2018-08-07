@@ -4,26 +4,9 @@
 package configstore
 
 import (
-	// "aether-core/services/fingerprinting"
-	// "aether-core/services/randomhashgen"
-	// "aether-core/services/signaturing"
-	// "aether-core/services/toolbox"
-	// "crypto/ecdsa"
-	// "crypto/elliptic"
-	// "crypto/x509"
-	// "encoding/hex"
 	pb "aether-core/backend/metrics/proto"
-	// "encoding/json"
-	// "errors"
-	// "fmt"
-	// "github.com/davecgh/go-spew/spew"
-	// "github.com/fatih/color"
-	// "crypto/elliptic"
-	// "encoding/hex"
-	// cdir "github.com/shibukawa/configdir"
-	// "golang.org/x/crypto/ed25519"
-	// "log"
-	// "runtime"
+	"aether-core/protos/clapi"
+	"aether-core/services/nonces"
 	"sync"
 	"time"
 )
@@ -41,24 +24,27 @@ var Ftc FrontendTransientConfig
 
 // Default entity versions for this version of the app. This is not user adjustable.
 
-const (
-	defaultBoardEntityVersion      = 1
-	defaultThreadEntityVersion     = 1
-	defaultPostEntityVersion       = 1
-	defaultVoteEntityVersion       = 1
-	defaultKeyEntityVersion        = 1
-	defaultTruststateEntityVersion = 1
-	defaultAddressEntityVersion    = 1
-)
+type entityVersions struct {
+	Board       int
+	Thread      int
+	Post        int
+	Vote        int
+	Key         int
+	Truststate  int
+	Address     int
+	ApiResponse int
+}
 
-type EntityVersions struct {
-	Board      int
-	Thread     int
-	Post       int
-	Vote       int
-	Key        int
-	Truststate int
-	Address    int
+/*
+The way we open a reverse connection is that we open a conn to the local server, and we open a conn to the remote server, and after sending the TCPMim message to request reverse open, we pipe one conn to another.
+
+							C1															C2
+LOCAL SERVER <--> LOCAL END <PIPE> LOCAL END <--> REMOTE SERVER
+^ Local Remote    ^ Local Local    ^ Local Local  ^ Remote Remote
+*/
+type reverseConnData struct {
+	C1LocalLocalAddr string
+	C1LocalLocalPort uint16
 }
 
 /*
@@ -88,6 +74,9 @@ This is the number that this specific node will route to the main swarm orchestr
 ## ShutdownInitiated
 This is set when the shutdown of the backend service is initiated. The processes that take a long time to return should be checking this value periodically, and if it is set, they should stop whatever they're doing and do a graceful shutdown.
 
+## LameduckInitiated
+In this mode, the node starts to decline any inbound and outbound requests as well as reverse connections. This is effectively a way to prepare the node for an orderly shutdown. It will finish writing whatever db write it needs to do, and whenever that is done, shutdown can be initiated safely.
+
 ## DispatcherExclusions
 This is the temporary exclusions for the dispatcher. When you connect to a node, that node is placed in the exclusions list for a while, so that you don't repeatedly keep connecting back to that node again.
 
@@ -104,11 +93,8 @@ This is the channel to send the message to when you want to stop the cache gener
 ## AddressesScannerActive
 This is the mutex that gets activated when the address scanner is active, so that it cannot be triggered twice at the same time.
 
-## LiveDispatchRunning
-This is the mutex that gets activated when the live dispatcher is active, so that it cannot be triggered twice at the same time.
-
-## StaticDispatchRunning
-This is the mutex that gets activated when the static dispatcher is active, so that it cannot be triggered twice at the same time.
+## SyncActive
+There is currently an ongoing sync happening.
 
 ## CurrentMetricsPage
 This is the current metrics struct that we are building to send to the metrics server, if enabled.
@@ -140,42 +126,54 @@ Our list of neighbours that we are checking in with at given intervals.
 # Bouncer
 Bouncer controls the inbound and outbound connections. This is the library that starts to refuse connections if the node gets too busy.
 
-# ExplorerTick
-Explorer does different things based on modulus of the tick. Explorer uses this ticker and resets it appropriately whenever it deems its threshold has passed.
+# ReverseConnData
+This is the place we use to save the data so that we know an inbound connection is a reverse-opened one.
+
+# Nonces
+This is the library that keeps track of nonces for us.
+
+# NewContentCommitted
+We flip this flag to true whenever the users (frontends) of this backend send us new content. It triggers a reverse connection request at the first opportunity, so that the new content can spread to the network as soon as possible. It then flips itself to false after a reverse connection.
+
+# MinimumTrustedPoWStrength
+This is the PoW strength we ask for trusted entities coming from a CA that this node has explicitly chosen to trust.
 */
 
 type BackendTransientConfig struct {
-	PermConfigReadOnly        bool
-	AppIdentifier             string
-	OrgIdentifier             string
-	PrintToStdout             bool
-	MetricsDebugMode          bool
-	TooManyConnections        bool
-	ExternalPortVerified      bool
-	SwarmNodeId               int
-	ShutdownInitiated         bool
-	DispatcherExclusions      map[*interface{}]time.Time
-	StopNeighbourhoodCycle    chan bool
-	StopExplorerCycle         chan bool
-	StopAddressScannerCycle   chan bool
-	StopUPNPCycle             chan bool
-	StopCacheGenerationCycle  chan bool
-	AddressesScannerActive    sync.Mutex
-	ActiveOutbound            sync.Mutex
-	LiveDispatchRunning       bool
-	StaticDispatchRunning     bool
-	CurrentMetricsPage        pb.Metrics
-	ConfigMutex               *sync.Mutex
-	FingerprintCheckEnabled   bool
-	SignatureCheckEnabled     bool
-	ProofOfWorkCheckEnabled   bool
-	PageSignatureCheckEnabled bool
-	EntityVersions            EntityVersions
-	POSTResponseRepo          POSTResponseRepo // empty at start, empty at every app start
-	NeighboursList            NeighboursList
-	Bouncer                   Bouncer
-	ExplorerTick              int
-	TLSEnabled                bool
+	ConfigMutex                sync.Mutex
+	PermConfigReadOnly         bool
+	AppIdentifier              string
+	OrgIdentifier              string
+	PrintToStdout              bool
+	MetricsDebugMode           bool
+	ExternalPortVerified       bool
+	SwarmNodeId                int
+	ShutdownInitiated          bool
+	LameduckInitiated          bool
+	DispatcherExclusions       map[*interface{}]time.Time
+	StopNeighbourhoodCycle     chan bool
+	StopInboundConnectionCycle chan bool
+	StopExplorerCycle          chan bool
+	StopAddressScannerCycle    chan bool
+	StopUPNPCycle              chan bool
+	StopCacheGenerationCycle   chan bool
+	AddressesScannerActive     sync.Mutex
+	SyncActive                 sync.Mutex
+	CurrentMetricsPage         pb.Metrics
+	FingerprintCheckEnabled    bool
+	SignatureCheckEnabled      bool
+	ProofOfWorkCheckEnabled    bool
+	PageSignatureCheckEnabled  bool
+	EntityVersions             entityVersions
+	POSTResponseRepo           POSTResponseRepo // empty at start, empty at every app start
+	NeighboursList             NeighboursList
+	Bouncer                    Bouncer
+	TLSEnabled                 bool
+	ReverseConnData            reverseConnData
+	Nonces                     nonces.RemotesNonces
+	NewContentCommitted        bool
+	BackendAPIPortVerified     bool
+	MinimumTrustedPoWStrength  int
 }
 
 // Set transient backend config defaults. Only need to set defaults that are not the type default.
@@ -187,42 +185,84 @@ type BackendTransientConfig struct {
 func (config *BackendTransientConfig) SetDefaults() {
 	config.AppIdentifier = "Aether"
 	config.OrgIdentifier = "Air Labs"
-	config.ConfigMutex = &sync.Mutex{}
+	// config.ConfigMutex = &sync.Mutex{}
 	config.TLSEnabled = true
+	config.DispatcherExclusions = make(map[*interface{}]time.Time)
 	// config.FingerprintCheckEnabled = true
 	// config.SignatureCheckEnabled = true
 	// config.ProofOfWorkCheckEnabled = true
 	// config.PageSignatureCheckEnabled = true
+	config.Nonces = nonces.NewRemotesNonces()
+	config.MinimumTrustedPoWStrength = defaultMinimumTrustedPoWStrength
 
-	config.DispatcherExclusions = make(map[*interface{}]time.Time)
+	// debug
 	config.FingerprintCheckEnabled = false
 	config.SignatureCheckEnabled = false
 	config.ProofOfWorkCheckEnabled = false
 	config.PageSignatureCheckEnabled = false
+	// config.TLSEnabled = false
 
-	ev := EntityVersions{
-		Board:      defaultBoardEntityVersion,
-		Thread:     defaultThreadEntityVersion,
-		Post:       defaultPostEntityVersion,
-		Vote:       defaultVoteEntityVersion,
-		Key:        defaultKeyEntityVersion,
-		Truststate: defaultTruststateEntityVersion,
-		Address:    defaultAddressEntityVersion,
+	ev := entityVersions{
+		Board:       defaultBoardEntityVersion,
+		Thread:      defaultThreadEntityVersion,
+		Post:        defaultPostEntityVersion,
+		Vote:        defaultVoteEntityVersion,
+		Key:         defaultKeyEntityVersion,
+		Truststate:  defaultTruststateEntityVersion,
+		Address:     defaultAddressEntityVersion,
+		ApiResponse: defaultApiResponseEntityVersion,
 	}
 	config.EntityVersions = ev
 }
 
 // Frontend
 
+/*
+
+# RefresherCacheNowTimestamp
+This is the synchronised end timestamp for all things related to refreshing the FE. Why is this needed? Because the way FE cache works is that we pull all the necessary data into the frontend first as a whole to minimise the number of back and forths between the frontend and the backend.
+
+That means, though, when that cache is queried, the last piece of data that is available on the cache will be the now() at the time of the beginning of the cache query (t1). That means if you query the cache at t2 and save it as now() of your query of the cache, you'll have the data from t1, but you'll timestamp it as t2, which means the next time you query, you'll start from t1, not t2, missing the data between t1 and t2.
+
+To prevent that, at the beginning of a refresh cycle, the first thing that happens is pull-all-data-from-be event, and that event supplies a cache end timestamp. Anything that happens inside the refresh cycle assumes that timestamp is now() for all intents and purposes.
+*/
 type FrontendTransientConfig struct {
-	PermConfigReadOnly bool
-	MetricsDebugMode   bool
-	ConfigMutex        *sync.Mutex
+	ConfigMutex                sync.Mutex
+	PermConfigReadOnly         bool
+	MetricsDebugMode           bool
+	PrintToStdout              bool
+	ShutdownInitiated          bool
+	AppIdentifier              string
+	OrgIdentifier              string
+	FrontendAPIPortVerified    bool
+	MinimumTrustedPoWStrength  int
+	RefresherCacheNowTimestamp int64
+	CurrentAmbientStatus       clapi.AmbientStatusPayload
+	StopRefresherCycle         chan bool
+	BackendReady               bool
+	DefaultKeyType             string
+	EntityVersions             entityVersions
+	RefresherMutex             sync.Mutex
 }
 
 // Set transient frontend config defaults
 
 func (config *FrontendTransientConfig) SetDefaults() {
 	config.PermConfigReadOnly = false
-	config.ConfigMutex = &sync.Mutex{}
+	// config.ConfigMutex = &sync.Mutex{}
+	config.AppIdentifier = "Aether"
+	config.OrgIdentifier = "Air Labs"
+	config.MinimumTrustedPoWStrength = defaultMinimumTrustedPoWStrength
+	config.DefaultKeyType = defaultKeyV1Type
+	ev := entityVersions{
+		Board:       defaultBoardEntityVersion,
+		Thread:      defaultThreadEntityVersion,
+		Post:        defaultPostEntityVersion,
+		Vote:        defaultVoteEntityVersion,
+		Key:         defaultKeyEntityVersion,
+		Truststate:  defaultTruststateEntityVersion,
+		Address:     defaultAddressEntityVersion,
+		ApiResponse: defaultApiResponseEntityVersion,
+	}
+	config.EntityVersions = ev
 }

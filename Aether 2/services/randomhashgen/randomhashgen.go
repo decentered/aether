@@ -10,7 +10,9 @@ import (
 	"math/big"
 )
 
-func GenerateRandomHash() (string, error) {
+// GenerateInsecureRandomHash generates a *pseudo* random hash that we can use for non-cryptographically-significant places. The benefit of this is that it's much faster than a cryptographically secure one. Essentially, so long as you don't need a random hash to use as part of an encryption scheme, you're good.
+// (If you're implementing an encryption scheme, please reconsider, and try to use an existing, vetted implementation.)
+func GenerateInsecureRandomHash() (string, error) {
 	const LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	saltBytes := make([]byte, 16)
 	for i := range saltBytes {
@@ -26,3 +28,5 @@ func GenerateRandomHash() (string, error) {
 	resultHex := fmt.Sprintf("%x", calculator.Sum(nil))
 	return resultHex, nil
 }
+
+// GenerateSecureRandomHash does not exist because we are (thankfully) not building our own encryption.
