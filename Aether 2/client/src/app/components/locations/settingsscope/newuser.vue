@@ -15,17 +15,14 @@
       <template v-if="inProgressVisible">
         <a-markdown :content="intro"></a-markdown>
         <a-markdown :content="mintingInProgressContent"></a-markdown>
-        <a-spinner :hideText="true"></a-spinner>
+        <a-spinner :hidetext="true"></a-spinner>
 
       </template>
       <template v-if="completionVisible">
         <a-markdown :content="intro"></a-markdown>
         <a-markdown :content="completionContent"></a-markdown>
-        <div class="video-container">
-          <video class="words-of-wisdom" src="src/app/ext_dep/videos/wise_doggo.mp4" loop="true" muted="true" autoplay="true"></video>
-        </div>
-        <router-link to="/popular" class="button is-success is-outlined">
-          GO TO POPULAR
+        <router-link to="/popular" class="button is-link is-outlined">
+          DONE
         </router-link>
       </template>
     </template>
@@ -55,7 +52,7 @@
           fields: [{
               id: "userName",
               visibleName: "Pick a name",
-              description: `These names are <p class="em">not unique</p>, there can be multiple users with the same name. However, the blockavatars of two different users won't ever be the same. When in doubt, check name <i>and</i> the picture. <div id="postscript">(BTW, funders of the work on this app can get unique  names and flair in recognition of their support. Check the Membership tab to the left if you're interested in that.)</div>`,
+              description: `These names are <p class="em">not unique</p>, there can be multiple users with the same name. However, the blockavatars of two different users won't ever be the same. When in doubt, check name <i>and</i> the picture. <div id="postscript">By the way, if you fund the work on this app, you can get a unique name and distinction in recognition of your support. Check the Membership tab for more information.</div>`,
               placeholder: "deanmoriarty",
               maxCharCount: 24,
               heightRows: 1,
@@ -153,11 +150,20 @@
   var userAlreadyExistsIntro = `**There's already a user present on this app.**`
   var userAlreadyExistsContent = `You can enable the existing user by opening the menu at the top right, and choosing \`\`\`Exit read-only mode\`\`\` at the bottom.`
   var mintingInProgressContent = `
-### Minting in progress...
-Minting the proof-of-work for your user key. This can take from around 10 seconds to a minute depending on your computer.`
+### Key creation in progress...
+Minting the proof-of-work for your user key. This can take from a few seconds to a couple minute depending on your computer. If you want to get updated when it is done, stay on this screen.`
   var completionContent = `
 ### Successfully created.
-  Your user is now ready. You can write and edit posts, upvote and downvote content, elect and impeach mods, and create & moderate communities.`
+
+  * **Your user is now ready.** You can now vote, post, create communities, and moderate.
+
+  * Your user name is not unique, but your generated picture is.
+
+  * You can get a unique username no one else can have by becoming a [supporting member](#/membership).
+
+  * Consider backing up your user profile somewhere safe. You can do it by following the instructions at the [Preferences](#/settings).
+
+  `
 </script>
 
 <style lang="scss">
@@ -200,12 +206,6 @@ Minting the proof-of-work for your user key. This can take from around 10 second
   }
 
   .button {
-    font-family: "SSP Semibold"
-  }
-
-  .words-of-wisdom {
-    width: 350px;
-    margin-bottom: 30px;
-    border-radius: 5px;
+    font-family: "SSP Bold"
   }
 </style>

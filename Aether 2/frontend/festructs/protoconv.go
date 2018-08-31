@@ -39,6 +39,7 @@ func (e *CompiledThread) Protobuf() *pb.CompiledThreadEntity {
 		LastUpdate: e.LastUpdate,
 		Meta:       e.Meta,
 		PostsCount: int32(e.PostsCount),
+		Score:      e.Score,
 	}
 }
 
@@ -69,14 +70,17 @@ func (e *CompiledContentSignals) Protobuf() *pb.CompiledContentSignalsEntity {
 		SelfATDCreation:    e.SelfATDCreation,
 		SelfATDLastUpdate:  e.SelfATDLastUpdate,
 		Reports:            ExplainedSignalSliceToProtobuf(e.Reports),
-		// SelfReported:       e.SelfReported,
-		ModBlocks:        ExplainedSignalSliceToProtobuf(e.ModBlocks),
-		ModApprovals:     ExplainedSignalSliceToProtobuf(e.ModApprovals),
-		ByMod:            e.ByMod,
-		ByFollowedPerson: e.ByFollowedPerson,
-		ByOP:             e.ByOP,
-		ModBlocked:       e.ModBlocked,
-		ModApproved:      e.ModApproved,
+		SelfReported:       e.SelfReported,
+		ModBlocks:          ExplainedSignalSliceToProtobuf(e.ModBlocks),
+		ModApprovals:       ExplainedSignalSliceToProtobuf(e.ModApprovals),
+		SelfModApproved:    e.SelfModApproved,
+		SelfModBlocked:     e.SelfModBlocked,
+		SelfModIgnored:     e.SelfModIgnored,
+		ByMod:              e.ByMod,
+		ByFollowedPerson:   e.ByFollowedPerson,
+		ByOP:               e.ByOP,
+		ModBlocked:         e.ModBlocked,
+		ModApproved:        e.ModApproved,
 	}
 }
 
@@ -140,6 +144,7 @@ func (e *AmbientBoard) Protobuf() *pb.AmbientBoardEntity {
 		Name:        e.Name,
 		LastUpdate:  e.LastUpdate,
 		LastSeen:    e.LastSeen,
+		Notify:      e.Notify,
 	}
 	return &abe
 }
@@ -150,4 +155,45 @@ func (e *AmbientBoardBatch) Protobuf() []*pb.AmbientBoardEntity {
 		abes = append(abes, e.Boards[key].Protobuf())
 	}
 	return abes
+}
+
+func (e *CompiledNotification) Protobuf() *pb.CompiledNotification {
+	cnProto := pb.CompiledNotification{
+		Type:                    pb.NotificationType(int32(e.Type)),
+		Text:                    e.Text,
+		ResponsePosts:           e.ResponsePosts,
+		ParentThread:            e.ParentThread.Protobuf(),
+		ParentPost:              e.ParentPost.Protobuf(),
+		CreationTimestamp:       e.CreationTimestamp,
+		NewestResponseTimestamp: e.NewestResponseTimestamp,
+		Read: e.Read,
+	}
+	return &cnProto
+}
+
+func (e *CNotificationsList) Protobuf() []*pb.CompiledNotification {
+	cns := []*pb.CompiledNotification{}
+	for key, _ := range *e {
+		cns = append(cns, (*e)[key].Protobuf())
+	}
+	return cns
+}
+
+func (e *ReportsTabEntry) Protobuf() *pb.ReportsTabEntry {
+	proto := pb.ReportsTabEntry{
+		Fingerprint:   e.Fingerprint,
+		BoardPayload:  e.BoardPayload.Protobuf(),
+		ThreadPayload: e.ThreadPayload.Protobuf(),
+		PostPayload:   e.PostPayload.Protobuf(),
+		Timestamp:     e.Timestamp,
+	}
+	return &proto
+}
+
+func (e *ReportsTabEntryBatch) Protobuf() []*pb.ReportsTabEntry {
+	eProtos := []*pb.ReportsTabEntry{}
+	for k, _ := range *e {
+		eProtos = append(eProtos, (*e)[k].Protobuf())
+	}
+	return eProtos
 }

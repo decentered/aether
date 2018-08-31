@@ -1,7 +1,7 @@
 <template>
   <div class="location global" id="scrolltarget-container-target">
     <div class="globalscope">
-      <a-globalscopeheader></a-globalscopeheader>
+      <a-global-header></a-global-header>
       <a-tabs v-show="tabsVisible()" :tabslist="tabslist"></a-tabs>
       <router-view></router-view>
     </div>

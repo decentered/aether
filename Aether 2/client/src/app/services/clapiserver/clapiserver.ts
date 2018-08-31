@@ -25,6 +25,7 @@ var services = require('../../../../../protos/clapi/clapi_grpc_pb')
 /**
  Client-side GRPC server so that the frontend can talk to the client. This is useful at the first start where the Frontend needs to start its own GRPC server and return its address to the client.
  */
+
 export function StartClientAPIServer(): number {
   let server = new grpc.Server()
   server.addService(
@@ -33,6 +34,11 @@ export function StartClientAPIServer(): number {
       deliverAmbients: DeliverAmbients,
       sendAmbientStatus: SendAmbientStatus,
       sendAmbientLocalUserEntity: SendAmbientLocalUserEntity,
+      sendHomeView: SendHomeView,
+      sendPopularView: SendPopularView,
+      sendNotifications: SendNotifications,
+      sendOnboardCompleteStatus: SendOnboardCompleteStatus,
+      sendModModeEnabledStatus: SendModModeEnabledStatus,
     }
   )
   let boundPort: number = server.bind(
@@ -74,5 +80,40 @@ function SendAmbientLocalUserEntity(req: any, callback: any) {
   // console.log(r)
   vuexStore.dispatch('setAmbientLocalUserEntity', r)
   let resp = new messages.AmbientLocalUserEntityResponse
+  callback(null, resp)
+}
+
+function SendHomeView(req: any, callback: any) {
+  let r = req.request.toObject()
+  vuexStore.dispatch('setHomeView', r.threadsList)
+  let resp = new messages.HomeViewResponse
+  callback(null, resp)
+}
+
+function SendPopularView(req: any, callback: any) {
+  let r = req.request.toObject()
+  vuexStore.dispatch('setPopularView', r.threadsList)
+  let resp = new messages.PopularViewResponse
+  callback(null, resp)
+}
+
+function SendNotifications(req: any, callback: any) {
+  let r = req.request.toObject()
+  vuexStore.dispatch('setNotifications', r)
+  let resp = new messages.NotificationsResponse
+  callback(null, resp)
+}
+
+function SendOnboardCompleteStatus(req: any, callback: any) {
+  let r = req.request.toObject()
+  vuexStore.dispatch('setOnboardCompleteStatus', r.onboardcomplete)
+  let resp = new messages.OnboardCompleteStatusResponse
+  callback(null, resp)
+}
+
+function SendModModeEnabledStatus(req: any, callback: any) {
+  let r = req.request.toObject()
+  vuexStore.dispatch('setModModeEnabledStatus', r.modmodeenabled)
+  let resp = new messages.ModModeEnabledStatusResponse
   callback(null, resp)
 }

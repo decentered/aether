@@ -6,6 +6,7 @@ var glob = {
     FrontendClientConnInitialised: false,
     ClientAPIServerPort: 0,
     FrontendDaemonStarted: false,
+    RendererReady: false,
 };
 module.exports = glob;
 //# sourceMappingURL=globals.js.map

@@ -9,12 +9,12 @@ import (
 	"aether-core/frontend/beapiconsumer"
 	pbstructs "aether-core/protos/mimapi"
 	"aether-core/services/globals"
-	// "aether-core/services/logging"
+	"aether-core/services/logging"
 	// "fmt"
 	// "github.com/davecgh/go-spew/spew"
 	// "golang.org/x/net/context"
 	// "google.golang.org/grpc"
-	"aether-core/services/metareader"
+	"aether-core/services/metaparse"
 	// "github.com/willf/bloom"
 )
 
@@ -72,6 +72,14 @@ func GetCNs(targetfp, domainfp string, startts, nowts int64) []CanonicalNameSign
 	rawSignals := getTsBasedSignal(targetfp, domainfp, startts, nowts, 2, -1)
 	sgns := []CanonicalNameSignal{}
 	for k, _ := range rawSignals {
+		tsmeta, err := metaparse.ReadMeta("Truststate", rawSignals[k].GetMeta())
+		if err != nil {
+			logging.Logf(2, "We failed to parse this Meta field. Raw Meta field: %v, Entity: %v Error: %v", targetfp, err)
+		}
+		cname := ""
+		if tsmeta != nil {
+			cname = tsmeta.(*metaparse.TruststateMeta).CanonicalName
+		}
 		sgns = append(sgns, CanonicalNameSignal{
 			BaseTruststateSignal: BaseTruststateSignal{
 				BaseSignal: BaseSignal{
@@ -88,8 +96,7 @@ func GetCNs(targetfp, domainfp string, startts, nowts int64) []CanonicalNameSign
 				Expiry: rawSignals[k].GetExpiry(),
 				Domain: rawSignals[k].GetDomain(),
 			},
-			CanonicalName: metareader.ReadSingleField(
-				rawSignals[k].GetMeta(), "CanonicalName").(string),
+			CanonicalName: cname,
 		})
 	}
 	return sgns

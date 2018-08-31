@@ -5,28 +5,16 @@ package configstore
 
 import (
 	"aether-core/services/fingerprinting"
-	// "aether-core/services/randomhashgen"
 	"aether-core/services/signaturing"
-	// "aether-core/services/tlscerts"
 	"aether-core/services/toolbox"
-	// "crypto/ecdsa"
-	// "crypto/elliptic"
-	// "crypto/x509"
-	// "encoding/hex"
-	// pb "aether-core/backend/metrics/proto"
 	"encoding/json"
 	"errors"
 	"fmt"
-	// "github.com/davecgh/go-spew/spew"
-	// "github.com/fatih/color"
-	// "crypto/elliptic"
-	// "encoding/hex"
 	cdir "github.com/shibukawa/configdir"
 	"golang.org/x/crypto/ed25519"
-	"log"
-	// "runtime"
-	// "sync"
 	"io/ioutil"
+	"log"
+	"os"
 	"path/filepath"
 	"time"
 )
@@ -343,8 +331,6 @@ Aether already anonymises who posts which content: after a piece of content spre
 The nature of proxy technology means that unless configured specifically for it, a proxy or a VPN will not be able to accept inbound connections into your machine. For that to happen, you need to set up 'remote' or 'reverse' port forwarding (as opposed to *local* port forwarding.) Google it, and make sure you understand the security implications of doing that.
 
 This applies to proxies, Tor, and VPN equally. It's easier to find VPNs that allow you to do a remote port forwarding than SOCKS5 proxies, since it's natively supported with VPNs.
-
-Oh and lastly, HostFat, here's your feature. :)
 
 # SOCKS5ProxyAddress
 This is the address of the proxy that is going ot be used if the proxy is enabled. If you enable proxies and see no network traffic, it probably means your proxy configuration is broken. In the case proxy doesn't respond, it won't transmit anything. If proxy refuses your connection, the backend will terminate itself so as to not expose you to non-proxied traffic.
@@ -2688,9 +2674,16 @@ func (config *BackendConfig) Commit() error {
 	configDirs := cdir.New(Btc.OrgIdentifier, Btc.AppIdentifier)
 	folders := configDirs.QueryFolders(cdir.Global)
 	toolbox.CreatePath(filepath.Join(folders[0].Path, "backend"))
-	err := ioutil.WriteFile(filepath.Join(folders[0].Path, "backend", "backend_config.json"), confAsByte, 0644)
+	writeAheadPath := filepath.Join(folders[0].Path, "backend", "backend_config_writeahead.json")
+	targetPath := filepath.Join(folders[0].Path, "backend", "backend_config.json")
+	err := ioutil.WriteFile(writeAheadPath, confAsByte, 0644)
 	if err != nil {
 		return err
+	}
+	err2 := os.Rename(writeAheadPath, targetPath)
+	// ^ Rename is atomic in UNIX, should be in Windows, as well. This is useful because if the user's app crashes at the right exact moment while committing a config change, if you don't have a readahead, you can end up with an empty file in the case the process crashes before inserting the bytes but after cleaning out the old ones to ready it for insertion.
+	if err2 != nil {
+		return err2
 	}
 	return nil
 }
@@ -2806,6 +2799,10 @@ type FrontendConfig struct {
 	DehydratedLocalUserKeyEntity            string
 	MinimumPoWStrengths                     MinimumPoWStrengths //
 	PoWBailoutTimeSeconds                   uint                // 30
+	OnboardComplete                         bool
+	SFWListDisabled                         bool
+	ModModeEnabled                          bool
+	KvStoreRetentionDays                    uint
 }
 
 // Init check gate
@@ -3162,6 +3159,33 @@ func (config *FrontendConfig) GetPoWBailoutTimeSeconds() int {
 		return int(config.PoWBailoutTimeSeconds)
 	} else {
 		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.PoWBailoutTimeSeconds) + " Trace: " + toolbox.Trace()))
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return 0
+}
+
+func (config *FrontendConfig) GetOnboardComplete() bool {
+	config.InitCheck()
+	return config.OnboardComplete
+}
+
+func (config *FrontendConfig) GetSFWListDisabled() bool {
+	config.InitCheck()
+	return config.SFWListDisabled
+}
+
+func (config *FrontendConfig) GetModModeEnabled() bool {
+	config.InitCheck()
+	return config.ModModeEnabled
+}
+
+func (config *FrontendConfig) GetKvStoreRetentionDays() int {
+	config.InitCheck()
+	if config.KvStoreRetentionDays < night &&
+		config.KvStoreRetentionDays > 0 {
+		return int(config.KvStoreRetentionDays)
+	} else {
+		log.Fatal(invalidDataError(fmt.Sprintf("%#v", config.KvStoreRetentionDays) + " Trace: " + toolbox.Trace()))
 	}
 	log.Fatal("This should never happen." + toolbox.Trace())
 	return 0
@@ -3635,6 +3659,52 @@ func (config *FrontendConfig) SetPoWBailoutTimeSeconds(val int) error {
 	return nil
 }
 
+func (config *FrontendConfig) SetOnboardComplete(val bool) error {
+	config.InitCheck()
+	config.OnboardComplete = val
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
+func (config *FrontendConfig) SetSFWListDisabled(val bool) error {
+	config.InitCheck()
+	config.SFWListDisabled = val
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
+func (config *FrontendConfig) SetModModeEnabled(val bool) error {
+	config.InitCheck()
+	config.ModModeEnabled = val
+	commitErr := config.Commit()
+	if commitErr != nil {
+		return commitErr
+	}
+	return nil
+}
+
+func (config *FrontendConfig) SetKvStoreRetentionDays(val int) error {
+	if val > 0 {
+		config.InitCheck()
+		config.KvStoreRetentionDays = uint(val)
+		commitErr := config.Commit()
+		if commitErr != nil {
+			return commitErr
+		}
+		return nil
+	} else {
+		return invalidDataError(fmt.Sprintf("%#v", val) + " Trace: " + toolbox.Trace())
+	}
+	log.Fatal("This should never happen." + toolbox.Trace())
+	return nil
+}
+
 /*****************************************************************************/
 
 // Frontend config methods
@@ -3740,6 +3810,12 @@ func (config *FrontendConfig) BlankCheck() {
 	if config.PoWBailoutTimeSeconds == 0 {
 		config.SetPoWBailoutTimeSeconds(defaultPoWBailoutTimeSeconds)
 	}
+	// ::OnboardComplete: can be false, no need to blank check.
+	// ::SFWListDisabled: can be false, no need to blank check.
+	// ::ModModeEnabled: can be false, no need to blank check.
+	if config.KvStoreRetentionDays == 0 {
+		config.SetKvStoreRetentionDays(defaultKvStoreRetentionDays)
+	}
 }
 func (config *FrontendConfig) SanityCheck() {
 	if !config.GetInitialised() {
@@ -3766,6 +3842,7 @@ func (config *FrontendConfig) SanityCheck() {
 		config.GetMinimumVoteThresholdForElectionValidity()
 		config.GetMinimumPoWStrengths()
 		config.GetPoWBailoutTimeSeconds()
+		config.GetKvStoreRetentionDays()
 	}
 }
 
@@ -3785,9 +3862,15 @@ func (config *FrontendConfig) Commit() error {
 	configDirs := cdir.New(Ftc.OrgIdentifier, Ftc.AppIdentifier)
 	folders := configDirs.QueryFolders(cdir.Global)
 	toolbox.CreatePath(filepath.Join(folders[0].Path, "frontend"))
-	err := ioutil.WriteFile(filepath.Join(folders[0].Path, "frontend", "frontend_config.json"), confAsByte, 0644)
+	writeAheadPath := filepath.Join(folders[0].Path, "frontend", "frontend_config_writeahead.json")
+	targetPath := filepath.Join(folders[0].Path, "frontend", "frontend_config.json")
+	err := ioutil.WriteFile(writeAheadPath, confAsByte, 0644)
 	if err != nil {
 		return err
+	}
+	err2 := os.Rename(writeAheadPath, targetPath)
+	if err2 != nil {
+		return err2
 	}
 	return nil
 }

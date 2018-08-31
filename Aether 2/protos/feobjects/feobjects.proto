@@ -23,7 +23,7 @@ message CompiledBoardEntity {
   bool Subscribed = 14;
   bool Notify = 15;
   int64 LastSeen = 16;
-  bool Whitelisted = 17;
+  bool SFWListed = 17;
 }
 
 message CompiledThreadEntity {
@@ -38,8 +38,9 @@ message CompiledThreadEntity {
   int64 Creation = 9;
   int64 LastUpdate = 10;
   string Meta = 11;
-  repeated CompiledPostEntity ChildPosts = 12;
+  repeated CompiledPostEntity Children = 12;
   int32 PostsCount = 13;
+  double Score = 14; // double == float64
 }
 
 message CompiledPostEntity {
@@ -90,6 +91,10 @@ message CompiledContentSignalsEntity {
   bool ModBlocked = 17;
   bool ModApproved = 18;
   int64 LastRefreshed = 19;
+  bool SelfModApproved = 20;
+  bool SelfModBlocked = 21;
+  bool SelfModIgnored = 22;
+  bool SelfReported = 23;
 }
 
 message ExplainedSignalEntity {
@@ -122,4 +127,82 @@ message AmbientBoardEntity {
   string Name = 2;
   int64 LastUpdate = 3;
   int64 LastSeen = 4;
+  bool Notify = 5;
+}
+
+/*----------  Ambient status messages  ----------*/
+
+// This is the status of the backend and what it is doing
+message BackendAmbientStatus {
+  /*----------  NETWORK  ----------*/
+  /*----------  Inbounds  ----------*/
+  int64 LastInboundConnTimestamp = 1;
+  int32 InboundsCount15 = 2;
+  /*----------  Outbounds  ----------*/
+  int64 LastOutboundConnTimestamp = 3;
+  int32 OutboundsCount15 = 4;
+  int32 LastOutboundDurationSeconds = 5;
+  /*----------  Misc  ----------*/
+  string LocalNodeExternalIP = 6;
+  int32 LocalNodeExternalPort = 7;
+  string UPNPStatus = 8;
+  /*----------  DATABASE  ----------*/
+  string DatabaseStatus = 9;
+  int64 DbSizeMb = 10;
+  int64 MaxDbSizeMb = 11;
+  int64 LastDbInsertTimestamp = 12;
+  int32 LastInsertDurationSeconds = 13;
+  /*----------  CACHING  ----------*/
+  string CachingStatus = 14;
+  int64 LastCacheGenerationTimestamp = 15;
+  int32 LastCacheGenerationDurationSeconds = 16;
+  /*----------  CONFIG LOCATION  ----------*/
+  string BackendConfigLocation = 17;
+
+}
+
+/*----------  Frontend status messages  ----------*/
+/*
+  This is fragmented over a few message types. This is because when we push a message, we want to know which parts of the message we should care about. In other words, pushing an ambient status to the client should not mean that we lose backend status data since those would be unset. If you use primitive types, then there is no way to determine if a field is set but set to zero, or if it was not set at all. When you split to messages, you can determine whether a message is present.
+
+  Anything in the same message though, they need to be set together, because their absence is indistinguishable from the zero value.
+*/
+
+message FrontendAmbientStatus {
+  string RefresherStatus = 1;
+  int64 LastRefreshTimestamp = 2;
+  int32 LastRefreshDurationSeconds = 3;
+  string FrontendConfigLocation = 4;
+  bool SFWListDisabled = 5;
+
+}
+
+/*----------  Notifications  ----------*/
+
+enum NotificationType {
+  UNKNOWN_NOTIFICATION_TYPE = 0;
+  REPLY_TO_THREAD = 1;
+  REPLY_TO_POST = 2;
+}
+
+message CompiledNotification {
+  NotificationType Type = 1;
+  string Text = 2;
+  repeated string ResponsePosts = 3;
+  CompiledThreadEntity ParentThread = 4;
+  CompiledPostEntity ParentPost = 5;
+  int64 CreationTimestamp = 6;
+  int64 NewestResponseTimestamp = 7;
+  bool Read = 8;
+}
+
+
+/*----------  Reports tab entry  ----------*/
+
+message ReportsTabEntry {
+  string Fingerprint = 1;
+  CompiledBoardEntity BoardPayload = 2;
+  CompiledThreadEntity ThreadPayload = 3;
+  CompiledPostEntity PostPayload = 4;
+  int64 Timestamp = 5;
 }

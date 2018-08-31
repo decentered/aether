@@ -10,7 +10,7 @@ import "mimapi/structprotos.proto";
 
 // These "Set", "Get" verbs are written from the viewpoint of the consumer of this api.
 service FrontendAPI {
-  rpc BackendReady(BEReadyRequest) returns (BEReadyResponse) {}
+  /*----------  Methods used by client  ----------*/
   rpc SetClientAPIServerPort(SetClientAPIServerPortRequest) returns (SetClientAPIServerPortResponse) {}
   rpc GetThreadAndPosts(ThreadAndPostsRequest) returns (ThreadAndPostsResponse) {}
   rpc GetBoardAndThreads(BoardAndThreadsRequest) returns (BoardAndThreadsResponse) {}
@@ -21,6 +21,22 @@ service FrontendAPI {
   rpc SendSignalEvent(SignalEventPayload) returns (SignalEventResponse) {}
   rpc GetUncompiledEntityByKey(UncompiledEntityByKeyRequest) returns (UncompiledEntityByKeyResponse) {}
   rpc SendInflightsPruneRequest(InflightsPruneRequest) returns (InflightsPruneResponse) {}
+  rpc RequestAmbientStatus(AmbientStatusRequest) returns (AmbientStatusResponse) {}
+  // ^ Client requests ambient status to be sent in.
+  rpc RequestHomeView(HomeViewRequest) returns (HomeViewResponse) {}
+  rpc RequestPopularView(PopularViewRequest) returns (PopularViewResponse) {}
+  rpc RequestNotifications(NotificationsRequest) returns (NotificationsResponse) {}
+  rpc SetNotificationsSignal(NotificationsSignalPayload) returns (NotificationsSignalResponse) {}
+  // rpc RequestOnboardCompleteStatus(OnboardCompleteStatusRequest) returns (OnboardCompleteStatusResponse) {}
+  rpc SetOnboardComplete(OnboardCompleteRequest) returns (OnboardCompleteResponse) {}
+  rpc SendAddress(SendAddressPayload) returns (SendAddressResponse) {}
+  rpc SendFEConfigChanges(FEConfigChangesPayload) returns (FEConfigChangesResponse) {}
+  rpc RequestBoardReports(BoardReportsRequest) returns (BoardReportsResponse) {}
+
+  /*----------  Methods used by backend  ----------*/
+  rpc BackendReady(BEReadyRequest) returns (BEReadyResponse) {}
+  rpc SendBackendAmbientStatus(BackendAmbientStatusPayload) returns (BackendAmbientStatusResponse) {}
+  // ^ Backend sends in the backend ambient status to frontend
 }
 
 message BEReadyRequest {
@@ -54,6 +70,7 @@ message ThreadAndPostsResponse {
 
 message BoardAndThreadsRequest {
   string BoardFingerprint = 1;
+  bool SortThreadsByNew = 2;
 }
 
 message BoardAndThreadsResponse {
@@ -153,18 +170,19 @@ enum SignalType {
   // MA
   MODBLOCK = 4;
   MODAPPROVE = 5;
+  MODIGNORE = 6;
   // PT: Aggregate
-  FOLLOW = 6;
-  BLOCK = 7;
+  FOLLOW = 7;
+  BLOCK = 8;
   // Naming
-  NAME_ASSIGN = 8;
+  NAME_ASSIGN = 9;
   // F451
-  CENSOR_ASSIGN = 9;
+  CENSOR_ASSIGN = 10;
   // PE: Aggregate
-  ELECT = 10;
-  DISQUALIFY = 11;
+  ELECT = 11;
+  DISQUALIFY = 12;
   // General
-  RETRACT = 12; // If this is given, the vote is retracted, but the opposite vote, if present, is not cast. So this would be removing an upvote, for example, but not downvoting. This is only defined on non-aggregates.
+  RETRACT = 13; // If this is given, the vote is retracted, but the opposite vote, if present, is not cast. So this would be removing an upvote, for example, but not downvoting. This is only defined on non-aggregates.
 }
 
 
@@ -185,6 +203,7 @@ message SignalEventPayload {
 }
 
 message SignalEventResponse {}
+
 
 /*----------  Uncompiled entity req/resp  ----------*/
 
@@ -214,6 +233,7 @@ message UncompiledEntityByKeyResponse{
   repeated structprotos.Truststate Truststates = 7;
 }
 
+
 /*----------  Inflights prune req/resp  ----------*/
 
 /*
@@ -222,3 +242,82 @@ message UncompiledEntityByKeyResponse{
 
 message InflightsPruneRequest {}
 message InflightsPruneResponse {}
+
+
+/*----------  Backend ambient status delivery to the frontend  ----------*/
+
+message BackendAmbientStatusPayload{
+  feobjects.BackendAmbientStatus BackendAmbientStatus = 1;
+}
+
+message BackendAmbientStatusResponse{}
+
+
+/*----------  Ambient status request / resp  ----------*/
+/*
+  These are useful because they allow the client to ask for ambient status in the case it refreshes. This is useful for the status entity.
+*/
+message AmbientStatusRequest {}
+message AmbientStatusResponse {}
+
+
+/*----------  Requests for views  ----------*/
+
+message HomeViewRequest{}
+message HomeViewResponse{}
+
+message PopularViewRequest{}
+message PopularViewResponse{}
+
+
+/*----------  Requests for notifications  ----------*/
+
+message NotificationsRequest{}
+message NotificationsResponse{}
+
+/*----------  Notifications  ----------*/
+
+message NotificationsSignalPayload {
+  bool Seen = 1;
+  string ReadItemFingerprint = 2; // If given, that item was read + seen is set.
+}
+message NotificationsSignalResponse {}
+
+/*----------  Onboard complete signal  ----------*/
+
+message OnboardCompleteRequest {
+  bool OnboardComplete = 1;
+}
+
+message OnboardCompleteResponse {
+}
+
+/*----------  Send address API  ----------*/
+
+message SendAddressPayload {
+  structprotos.Address Address = 1;
+}
+message SendAddressResponse {
+  int32 StatusCode = 1;
+  string ErrorMessage = 2;
+}
+
+/*----------  FE config changes   ----------*/
+/*
+  The structure of this is that the keys here should be named identically to the keys that they affect in FEconfig. And we only adjust the keys if they are actually set.
+*/
+
+message FEConfigChangesPayload{
+  bool ModModeEnabledIsSet = 1;
+  bool ModModeEnabled = 2;
+}
+message FEConfigChangesResponse{}
+
+/*----------  Board reports  ----------*/
+
+message BoardReportsRequest {
+  string BoardFingerprint = 1;
+}
+message BoardReportsResponse {
+  repeated feobjects.ReportsTabEntry ReportsTabEntries = 1;
+}

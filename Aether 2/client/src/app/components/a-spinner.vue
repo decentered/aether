@@ -1,10 +1,13 @@
 <template>
   <div class="spinner" v-show="visible">
-    <template v-if="hideText">
+    <!-- <template v-if="hidetext">
       <vue-simple-spinner class="spinner-style narrow-container" :spacing="7" message="" :speed="0.33"></vue-simple-spinner>
     </template>
     <template v-else>
       <vue-simple-spinner class="spinner-style" :spacing="7" message="Loading" :speed="0.33"></vue-simple-spinner>
+    </template> -->
+    <template>
+      <vue-simple-spinner class="spinner-style narrow-container" :spacing="7" message="" :speed="0.33"></vue-simple-spinner>
     </template>
   </div>
 </template>
@@ -17,7 +20,7 @@
         type: Number,
         default: 100
       },
-      hideText: {
+      hidetext: {
         type: Boolean,
         default: false
       },

@@ -22,8 +22,9 @@
         LOAD MORE
               </a>
         </div>
-        <a-no-content no-content-text="There doesn't seem to be any content of this sort for this user in retained history." quoteDisabled="true" v-if="boardsList.length === 0 && inflightCreates.length === 0">
+        <a-no-content no-content-text="No communities created in retained history." quoteDisabled="true" v-if="boardsList.length === 0 && inflightCreates.length === 0">
         </a-no-content>
+        <a-fin-puck v-show="!loadMoreVisible"></a-fin-puck>
       </template>
     </div>
   </div>
@@ -59,10 +60,7 @@
         return inflightCreates
       },
       isSelf(this: any) {
-        if (globalMethods.IsUndefined(this.$store.state.currentUserEntity)) {
-          return false
-        }
-        if (globalMethods.IsUndefined(this.$store.state.localUser)) {
+        if (globalMethods.IsUndefined(this.$store.state.currentUserEntity) || globalMethods.IsUndefined(this.$store.state.localUser)) {
           return false
         }
         if (this.$store.state.currentUserEntity.fingerprint !== this.$store.state.localUser.fingerprint) {
@@ -135,5 +133,9 @@
     .load-more-button {
       margin: auto;
     }
+  }
+
+  .board-entity {
+    border-bottom: none;
   }
 </style>

@@ -5,9 +5,11 @@ package beapiserver
 
 import (
 	// "aether-core/services/globals"
+	"aether-core/backend/dispatch"
 	"aether-core/io/api"
 	"aether-core/io/persistence"
 	pb "aether-core/protos/beapi"
+	"aether-core/services/create"
 	"aether-core/services/logging"
 	// "google.golang.org/grpc"
 	// "google.golang.org/grpc/reflection"
@@ -243,6 +245,8 @@ func requestAllowed(req interface{}) bool {
 		return true
 	case *pb.MintedContentPayload:
 		return true
+	case *pb.ConnectToRemoteRequest:
+		return true
 	default:
 		return false
 	}
@@ -265,7 +269,7 @@ func (s *server) GetBoardThreadsCount(
 // GetThreadPostsCount counts all posts in a thread without a time limit. This will give you all stuff that is available in the local memory. The results of this is not cached, so it will directly hit the backend. If you do this in too many parallel threads, the backend will start to send you 'connection refused's as you exceed the maximum number of simultaneous connections. Be careful with that.
 func (s *server) GetThreadPostsCount(
 	ctx context.Context, req *pb.ThreadPostsCountRequest) (*pb.ThreadPostsCountResponse, error) {
-	resp := pb.ThreadPostsCountResponse{Count: 0}
+	resp := pb.ThreadPostsCountResponse{Status: &pb.Status{}, Count: 0}
 	if !requestAllowed(req) {
 		resp.Status.StatusCode = 401 // HTTP 401 Unauthorised
 		return &resp, nil
@@ -360,6 +364,7 @@ func (s *server) SendMintedContent(
 	addressesProto := req.GetAddresses()
 	if len(addressesProto) > 0 {
 		logging.LogCrashf("Addresses insert is not yet implemented.")
+		// todo: this should only work if the data is coming from the admin frontend.
 	}
 	// for k, _ := range addressesProto {
 	// 	e := api.Address{}
@@ -376,4 +381,38 @@ func (s *server) SendMintedContent(
 	persistence.BatchInsert(allItems)
 	resp.Status.StatusCode = 200
 	return &resp, nil
+}
+
+// SendConnectToRemoteRequest is a request from an admin frontend asking the backend to connect to a specific remote node. This triggers a sync with that remote immediately, pending completion of any existing sync.
+func (s *server) SendConnectToRemoteRequest(
+	ctx context.Context, req *pb.ConnectToRemoteRequest) (*pb.ConnectToRemoteResponse, error) {
+	resp := pb.ConnectToRemoteResponse{Status: &pb.Status{}}
+	if !requestAllowed(req) {
+		resp.Status.StatusCode = 401 // HTTP 401 Unauthorised
+		return &resp, nil
+	}
+	logging.Logf(1, "Backend received a connect request to a remote node. Addr: %#v", req.GetAddress())
+	addr := constructDirectConnectAddress(
+		req.GetAddress().GetLocation(),
+		req.GetAddress().GetSublocation(),
+		int(req.GetAddress().GetPort()))
+	err := dispatch.Sync(addr, []string{}, nil)
+	if err != nil {
+		resp.Status.StatusCode = 503 // Service unavailable
+		resp.Status.ErrorMessage = err.Error()
+		return &resp, nil
+	}
+	resp.Status.StatusCode = 200
+	return &resp, nil
+}
+
+func constructDirectConnectAddress(loc, subloc string, port int) api.Address {
+	subprots := []api.Subprotocol{api.Subprotocol{"c0", 1, 0, []string{"board", "thread", "post", "vote", "key", "truststate"}}}
+	addr, err := create.CreateAddress(api.Location(loc), api.Location(subloc), 4, uint16(port), 2, 1, 1, 1, 0, subprots, 2, 0, 0, "Aether", "")
+	if err != nil {
+		logging.Logf(1, "Constructing direct connect address in response to a connect request from the frontend failed. Error: %v", err)
+		return api.Address{}
+	}
+	addr.SetVerified(true)
+	return addr
 }

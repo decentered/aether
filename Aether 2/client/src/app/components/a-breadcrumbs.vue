@@ -36,9 +36,9 @@
   }
 
   .breadcrumb {
-    font-family: "SSP Semibold";
+    font-family: "SSP Semibold"; // letter-spacing: 0.3px;
     padding-left: 9px;
-    padding-right: 9px;
+    padding-right: 11px;
     height: 38px;
     position: relative;
     left: -3px;
@@ -62,7 +62,7 @@
   }
 
   .breadcrumb.root .breadcrumb-text {
-    padding-left: 2px;
+    padding-left: 5px;
   }
 
   .soft-chevron {
@@ -72,7 +72,8 @@
 
   .breadcrumb-text {
     padding-top: 7px;
-    padding-left: 4px;
+    color: $a-grey-800;
+    padding-left: 12px;
   }
 
   .root-img {

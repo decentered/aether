@@ -85,12 +85,12 @@ var mutations = {
         // Find board in the store and change the state appropriately.
         for (var i = 0; i < state.allBoards.length; i++) {
             (function (i) {
-                if (state.allBoards[i].Fingerprint === payload.fp) {
+                if (state.allBoards[i].fingerprint === payload.fp) {
                     if (typeof payload.subbed !== 'undefined') {
-                        state.allBoards[i].Subscribed = payload.subbed;
+                        state.allBoards[i].subscribed = payload.subbed;
                     }
                     if (typeof payload.notify !== 'undefined') {
-                        state.allBoards[i].Notify = payload.notify;
+                        state.allBoards[i].notify = payload.notify;
                     }
                     // if (typeof payload.lastseen !== 'undefined') {
                     //   state.allBoards[i].LastSeen = payload.lastseen
@@ -99,16 +99,13 @@ var mutations = {
             })(i);
         }
         // Take a look at the currentBoard and if it's the same fp as the one we're subbing to, change its state as well.
-        if (state.currentBoard.Fingerprint === payload.fp) {
+        if (state.currentBoard.fingerprint === payload.fp) {
             if (typeof payload.subbed !== 'undefined') {
-                state.currentBoard.Subscribed = payload.subbed;
+                state.currentBoard.subscribed = payload.subbed;
             }
             if (typeof payload.notify !== 'undefined') {
-                state.currentBoard.Notify = payload.notify;
+                state.currentBoard.notify = payload.notify;
             }
-            // if (typeof payload.lastseen !== 'undefined') {
-            //   state.allBoards[i].LastSeen = payload.lastseen
-            // }
         }
     },
 };

@@ -28,6 +28,7 @@ service BackendAPI {
   rpc GetBoardThreadsCount(BoardThreadsCountRequest) returns (BoardThreadsCountResponse) {}
   rpc GetThreadPostsCount(ThreadPostsCountRequest) returns (ThreadPostsCountResponse) {}
   rpc SendMintedContent(MintedContentPayload) returns (MintedContentResponse) {}
+  rpc SendConnectToRemoteRequest(ConnectToRemoteRequest) returns (ConnectToRemoteResponse) {}
 }
 
 // Sub-messages
@@ -48,6 +49,7 @@ message RequesterId {
 
 message Status {
   int32 StatusCode = 1;
+  string ErrorMessage = 2;
 }
 
 // Filters main carrier
@@ -188,5 +190,16 @@ message MintedContentPayload {
 }
 
 message MintedContentResponse {
+  Status Status = 1;
+}
+
+/*----------  Connect to remote req/resp  ----------*/
+
+message ConnectToRemoteRequest {
+  RequesterId RequesterId = 1;
+  structprotos.Address Address = 2;
+}
+
+message ConnectToRemoteResponse {
   Status Status = 1;
 }

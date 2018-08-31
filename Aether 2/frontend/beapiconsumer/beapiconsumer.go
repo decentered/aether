@@ -118,6 +118,9 @@ func GetPosts(start, end int64, fingerprints []string, parentfp, parenttype stri
 		if parenttype == "post" {
 			cq.Post_Parent = parentfp
 		}
+		if parenttype == "board" {
+			cq.Post_Board = parentfp
+		}
 		result := queryPostsCache(cq)
 		if !readFromBackendIfEmpty {
 			return result
@@ -513,4 +516,21 @@ func SendMintedContent(req *pb.MintedContentPayload) (statusCode int) {
 	}
 	r := int(resp.GetStatus().GetStatusCode())
 	return r
+}
+
+/*----------  Backend send connect request  ----------*/
+
+func SendConnectToRemoteRequest(req *pb.ConnectToRemoteRequest) (statusCode int, errorMessage string) {
+	c, conn := StartBackendAPIConnection()
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), globals.FrontendConfig.GetGRPCServiceTimeout())
+	defer cancel()
+	req.RequesterId = createRequesterId()
+	resp, err := c.SendConnectToRemoteRequest(ctx, req)
+	if err != nil {
+		logging.Logf(1, "SendConnectToRemoteRequest encountered an error. Error: %v", err)
+	}
+	r := int(resp.GetStatus().GetStatusCode())
+	errMessage := resp.GetStatus().GetErrorMessage()
+	return r, errMessage
 }

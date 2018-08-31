@@ -4,6 +4,7 @@
 package upnp
 
 import (
+	"aether-core/backend/feapiconsumer"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
 	"fmt"
@@ -15,11 +16,15 @@ import (
 // var err error
 
 func MapPort() {
+	feapiconsumer.BackendAmbientStatus.UPNPStatus = "In progress"
+	feapiconsumer.SendBackendAmbientStatus()       // send first state
+	defer feapiconsumer.SendBackendAmbientStatus() // send end state
 	// External port verification has moved to the start of the main routine, so we do no longer need to do that here. We can assume that at this point, the external port is verified.
 	router, err := extUpnp.Discover()
 	if err != nil {
 		// Either could not be found, or connected to the internet directly.
 		logging.Log(1, fmt.Sprintf("A router to port map could not be found. This computer could be directly connected to the Internet without a router. Error: %s", err.Error()))
+		feapiconsumer.BackendAmbientStatus.UPNPStatus = "Mapping failed, no router found (or uncooperative)"
 		return
 	}
 	// extIp, err2 := router.ExternalIP() // todo disabled for testing
@@ -35,6 +40,9 @@ func MapPort() {
 	if err3 != nil {
 		// Router is there, but port mapping failed.
 		logging.Log(1, fmt.Sprintf("In an attempt to port map, the router was found, but the port mapping failed for the backend port. Error: %s", err3.Error()))
+		feapiconsumer.BackendAmbientStatus.UPNPStatus = "Mapping failed, router did not accept"
+		return
+		// (We can return here, because if the external port mapping [serving other nodes] has failed, there is no point in attempting to map the port that serves the frontend)
 	}
 	logging.Log(1, fmt.Sprintf("Port mapping was successful. We mapped backend port %d to this computer.", globals.BackendConfig.GetExternalPort()))
 
@@ -44,10 +52,12 @@ func MapPort() {
 		if err4 != nil {
 			// Router is there, but port mapping failed.
 			logging.Log(1, fmt.Sprintf("In an attempt to port map, the router was found, but the port mapping failed for the Backend API port. Error: %s", err3.Error()))
+			feapiconsumer.BackendAmbientStatus.UPNPStatus = "Mapping failed, router did not accept"
+			return
 		}
 		logging.Log(1, fmt.Sprintf("Port mapping was successful. We mapped backend API port %d to this computer.", globals.BackendConfig.GetBackendAPIPort()))
 	}
-
+	feapiconsumer.BackendAmbientStatus.UPNPStatus = "Successful"
 }
 
 // func UnmapPort() {

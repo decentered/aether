@@ -10,35 +10,34 @@
             New Thread
           </template>
           <template v-else>
-            b/{{ $store.state.currentBoard.name }}
+            {{ $store.state.currentBoard.name }}
           </template>
         </div>
       </div>
     </div>
     <div class="flex-carrier">
       <div class="board-actions-container">
-        <a class="button is-warning is-outlined notifications-button" hasTooltip title="Notifications on, click to turn off" @click="silenceBoard({'fp':$store.state.currentBoard.fingerprint})" v-show="$store.state.currentBoard.subscribed && $store.state.currentBoard.notify">
-          <icon name="bell"></icon>
-        </a>
 
-        <a class="button is-warning is-outlined notifications-button" hasTooltip title="Notifications off, click to turn on" @click="unsilenceBoard({'fp':$store.state.currentBoard.fingerprint})" v-show="$store.state.currentBoard.subscribed && !$store.state.currentBoard.notify">
-          <icon name="regular/bell-slash"></icon>
-        </a>
-
-        <a class="button is-danger" hasTooltip title="Subscribe" @click="subToBoard({'fp':$store.state.currentBoard.fingerprint, 'notify':true})" v-show="!$store.state.currentBoard.subscribed">
+        <a class="button is-danger is-outlined" hasTooltip title="Subscribe" @click="subToBoard({'fp':$store.state.currentBoard.fingerprint, 'notify':true})" v-show="!$store.state.currentBoard.subscribed">
           SUB <span class="in-button-icon">
             <icon name="plus" ></icon>
           </span>
         </a>
-
-        <a class="button is-danger is-outlined" @click="unsubFromBoard({'fp':$store.state.currentBoard.fingerprint})" hasTooltip title="Unsubscribe" v-show="$store.state.currentBoard.subscribed">
-          UNSUB <span class=" in-button-icon">
-            <icon name="minus" ></icon>
-          </span>
+        <a class="button is-outlined unsub-button" @click="unsubFromBoard({'fp':$store.state.currentBoard.fingerprint})" hasTooltip title="Unsubscribe" v-show="$store.state.currentBoard.subscribed">
+          SUBBED
         </a>
+
+        <a class="button is-warning notifications-button is-outlined" hasTooltip title="Notifications on, click to turn off" @click="silenceBoard({'fp':$store.state.currentBoard.fingerprint})" v-show="$store.state.currentBoard.subscribed && $store.state.currentBoard.notify">
+          <icon name="bell"></icon>
+        </a>
+        <a class="button is-warning is-outlined notifications-button" hasTooltip title="Notifications off, click to turn on" @click="unsilenceBoard({'fp':$store.state.currentBoard.fingerprint})" v-show="$store.state.currentBoard.subscribed && !$store.state.currentBoard.notify">
+          <icon name="regular/bell-slash"></icon>
+        </a>
+
         <template v-if="!localUserReadOnly">
-          <router-link :to="'/board/'+$store.state.currentBoard.fingerprint+'/newthread'" class="button is-info is-outlined" hasTooltip title="Create a new thread" :disabled="newThreadButtonDisabled">NEW THREAD</router-link>
+          <router-link :to="'/board/'+$store.state.currentBoard.fingerprint+'/newthread'" class="button is-primary is-outlined" hasTooltip title="Create a new thread" :disabled="newThreadButtonDisabled">NEW THREAD</router-link>
         </template>
+
       </div>
     </div>
   </div>
@@ -80,7 +79,7 @@
       Tooltips.Mount()
     },
     updated() {
-      Tooltips.Mount()
+      // Tooltips.Mount()
     }
   }
 </script>
@@ -96,6 +95,7 @@
     height: 175px; // background-color: $dark-base*0.95;
     border-bottom: 1px solid rgba(0, 0, 0, 0.25);
     display: flex;
+    background-color: $a-grey-200*0.5;
   }
 
   .flex-carrier {
@@ -145,6 +145,15 @@
     svg {
       width: 18px;
       height: 16px;
+    }
+  }
+
+  .unsub-button {
+    background-color: $a-transparent;
+    color: $a-grey-800;
+    &:hover {
+      background-color: $a-grey-800;
+      color: $mid-base;
     }
   }
 </style>

@@ -368,11 +368,13 @@ func Fetch(host string, subhost string, port uint16, location string, method str
 					", ReverseConn: ", fmt.Sprintf("%#v", reverseConn)))
 		} else {
 			// FUTURE: This should be very rare, since we cover the major cases above. If this happens, we should log.
-			logging.Logf(1, "An unknown error occurred in Fetch. This fetch is terminated. Error: %v \nEnvironment:\n Host: %v, Subhost: %v, Port: %v, Location: %v, Method: %v, POSTBody: %v, ReverseConn: %s", err, host, subhost, port, location, method, postBody, fmt.Sprintf("%#v", reverseConn))
+			errorStr := fmt.Sprintf("An unknown error occurred in Fetch. This fetch is terminated. Error: %v \nEnvironment:\n Host: %v, Subhost: %v, Port: %v, Location: %v, Method: %v, POSTBody: %v, ReverseConn: %s", err, host, subhost, port, location, method, postBody, fmt.Sprintf("%#v", reverseConn))
+			logging.Logf(1, errorStr)
 			// fmt.Println("Fatal error in api.Fetch. Quitting.")
 			// fmt.Printf("Environment: Host: %v, Subhost: %v, Port: %v, Location: %v, Method: %v, POSTBody: %v, ReverseConn: %s\n", host, subhost, port, location, method, postBody, fmt.Sprintf("%#v", reverseConn))
 			// fmt.Println(err)
 			// logging.LogCrash(err)
+			return []byte{}, errors.New(errorStr)
 		}
 	}
 	// server gave HTTP response to HTTPS client

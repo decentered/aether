@@ -37,10 +37,8 @@
           </span>
         </a>
 
-        <a class="button is-danger is-outlined" @click.prevent="unsubFromBoard({'fp':boardFingerprint})" hasTooltip title="Unsubscribe" v-show="board.subscribed">
-          UNSUB <span class=" in-button-icon">
-            <icon name="minus" ></icon>
-          </span>
+        <a class="button is-outlined unsub-button" @click.prevent="unsubFromBoard({'fp':boardFingerprint})" hasTooltip title="Unsubscribe" v-show="board.subscribed">
+          SUBBED
         </a>
       </div>
     </div>
@@ -240,6 +238,15 @@
       svg {
         height: 11px;
       }
+    }
+  }
+
+  a.unsub-button {
+    background-color: $a-transparent;
+    color: $a-grey-800;
+    &:hover {
+      background-color: $a-grey-800;
+      color: $mid-base;
     }
   }
 </style>

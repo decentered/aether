@@ -56,6 +56,8 @@ func DeliverAmbients() {
 	}
 }
 
+var ClientIsReadyForConnections bool
+
 func SendAmbientStatus(cas *pb.AmbientStatusPayload) {
 	logging.Logf(1, "SendAmbientStatus is called")
 	if cas != nil {
@@ -67,7 +69,9 @@ func SendAmbientStatus(cas *pb.AmbientStatusPayload) {
 	ctx, cancel := context.WithTimeout(context.Background(), globals.FrontendConfig.GetGRPCServiceTimeout())
 	defer cancel()
 	payload := globals.FrontendTransientConfig.CurrentAmbientStatus
+	// logging.Logf(1, "flag 1")
 	_, err := c.SendAmbientStatus(ctx, &payload)
+	// logging.Logf(1, "flag 2")
 	if err != nil {
 		logging.Logf(1, "SendAmbientStatus encountered an error. Err: %v", err)
 	}
@@ -75,7 +79,7 @@ func SendAmbientStatus(cas *pb.AmbientStatusPayload) {
 
 // updateAmbientStatus partially updates the parts of the live ambient status. So effectively if you make an update to the inflights, this one makes it so that the update doesn't delete the existing but older ambient statuses from backend and frontend.
 func updateAmbientStatus(currentAmbientStatus *pb.AmbientStatusPayload) {
-	as := pb.AmbientStatusPayload{}
+	as := globals.FrontendTransientConfig.CurrentAmbientStatus
 	if bas := currentAmbientStatus.GetBackendAmbientStatus(); bas != nil {
 		as.BackendAmbientStatus = bas
 	}
@@ -86,7 +90,7 @@ func updateAmbientStatus(currentAmbientStatus *pb.AmbientStatusPayload) {
 		as.Inflights = ifl
 	}
 	globals.FrontendTransientConfig.CurrentAmbientStatus = as
-	logging.Logf(1, "Current ambient status: %v", as)
+	// logging.Logf(1, "Current ambient status: %v", as)
 }
 
 /*----------  Ambient Local User Data  ----------*/
@@ -142,4 +146,109 @@ func PushLocalUserAmbient() {
 	uproto := u.Protobuf()
 	SendAmbientLocalUserEntity(localUserExists, uproto)
 	return
+}
+
+var FrontendAmbientStatus feobjects.FrontendAmbientStatus
+
+func SendFrontendAmbientStatus() {
+	if len(FrontendAmbientStatus.FrontendConfigLocation) == 0 {
+		FrontendAmbientStatus.FrontendConfigLocation = globals.GetFrontendConfigLocation()
+	}
+	FrontendAmbientStatus.SFWListDisabled = globals.FrontendConfig.GetSFWListDisabled()
+	as := pb.AmbientStatusPayload{
+		FrontendAmbientStatus: &FrontendAmbientStatus,
+	}
+	SendAmbientStatus(&as)
+}
+
+/*----------  Views senders  ----------*/
+
+func SendHomeView() {
+	logging.Logf(1, "SendHomeView is called")
+	c, conn := StartClientAPIConnection()
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), globals.FrontendConfig.GetGRPCServiceTimeout())
+	defer cancel()
+	hvc := festructs.HomeViewCarrier{}
+	err := globals.KvInstance.One("Id", 1, &hvc)
+	if err != nil {
+		logging.Logf(1, "Home view fetch in SendHomeView encountered an error. Error: ", err)
+		return
+	}
+	thr := []*feobjects.CompiledThreadEntity{}
+	for k, _ := range hvc.Threads {
+		thr = append(thr, hvc.Threads[k].Protobuf())
+	}
+	hvp := pb.HomeViewPayload{Threads: thr}
+	_, err2 := c.SendHomeView(ctx, &hvp)
+	if err2 != nil {
+		logging.Logf(1, "SendHomeView encountered an error. Err: %v", err2)
+	}
+}
+
+func SendPopularView() {
+	logging.Logf(1, "SendPopularView is called")
+	c, conn := StartClientAPIConnection()
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), globals.FrontendConfig.GetGRPCServiceTimeout())
+	defer cancel()
+	hvc := festructs.PopularViewCarrier{}
+	err := globals.KvInstance.One("Id", 1, &hvc)
+	if err != nil {
+		logging.Logf(1, "Popular view fetch in SendPopularView encountered an error. Error: %v", err)
+		return
+	}
+	thr := []*feobjects.CompiledThreadEntity{}
+	for k, _ := range hvc.Threads {
+		thr = append(thr, hvc.Threads[k].Protobuf())
+	}
+	hvp := pb.PopularViewPayload{Threads: thr}
+	_, err2 := c.SendPopularView(ctx, &hvp)
+	if err2 != nil {
+		logging.Logf(1, "SendPopularView encountered an error. Err: %v", err2)
+	}
+}
+
+func SendNotifications() {
+	logging.Logf(1, "SendNotifications is called")
+	c, conn := StartClientAPIConnection()
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), globals.FrontendConfig.GetGRPCServiceTimeout())
+	defer cancel()
+	nList, lastSeen := festructs.NotificationsSingleton.Listify()
+	nListProto := nList.Protobuf()
+	notifications := pb.NotificationsPayload{Notifications: nListProto, LastSeen: lastSeen}
+	_, err2 := c.SendNotifications(ctx, &notifications)
+	if err2 != nil {
+		logging.Logf(1, "SendNotifications encountered an error. Err: %v", err2)
+	}
+}
+
+/*----------  Onboarding  ----------*/
+
+func SendOnboardCompleteStatus() {
+	logging.Logf(1, "SendOnboardCompleteStatus is called")
+	c, conn := StartClientAPIConnection()
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), globals.FrontendConfig.GetGRPCServiceTimeout())
+	defer cancel()
+	resp := pb.OnboardCompleteStatusPayload{OnboardComplete: globals.FrontendConfig.GetOnboardComplete()}
+	_, err2 := c.SendOnboardCompleteStatus(ctx, &resp)
+	if err2 != nil {
+		logging.Logf(1, "SendOnboardCompleteStatus encountered an error. Err: %v", err2)
+	}
+}
+
+/*----------  Mod mode enabled status  ----------*/
+func SendModModeEnabledStatus() {
+	logging.Logf(1, "SendModModeEnabledStatus is called")
+	c, conn := StartClientAPIConnection()
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), globals.FrontendConfig.GetGRPCServiceTimeout())
+	defer cancel()
+	resp := pb.ModModeEnabledStatusPayload{ModModeEnabled: globals.FrontendConfig.GetModModeEnabled()}
+	_, err2 := c.SendModModeEnabledStatus(ctx, &resp)
+	if err2 != nil {
+		logging.Logf(1, "SendModModeEnabledStatus encountered an error. Err: %v", err2)
+	}
 }

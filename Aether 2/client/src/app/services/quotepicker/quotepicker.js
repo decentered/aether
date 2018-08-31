@@ -101,7 +101,7 @@ var quotes = [
     },
     {
         Quote: 'A common mistake people make when trying to design something completely foolproof is to underestimate the ingenuity of complete fools.',
-        Author: 'Douglas Adams, Hitchhiker’s Guide to the Galaxy'
+        Author: 'Hitchhiker’s Guide to the Galaxy, Douglas Adams'
     },
     {
         Quote: 'A little learning is a dangerous thing; Drink deep, or taste not the Pierian spring.',
@@ -129,11 +129,11 @@ var quotes = [
     },
     {
         Quote: 'You get what anybody gets — you get a lifetime.',
-        Author: 'Neil Gaiman, Sandman: Preludes and Nocturnes'
+        Author: 'Sandman: Preludes and Nocturnes, Neil Gaiman'
     },
     {
-        Quote: ' ‘All that is gold does not glitter, <br>Not all those who wander are lost; <br>The old that is strong does not wither, <br>Deep roots are not reached by the frost.’',
-        Author: 'J.R.R. Tolkien, Fellowship of the Ring'
+        Quote: ' ‘All that is gold does not glitter, <br>Not all those who wander are lost; <br>The old that is strong does not wither, <br>Deep roots are not reached by the frost’',
+        Author: 'Fellowship of the Ring, J.R.R. Tolkien'
     },
     {
         Quote: 'I’d rather be a rising ape than a falling angel.',
@@ -141,11 +141,11 @@ var quotes = [
     },
     {
         Quote: 'In the beginning, the universe was created. This made a lot of people very angry and has been widely regarded as a bad move.',
-        Author: 'Douglas Adams, Hitchhiker’s Guide to the Galaxy'
+        Author: 'Hitchhiker’s Guide to the Galaxy, Douglas Adams'
     },
     {
-        Quote: 'God help us — for art is long, and life so short.',
-        Author: 'Johann Wolfgang von Goethe, Faust'
+        Quote: 'None are more hopelessly enslaved than those who falsely believe they are free.',
+        Author: 'Johann Wolfgang von Goethe'
     },
     {
         Quote: 'A change in perspective is worth 80 IQ points.',
@@ -161,7 +161,31 @@ var quotes = [
     },
     {
         Quote: "And on the pedestal these words appear: <br>‘My name is Ozymandias, king of kings: <br>Look on my works, ye Mighty, and despair!’ <br>Nothing beside remains.",
-        Author: 'Percy Bysshe Shelley, Ozymandias'
+        Author: 'Ozymandias, Percy Bysshe Shelley'
+    },
+    {
+        Quote: "The birds have vanished down the sky. <br>Now the last cloud drains away. <br><br>We sit together, the mountain and me, <br>until only the mountain remains.",
+        Author: 'Li Bai 李白'
+    },
+    {
+        Quote: 'The fault, my dear Brutus, is not in our stars, <br>But in ourselves, that we are underlings.',
+        Author: 'Julius Caesar, Shakespeare'
+    },
+    {
+        Quote: 'We must plan for freedom, and not only for security, if for no other reason than that only freedom can make security secure.',
+        Author: 'Karl Popper'
+    },
+    {
+        Quote: 'Lies, damned lies and statistics.',
+        Author: 'Benjamin Disraeli'
+    },
+    {
+        Quote: 'The more pleasures a man captures, the more masters he will have to serve.',
+        Author: 'Lucius Annaeus Seneca'
+    },
+    {
+        Quote: 'Anyone who isn’t embarrassed of who they were last year probably isn’t learning enough. ',
+        Author: 'Alain de Botton'
     },
 ];
 var initd = false;

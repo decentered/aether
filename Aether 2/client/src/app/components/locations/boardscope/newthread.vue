@@ -30,7 +30,7 @@
           }, {
             id: "threadLink",
             visibleName: "Link",
-            description: "Optional. If it's an image and you want it to have a preview, upload to a whitelisted host and link the image file directly.",
+            description: "Optional. If it's an image, GIF or video, and you want it to have a preview, upload to a whitelisted host (Imgur, Gfycat, Giphy) and link the file directly.",
             placeholder: "https://imgur.com/random",
             maxCharCount: 2048,
             heightRows: 1,
@@ -94,7 +94,7 @@
 <style lang="scss" scoped>
   .thread-composer {
     padding: 0 50px;
-    padding-top: 20px;
+    padding-top: 25px;
   }
 </style>
 

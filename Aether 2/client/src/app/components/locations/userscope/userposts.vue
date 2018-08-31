@@ -14,7 +14,7 @@
           </template>
         </template>
         <div v-for="post in postsList" :key="post.Fingerprint">
-          <a-post :post="post" uncompiled="true"></a-post>
+          <a-post :post="post" :uncompiled="true"></a-post>
           <div class="divider"></div>
         </div>
         <div class="load-more-carrier" v-show="loadMoreVisible">
@@ -22,8 +22,9 @@
         LOAD MORE
               </a>
         </div>
-        <a-no-content no-content-text="There doesn't seem to be any content of this sort for this user in retained history." quoteDisabled="true" v-if="postsList.length === 0 && inflightCreates.length === 0">
+        <a-no-content no-content-text="No posts created in retained history." quoteDisabled="true" v-if="postsList.length === 0 && inflightCreates.length === 0">
         </a-no-content>
+        <a-fin-puck v-show="!loadMoreVisible"></a-fin-puck>
       </template>
     </div>
   </div>
@@ -59,7 +60,7 @@
         return inflightCreates
       },
       isSelf(this: any) {
-        if (globalMethods.IsUndefined(this.$store.state.currentUserEntity)) {
+        if (globalMethods.IsUndefined(this.$store.state.currentUserEntity) || globalMethods.IsUndefined(this.$store.state.localUser)) {
           return false
         }
         if (this.$store.state.currentUserEntity.fingerprint !== this.$store.state.localUser.fingerprint) {
@@ -108,6 +109,7 @@
       }
       this.fetchData(this.currentUserEntity.fingerprint)
     },
+    mounted(this: any) {},
     updated(this: any) {
       if (typeof this.currentUserEntity === 'undefined') {
         return
@@ -119,6 +121,14 @@
     }
   }
 </script>
+
+<style lang="scss">
+  .user-sublocation .user-posts .post {
+    .markdowned p:last-child {
+      margin-bottom: 0;
+    }
+  }
+</style>
 
 <style lang="scss" scoped>
   @import "../../../scss/bulmastyles";

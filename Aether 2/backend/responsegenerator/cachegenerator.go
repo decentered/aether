@@ -8,6 +8,7 @@ import (
 	"aether-core/io/api"
 	"aether-core/io/persistence"
 	// "aether-core/services/configstore"
+	"aether-core/backend/feapiconsumer"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
 	"aether-core/services/randomhashgen"
@@ -396,6 +397,8 @@ func GenerateCachedEndpoint(etype string) {
 // GenerateCaches generates all caches for all entities and saves them to disk.
 func GenerateCaches() {
 	logging.Logf(1, "Cache generation has started.")
+	feapiconsumer.BackendAmbientStatus.CachingStatus = "Generating caches..."
+	feapiconsumer.SendBackendAmbientStatus()
 	start := time.Now()
 	entityTypes := []string{"boards", "threads", "posts", "votes", "keys", "truststates", "addresses"}
 	// nodeIsUpToDate, err := syncconfirmations.NodeIsTrackingHead()
@@ -410,6 +413,9 @@ func GenerateCaches() {
 	globals.BackendConfig.SetLastCacheGenerationTimestamp(time.Now().Unix())
 	elapsed := time.Since(start)
 	logging.Logf(1, "Cache generation is complete. It took: %s", elapsed)
+	feapiconsumer.BackendAmbientStatus.CachingStatus = "Idle"
+	feapiconsumer.BackendAmbientStatus.LastCacheGenerationDurationSeconds = int32(elapsed.Seconds())
+	feapiconsumer.SendBackendAmbientStatus()
 }
 
 // MaintainCaches maintains the Reusable POST response repository by deleting too old post responses that got superseded by caches, and triggers the cache generation if the timing is ready. If not, GenerateCaches will stop itself, so there is no harm in calling this more frequently than cache duration.

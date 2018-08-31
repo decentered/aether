@@ -21,9 +21,31 @@ var proto = require('../../../../../protos/feapi/feapi_grpc_pb')
 
 let feAPIConsumer: any
 let Initialised: boolean
+let initInProgress: boolean = false
+let clientApiServerPortIsSet: boolean = false
+
+function timeout(ms: any) {
+  return new Promise(function(resolve) { return setTimeout(resolve, ms) })
+}
+// ^ Promisified wait, so that it won't actually block like while .. {} does. Useful with async/await.
+
+async function checkPortSet() {
+  if (clientApiServerPortIsSet === false) {
+    await timeout(25)
+    await checkPortSet()
+  }
+}
 
 let ExportedMethods = {
   async Initialise() {
+    // console.log('init is entered')
+    if (initInProgress) {
+      // console.log('init is already in progress, waiting until the other one completes')
+      await checkPortSet()
+      // console.log('init is complete, returning to normal process')
+      return
+    }
+    initInProgress = true
     console.log('init is called')
     let feapiport = await ipc.callMain('GetFrontendAPIPort')
     feAPIConsumer = new proto.FrontendAPIClient('127.0.0.1:' + feapiport, grpc.credentials.createInsecure())
@@ -32,6 +54,7 @@ let ExportedMethods = {
     await ExportedMethods.SetClientAPIServerPort(clapiserverport)
     ipc.callMain('SetFrontendClientConnInitialised', true)
     Initialised = true
+    initInProgress = false
   },
   GetAllBoards(callback: any) {
     WaitUntilFrontendReady(async function() {
@@ -58,17 +81,20 @@ let ExportedMethods = {
       // }
       let req = new pmessages.SetClientAPIServerPortRequest()
       req.setPort(clientAPIServerPort)
-      console.log(req)
+      // console.log(req)
       feAPIConsumer.setClientAPIServerPort(req, function(err: any, response: any) {
         if (err) {
           console.log(err)
         } else {
           console.log(response)
+          clientApiServerPortIsSet = true
         }
       })
     })
   },
-  GetBoardAndThreads(boardfp: string, callback: any) {
+  GetBoardAndThreads(boardfp: string, sortByNew: boolean, callback: any) {
+    console.log('get boards and threads received:')
+    console.log(boardfp, sortByNew)
     WaitUntilFrontendReady(async function() {
       if (!Initialised) {
         await ExportedMethods.Initialise()
@@ -76,6 +102,9 @@ let ExportedMethods = {
       console.log('GetBoardsAndThread triggered.')
       let req = new pmessages.BoardAndThreadsRequest
       req.setBoardfingerprint(boardfp)
+      if (sortByNew) {
+        req.setSortthreadsbynew(true)
+      }
       feAPIConsumer.getBoardAndThreads(req, function(err: any, resp: any) {
         if (err) {
           console.log(err)
@@ -201,6 +230,149 @@ let ExportedMethods = {
       })
     })
   },
+  RequestAmbientStatus(callback: any) {
+    WaitUntilFrontendReady(async function() {
+      if (!Initialised) {
+        await ExportedMethods.Initialise()
+      }
+      console.log('RequestAmbientStatus triggered.')
+      let req = new pmessages.AmbientStatusRequest
+      feAPIConsumer.requestAmbientStatus(req, function(err: any, resp: any) {
+        if (err) {
+          console.log(err)
+        } else {
+          callback(resp.toObject())
+        }
+      })
+    })
+  },
+  SetNotificationsSignal(seen: boolean, fp: string, callback: any) {
+    WaitUntilFrontendReady(async function() {
+      if (!Initialised) {
+        await ExportedMethods.Initialise()
+      }
+      console.log('SetNotificationsSignal triggered.')
+      let req = new pmessages.NotificationsSignalPayload
+      req.setSeen(seen)
+      req.setReaditemfingerprint(fp)
+      feAPIConsumer.setNotificationsSignal(req, function(err: any, resp: any) {
+        if (err) {
+          console.log(err)
+        } else {
+          callback(resp.toObject())
+        }
+      })
+    })
+  },
+
+  SetOnboardComplete(callback: any) {
+    WaitUntilFrontendReady(async function() {
+      if (!Initialised) {
+        await ExportedMethods.Initialise()
+      }
+      console.log('SetOnboardComplete triggered.')
+      let req = new pmessages.OnboardCompleteRequest
+      req.setOnboardcomplete(true)
+      feAPIConsumer.setOnboardComplete(req, function(err: any, resp: any) {
+        if (err) {
+          console.log(err)
+        } else {
+          callback(resp.toObject())
+        }
+      })
+    })
+  },
+
+  SendAddress(addr: any, callback: any) {
+    WaitUntilFrontendReady(async function() {
+      if (!Initialised) {
+        await ExportedMethods.Initialise()
+      }
+      console.log('SendAddress triggered.')
+      let req = new pmessages.SendAddressPayload
+      req.setAddress(addr)
+      try {
+        feAPIConsumer.sendAddress(req, function(err: any, resp: any) {
+          if (err) {
+            console.log(err)
+          } else {
+            callback(resp.toObject())
+          }
+        })
+      } catch (err) {
+        // This catches non-grpc errors like assert.
+        callback(err)
+      }
+    })
+  },
+
+  RequestBoardReports(boardfp: any, callback: any) {
+    WaitUntilFrontendReady(async function() {
+      if (!Initialised) {
+        await ExportedMethods.Initialise()
+      }
+      console.log('RequestBoardReports triggered.')
+      let req = new pmessages.BoardReportsRequest
+      req.setBoardfingerprint(boardfp)
+      try {
+        feAPIConsumer.requestBoardReports(req, function(err: any, resp: any) {
+          if (err) {
+            console.log(err)
+          } else {
+            callback(resp.toObject())
+          }
+        })
+      } catch (err) {
+        // This catches non-grpc errors like assert.
+        callback(err)
+      }
+    })
+  },
+
+  /*----------  FE config changes  ----------*/
+
+  SendModModeEnabledStatus(modModeEnabled: boolean, callback: any) {
+    let e = new pmessages.FEConfigChangesPayload
+    e.setModmodeenabled(modModeEnabled)
+    e.setModmodeenabledisset(true)
+    this.SendFEConfigChanges(e, callback)
+  },
+
+  /*----------  FE Config changes delivery base  ----------*/
+
+  SendFEConfigChanges(feconfig: any, callback: any) {
+    WaitUntilFrontendReady(async function() {
+      if (!Initialised) {
+        await ExportedMethods.Initialise()
+      }
+      console.log('SendFEConfigChanges triggered.')
+      let req = new pmessages.FEConfigChangesPayload
+      req = feconfig
+      try {
+        feAPIConsumer.sendFEConfigChanges(req, function(err: any, resp: any) {
+          if (err) {
+            console.log(err)
+          } else {
+            callback(resp.toObject())
+          }
+        })
+      } catch (err) {
+        // This catches non-grpc errors like assert.
+        callback(err)
+      }
+    })
+  },
+
+
+  /*----------  Notifications signals  ----------*/
+
+  markSeen() {
+    this.SetNotificationsSignal(true, "", function() { })
+  },
+  markRead(fp: string) {
+    this.SetNotificationsSignal(true, fp, function() { })
+  },
+
   IsInitialised(): boolean {
     return Initialised
   },
@@ -232,8 +404,8 @@ let ExportedMethods = {
       'FOLLOWS_GUIDELINES', 'REPORT_TO_MOD',
       'CONTENT', reason, boardfp, threadfp, callback)
   },
-
-  ModBlock(this: any, targetfp: string, priorfp: string, reason: string, boardfp: string, threadfp: string, callback: any) {
+  // ModDelete instead of ModBlock, to keep it more human-meaningful.
+  ModDelete(this: any, targetfp: string, priorfp: string, reason: string, boardfp: string, threadfp: string, callback: any) {
     this.sendSignalEvent(
       targetfp, priorfp,
       'MOD_ACTIONS', 'MODBLOCK',
@@ -244,6 +416,13 @@ let ExportedMethods = {
     this.sendSignalEvent(
       targetfp, priorfp,
       'MOD_ACTIONS', 'MODAPPROVE',
+      'CONTENT', reason, boardfp, threadfp, callback)
+  },
+
+  ModIgnore(this: any, targetfp: string, priorfp: string, reason: string, boardfp: string, threadfp: string, callback: any) {
+    this.sendSignalEvent(
+      targetfp, priorfp,
+      'MOD_ACTIONS', 'MODIGNORE',
       'CONTENT', reason, boardfp, threadfp, callback)
   },
 

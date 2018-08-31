@@ -251,7 +251,12 @@ func CreateAddress(
 	client.ClientName = clientName
 	entity.Protocol = prot
 	entity.Client = client
-	entity.EntityVersion = globals.FrontendTransientConfig.EntityVersions.Address
+	// Address can be created by both backend and frontend. Check for the values.
+	if globals.FrontendTransientConfig != nil {
+		entity.EntityVersion = globals.FrontendTransientConfig.EntityVersions.Address
+	} else {
+		entity.EntityVersion = globals.BackendTransientConfig.EntityVersions.Address
+	}
 	entity.RealmId = realmId
 	return entity, nil
 }

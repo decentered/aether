@@ -4,13 +4,13 @@
       <template v-if="loadingComplete">
         <template v-if="isSelf">
           <template v-for="thr in inflightCreates.slice().reverse()">
-            <a-thread-header-entity :thread="thr.entity" :key="thr.entity.Fingerprint" :inflightStatus="thr.status" uncompiled="true"></a-thread-header-entity>
+            <a-thread-header-entity :thread="thr.entity" :key="thr.entity.Fingerprint" :inflightStatus="thr.status" :uncompiled="true"></a-thread-header-entity>
             <!-- Well, it is not uncompiled, it's inflight - but we're using uncompiled here as a way to denote that this is in this specific list, not that it is necessarily uncompiled, it's already inflight, which is a superset of uncompiled. -->
             <div class="divider"></div>
           </template>
         </template>
         <div v-for="thr in threadsList" :key="thr.Fingerprint">
-          <a-thread-header-entity :thread="thr" uncompiled="true"></a-thread-header-entity>
+          <a-thread-header-entity :thread="thr" :uncompiled="true"></a-thread-header-entity>
           <div class="divider"></div>
         </div>
         <div class="load-more-carrier" v-show="loadMoreVisible">
@@ -18,8 +18,9 @@
         LOAD MORE
               </a>
         </div>
-        <a-no-content no-content-text="There doesn't seem to be any content of this sort for this user in retained history." quoteDisabled="true" v-if="threadsList.length === 0 && inflightCreates.length === 0">
+        <a-no-content no-content-text="No threads created in retained history." quoteDisabled="true" v-if="threadsList.length === 0 && inflightCreates.length === 0">
         </a-no-content>
+        <a-fin-puck v-show="!loadMoreVisible"></a-fin-puck>
       </template>
       <template v-else>
         <div class="spinner-container">
@@ -59,7 +60,7 @@
         return inflightCreates
       },
       isSelf(this: any) {
-        if (globalMethods.IsUndefined(this.$store.state.currentUserEntity)) {
+        if (globalMethods.IsUndefined(this.$store.state.currentUserEntity) || globalMethods.IsUndefined(this.$store.state.localUser)) {
           return false
         }
         if (this.$store.state.currentUserEntity.fingerprint !== this.$store.state.localUser.fingerprint) {
@@ -107,6 +108,7 @@
       }
       this.fetchData(this.currentUserEntity.fingerprint)
     },
+    mounted(this: any) {},
     updated(this: any) {
       if (typeof this.currentUserEntity === 'undefined') {
         return
@@ -121,7 +123,12 @@
 
 <style lang="scss" scoped>
   .user-sublocation {
-    .user-threads {}
+    .user-threads {
+      .thread-entity.no-user-present {
+        border-bottom: none;
+        padding-bottom: 15px;
+      }
+    }
   }
 
   .divider {

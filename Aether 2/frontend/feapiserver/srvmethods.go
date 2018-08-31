@@ -10,9 +10,10 @@ import (
 	// "aether-core/frontend/objpool"
 	"aether-core/frontend/inflights"
 	// "aether-core/io/api"
+	"aether-core/protos/beapi"
 	"aether-core/protos/clapi"
 	pb "aether-core/protos/feapi"
-	pbObj "aether-core/protos/feobjects"
+	"aether-core/protos/feobjects"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
 	// "encoding/json"
@@ -59,29 +60,18 @@ func (s *server) GetThreadAndPosts(ctx context.Context, req *pb.ThreadAndPostsRe
 	resp.Board.LastSeen = lastseen
 	// Get thread
 	tfp := req.GetThreadFingerprint()
-	// Get the board carrier
+	// Get the thread carrier
 	tc := festructs.ThreadCarrier{}
 	err2 := globals.KvInstance.One("Fingerprint", tfp, &tc)
 	if err2 != nil {
 		logging.Logf(1, "Getting ThreadCarrier for in GetThreadAndPosts encountered an error. Error: %v", err2)
 	}
-	t := festructs.CompiledThread{}
-	for key, _ := range tc.Threads {
-		if tc.Threads[key].Fingerprint == tfp {
-			t = tc.Threads[key]
-		}
-	}
-	resp.Thread = t.Protobuf()
-	// Get posts
-	postprotos := []*pbObj.CompiledPostEntity{}
-	for k, _ := range tc.Posts {
-		postprotos = append(postprotos, tc.Posts[k].Protobuf())
-	}
-	resp.Posts = postprotos
+	resp.Thread = tc.MakeTree(false, false) // do not show deleted, do not show orphans
 	return &resp, nil
 }
 
 func (s *server) GetBoardAndThreads(ctx context.Context, req *pb.BoardAndThreadsRequest) (*pb.BoardAndThreadsResponse, error) {
+	start := time.Now()
 	fp := req.GetBoardFingerprint()
 	// Get the board carrier
 	bc := festructs.BoardCarrier{}
@@ -102,26 +92,34 @@ func (s *server) GetBoardAndThreads(ctx context.Context, req *pb.BoardAndThreads
 	resp.Board.Subscribed = subbed
 	resp.Board.Notify = notify
 	resp.Board.LastSeen = lastseen
-	// Get the threads that board contains
-	thrcs := []festructs.ThreadCarrier{}
-	err2 := globals.KvInstance.Find("ParentFingerprint", fp, &thrcs)
-	if err2 != nil {
-		logging.Logf(1, "Getting Threads for in GetBoardAndThreads encountered an error. Error: %v", err2)
-	}
-	threads := []festructs.CompiledThread{}
-	for k1, _ := range thrcs {
-		for k2, _ := range thrcs[k1].Threads {
-			if thrcs[k1].Threads[k2].Board == fp {
-				threads = append(threads, thrcs[k1].Threads[k2])
+
+	threads := festructs.CThreadBatch{}
+	for k1, _ := range bc.Threads {
+		// Filter out the moddeletes / modapprovals based on the ruleset.
+		if bc.Threads[k1].Board == fp {
+			if bc.Threads[k1].CompiledContentSignals.ModApproved || bc.Threads[k1].CompiledContentSignals.SelfModApproved {
+				threads = append(threads, bc.Threads[k1])
+				continue
 			}
+			if bc.Threads[k1].CompiledContentSignals.ModBlocked || bc.Threads[k1].CompiledContentSignals.SelfModBlocked {
+				continue
+			}
+			threads = append(threads, bc.Threads[k1])
 		}
 	}
+
+	// If sort by new, we sort it here. Default sort (the one saved to disk) is popular sort.
+	if req.GetSortThreadsByNew() {
+		threads.SortByCreation()
+	}
 	// Convert all threads to protos
-	tprotos := []*pbObj.CompiledThreadEntity{}
+	tprotos := []*feobjects.CompiledThreadEntity{}
 	for k, _ := range threads {
 		tprotos = append(tprotos, threads[k].Protobuf())
 	}
 	resp.Threads = tprotos
+	elapsed := time.Since(start)
+	logging.Logf(1, "Sending board and threads took: %v", elapsed)
 	return &resp, nil
 }
 
@@ -134,35 +132,49 @@ func (s *server) GetAllBoards(ctx context.Context, req *pb.AllBoardsRequest) (*p
 		logging.Logcf(1, "Getting all boards from KvInstance encountered an error. Error: %v", err)
 	}
 
-	cb := []*pbObj.CompiledBoardEntity{}
+	cb := festructs.CBoardBatch{}
 	for key, _ := range boards {
 		for k2, _ := range boards[key].Boards {
-			item := boards[key].Boards[k2].Protobuf()
-			subbed, notify, lastseen := globals.FrontendConfig.ContentRelations.IsSubbedBoard(item.Fingerprint)
-			whitelisted := globals.FrontendConfig.ContentRelations.IsWhitelistedBoard(item.Fingerprint)
-			item.Subscribed = subbed
-			item.Notify = notify
-			item.LastSeen = lastseen
-			item.Whitelisted = whitelisted
+			item := boards[key].Boards[k2]
 			cb = append(cb, item)
 		}
 	}
+	cb.SortByThreadsCount()
+	cproto := []*feobjects.CompiledBoardEntity{}
+	for k, _ := range cb {
+		item := cb[k].Protobuf()
+		cproto = append(cproto, item)
+		subbed, notify, lastseen := globals.FrontendConfig.ContentRelations.IsSubbedBoard(item.Fingerprint)
+		whitelisted := globals.FrontendConfig.ContentRelations.SFWList.IsSFWListedBoard(item.Fingerprint)
+		item.Subscribed = subbed
+		item.Notify = notify
+		item.LastSeen = lastseen
+		item.SFWListed = whitelisted
+	}
+
 	fmt.Printf("Number of items found in get all boards: %v\n", len(boards))
-	resp := pb.AllBoardsResponse{cb}
+	resp := pb.AllBoardsResponse{cproto}
 	elapsed := time.Since(start)
 	fmt.Println(elapsed)
 	return &resp, nil
 }
 
 func (s *server) SetClientAPIServerPort(ctx context.Context, req *pb.SetClientAPIServerPortRequest) (*pb.SetClientAPIServerPortResponse, error) {
+	logging.Logf(1, "Client said hello.")
 	logging.Logf(1, "We received a set client api server port request. Old port was: %v and the new one is %v", globals.FrontendConfig.GetClientPort(), req.Port)
 	globals.FrontendConfig.SetClientPort(int(req.Port))
 	clapiconsumer.DeliverAmbients()
 	inflights := inflights.GetInflights()
 	as := clapi.AmbientStatusPayload{Inflights: inflights.Protobuf()}
+	clapiconsumer.ClientIsReadyForConnections = true
 	clapiconsumer.SendAmbientStatus(&as)
 	clapiconsumer.PushLocalUserAmbient() // todo let's disable this for a minute.
 	// SendAmbients(false)
+	clapiconsumer.SendHomeView()
+	clapiconsumer.SendPopularView()
+	clapiconsumer.SendNotifications()
+	clapiconsumer.SendOnboardCompleteStatus()
+	clapiconsumer.SendModModeEnabledStatus()
 	resp := pb.SetClientAPIServerPortResponse{}
 	return &resp, nil
 }
@@ -198,29 +210,16 @@ func (s *server) GetUserAndGraph(ctx context.Context, req *pb.UserAndGraphReques
 		}
 		resp.User = u.Protobuf()
 	}
-	// if req.GetUserBoardsRequested() {
-	// 	// todo
-	// }
-	// if req.GetUserThreadsRequested() {
-	// 	// todo
-	// }
-	// if req.GetUserPostsRequested() {
-	// 	// todo
-	// }
-	// ^ We actually made it so that these data are actually provided directly from the backend as uncompiled payloads.
-	logging.Logf(1, "resp: %v", resp)
+	// logging.Logf(1, "resp: %v", resp)
 	return &resp, nil
 }
 
 func (s *server) SendContentEvent(ctx context.Context, req *pb.ContentEventPayload) (*pb.ContentEventResponse, error) {
 	logging.Logf(1, "We've received a content event. Event: %v", *req)
-
 	inflights := inflights.GetInflights()
 	inflights.Insert(*req)
-	// logging.Logf(1, "Pool: %#v", pool)
 	as := clapi.AmbientStatusPayload{Inflights: inflights.Protobuf()}
 	clapiconsumer.SendAmbientStatus(&as)
-	// SendAmbients(true)
 	resp := pb.ContentEventResponse{}
 	return &resp, nil
 }
@@ -293,4 +292,131 @@ func (s *server) SendInflightsPruneRequest(ctx context.Context, req *pb.Inflight
 	inflights.PushChangesToClient()
 	resp := pb.InflightsPruneResponse{}
 	return &resp, nil
+}
+
+// If we receive ambient status data from the backend, we just forward it directly to the server.
+func (s *server) SendBackendAmbientStatus(ctx context.Context, req *pb.BackendAmbientStatusPayload) (*pb.BackendAmbientStatusResponse, error) {
+	globals.FrontendTransientConfig.CurrentAmbientStatus.BackendAmbientStatus = req.BackendAmbientStatus
+	if clapiconsumer.ClientIsReadyForConnections {
+		/*
+			If the client told us that it is ready, we send this in. Otherwise, the data is already saved into frontend transient config, and it will be sent in with the next ambient status send.
+		*/
+		clapiconsumer.SendAmbientStatus(&globals.FrontendTransientConfig.CurrentAmbientStatus)
+	}
+	resp := pb.BackendAmbientStatusResponse{}
+	return &resp, nil
+}
+
+func (s *server) RequestAmbientStatus(ctx context.Context, req *pb.AmbientStatusRequest) (*pb.AmbientStatusResponse, error) {
+	clapiconsumer.SendAmbientStatus(nil)
+	resp := pb.AmbientStatusResponse{}
+	return &resp, nil
+}
+
+func (s *server) RequestHomeView(ctx context.Context, req *pb.HomeViewRequest) (*pb.HomeViewResponse, error) {
+	clapiconsumer.SendHomeView()
+	resp := pb.HomeViewResponse{}
+	return &resp, nil
+}
+
+func (s *server) RequestPopularView(ctx context.Context, req *pb.PopularViewRequest) (*pb.PopularViewResponse, error) {
+	clapiconsumer.SendPopularView()
+	resp := pb.PopularViewResponse{}
+	return &resp, nil
+}
+
+func (s *server) RequestNotifications(ctx context.Context, req *pb.NotificationsRequest) (*pb.NotificationsResponse, error) {
+	clapiconsumer.SendNotifications()
+	resp := pb.NotificationsResponse{}
+	return &resp, nil
+}
+
+func (s *server) SetNotificationsSignal(ctx context.Context, req *pb.NotificationsSignalPayload) (*pb.NotificationsSignalResponse, error) {
+	if req.GetSeen() {
+		festructs.NotificationsSingleton.MarkSeen()
+	}
+	if fp := req.GetReadItemFingerprint(); len(fp) > 0 {
+		festructs.NotificationsSingleton.MarkRead(fp)
+	}
+	clapiconsumer.SendNotifications()
+	resp := pb.NotificationsSignalResponse{}
+	return &resp, nil
+}
+
+func (s *server) SetOnboardComplete(ctx context.Context, req *pb.OnboardCompleteRequest) (*pb.OnboardCompleteResponse, error) {
+	globals.FrontendConfig.SetOnboardComplete(req.GetOnboardComplete())
+	clapiconsumer.SendOnboardCompleteStatus()
+	resp := pb.OnboardCompleteResponse{}
+	return &resp, nil
+}
+
+func (s *server) SendAddress(ctx context.Context, req *pb.SendAddressPayload) (*pb.SendAddressResponse, error) {
+	logging.Logf(1, "We've received a send address request. Event: %v", *req)
+	beReq := beapi.ConnectToRemoteRequest{}
+	beReq.Address = req.GetAddress()
+	sc, errMessage := beapiconsumer.SendConnectToRemoteRequest(&beReq)
+	resp := pb.SendAddressResponse{StatusCode: int32(sc), ErrorMessage: errMessage}
+	return &resp, nil
+}
+
+func (s *server) SendFEConfigChanges(ctx context.Context, req *pb.FEConfigChangesPayload) (*pb.FEConfigChangesResponse, error) {
+	logging.Logf(1, "We've received a FE config change request. Event: %v", *req)
+	ApplyFEConfigChanges(req)
+	clapiconsumer.SendModModeEnabledStatus()
+	resp := pb.FEConfigChangesResponse{}
+	return &resp, nil
+}
+
+func ApplyFEConfigChanges(req *pb.FEConfigChangesPayload) {
+	if req.GetModModeEnabledIsSet() {
+		globals.FrontendConfig.SetModModeEnabled(req.GetModModeEnabled())
+	}
+}
+
+func (s *server) RequestBoardReports(ctx context.Context, req *pb.BoardReportsRequest) (*pb.BoardReportsResponse, error) {
+	threadCarriers := []festructs.ThreadCarrier{}
+	err := globals.KvInstance.Find("ParentFingerprint", req.GetBoardFingerprint(), &threadCarriers)
+	if err != nil {
+		logging.Logf(1, "Fetching threads of this board to get the reports failed. Error: %v Board FP: %v", err, req.GetBoardFingerprint())
+	}
+	rtes := []*feobjects.ReportsTabEntry{}
+	for k, _ := range threadCarriers {
+		// Get all reportes threads and posts in this thread carrier
+		thrs := getReportedThreads(threadCarriers[k].Threads)
+		psts := getReportedPosts(threadCarriers[k].Posts)
+		// And convert them to ReportsTabEntries, then protobufs
+		for k2, _ := range thrs {
+			entry := festructs.NewReportsTabEntryFromThread(&thrs[k2])
+			rtes = append(rtes, entry.Protobuf())
+		}
+		for k3, _ := range psts {
+			entry := festructs.NewReportsTabEntryFromPost(&psts[k3])
+			rtes = append(rtes, entry.Protobuf())
+		}
+	}
+
+	resp := pb.BoardReportsResponse{
+		ReportsTabEntries: rtes,
+	}
+	return &resp, nil
+}
+
+func getReportedThreads(sl []festructs.CompiledThread) []festructs.CompiledThread {
+	reported := []festructs.CompiledThread{}
+	for k, _ := range sl {
+		if len(sl[k].CompiledContentSignals.Reports) > 0 && !sl[k].CompiledContentSignals.SelfModIgnored {
+			reported = append(reported, sl[k])
+		}
+	}
+	return reported
+}
+
+func getReportedPosts(sl []festructs.CompiledPost) []festructs.CompiledPost {
+	reported := []festructs.CompiledPost{}
+	for k, _ := range sl {
+		if len(sl[k].CompiledContentSignals.Reports) > 0 && !sl[k].CompiledContentSignals.SelfModIgnored {
+			reported = append(reported, sl[k])
+		}
+	}
+	return reported
 }

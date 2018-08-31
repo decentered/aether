@@ -4,11 +4,14 @@ package inflights
 
 import (
 	"aether-core/frontend/clapiconsumer"
+	"aether-core/frontend/festructs"
+	// "aether-core/frontend/refresher"
 	"aether-core/protos/clapi"
 	"aether-core/protos/feapi"
 	beObj "aether-core/protos/mimapi"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
+	"aether-core/services/metaparse"
 	"sync"
 	"time"
 )
@@ -20,8 +23,8 @@ var Inflights *inflights
 /*----------  Base carrier  ----------*/
 
 type inflights struct {
-	lock                sync.Mutex
-	ingestLock          sync.Mutex
+	lock sync.Mutex
+	// ingestLock          sync.Mutex
 	ingestRanOnce       bool
 	ingestRunning       bool
 	ID                  int
@@ -137,15 +140,15 @@ func (s *InflightStatus) Fulfilled() bool {
 }
 
 const (
-	STATUS_WAITING                   = "Waiting for processing."
+	STATUS_WAITING                   = "Waiting for processing"
 	STATUS_MINTING                   = "Minting proof-of-work for the entity..."
 	STATUS_ADDING_TO_BACKEND         = "Adding to the local backend"
 	STATUS_WAITING_TO_SERVE          = "Waiting for a remote inbound to serve entity"
 	STATUS_WAITING_TO_FIND_IN_REMOTE = "Waiting to see a remote node serving the entity to confirm distribution"
 	STATUS_RECOMPILING_FRONTEND      = "Inserting into graph..."
 	STATUS_COMPLETE                  = "Successfully posted."
-	STATUS_REMOTE_COMPLETE           = "The entity is communicated to the network and its availability is verified."
-	STATUS_FAILED                    = "The insertion for this entity has failed. If you see this and you didn't expect to, please reach out, it's worth a look."
+	STATUS_REMOTE_COMPLETE           = "The entity is communicated to the network and its availability is verified"
+	STATUS_FAILED                    = "The insertion for this entity has failed"
 )
 
 var statusesOrdered = []string{
@@ -297,6 +300,12 @@ func (o *inflights) Insert(input interface{}) {
 	case feapi.SignalEventPayload:
 		// CREATE or UPDATE for Votes, Truststates
 		if targetType := i.GetSignalTargetType(); targetType == feapi.SignalTargetType_CONTENT {
+			// Check if it's MODIGNORE.
+			if i.GetSignalTypeClass() == 3 && i.GetSignalType() == 6 {
+				// This is a MODIGNORE. Stop inflight processing for this one and save it directly to FE store.
+				saveModIgnore(i.GetTargetBoard(), i.GetTargetThread(), i.GetTargetFingerprint())
+				return
+			}
 			ifObj := createInflightVote(&i)
 			o.InflightVotes = append(o.InflightVotes, ifObj)
 			o.cleanRepeatVotes()
@@ -315,6 +324,76 @@ func (o *inflights) Insert(input interface{}) {
 	default:
 		logging.Logf(1, "The type of event payload requested to be inserted into the inflights queue could not be determined. Event: %#v", i)
 	}
+}
+
+func saveModIgnore(boardfp, threadfp, targetfp string) {
+	logging.Logf(1, "Save MODIGNORE Runs for: BoardFp: %v, ThreadFp: %v, TargetFp: %v", boardfp, threadfp, targetfp)
+	if len(threadfp) == 0 {
+		// This is a MODIGNORE for a board
+		logging.Logf(1, "This is a MODIGNORE for a board.")
+		bc := festructs.BoardCarrier{}
+		err := globals.KvInstance.One("Fingerprint", boardfp, &bc)
+		if err != nil {
+			logging.Logf(1, "MODIGNORE target fetch failed. Error: %v BoardFp: %v, ThreadFp: %v, TargetFp: %v", err, boardfp, threadfp, targetfp)
+		}
+		i := bc.Boards.Find(boardfp)
+		if i != -1 {
+			bc.Boards[i].CompiledContentSignals.SelfModIgnored = true
+		}
+		bc.Save()
+		return
+	}
+
+	if threadfp == targetfp {
+		// This is a MODIGNORE for a thread.
+		logging.Logf(2, "This is a MODIGNORE for a thread.")
+		/*
+			Heads up, thread value is saved in two places, the first one is as a list in the board's threads list so that the boards load can be fast, the second is as its own header entity in threadcarrier, so that you can show the thing fast. You have to set it in both places, so that the value is retained.
+
+			If you set it only on board carrier, then it will take some time for the change to be transmitted to the appropriate thread carrier.
+
+			If you only set it on the thread carrier, then in the next refresh cycle, the non-set value in the board carrier will override the thing.
+		*/
+
+		// Set the value in thread carrier
+		tc := festructs.ThreadCarrier{}
+		err := globals.KvInstance.One("Fingerprint", threadfp, &tc)
+		if err != nil {
+			logging.Logf(2, "MODIGNORE target fetch failed. Error: %v BoardFp: %v, ThreadFp: %v, TargetFp: %v", err, boardfp, threadfp, targetfp)
+		}
+		i := tc.Threads.Find(threadfp)
+		if i != -1 {
+			tc.Threads[i].CompiledContentSignals.SelfModIgnored = true
+		}
+		tc.Save()
+
+		// Set the value in board carrier
+		bc := festructs.BoardCarrier{}
+		err2 := globals.KvInstance.One("Fingerprint", boardfp, &bc)
+		if err2 != nil {
+			logging.Logf(2, "MODIGNORE target fetch failed. Error: %v BoardFp: %v, ThreadFp: %v, TargetFp: %v", err2, boardfp, threadfp, targetfp)
+		}
+		i2 := bc.Threads.Find(threadfp)
+		if i2 != -1 {
+			bc.Threads[i2].CompiledContentSignals.SelfModIgnored = true
+		}
+		bc.Save()
+
+		// refresher.Refresh()
+		return
+	}
+	// This is a MODIGNORE for a post.
+	logging.Logf(2, "This is a MODIGNORE for a post.")
+	tc := festructs.ThreadCarrier{}
+	err := globals.KvInstance.One("Fingerprint", threadfp, &tc)
+	if err != nil {
+		logging.Logf(2, "MODIGNORE target fetch failed. Error: %v BoardFp: %v, ThreadFp: %v, TargetFp: %v", err, boardfp, threadfp, targetfp)
+	}
+	i := tc.Posts.Find(targetfp)
+	if i != -1 {
+		tc.Posts[i].CompiledContentSignals.SelfModIgnored = true
+	}
+	tc.Save()
 }
 
 /*----------  Repeat signal cleaners  ----------*/
@@ -435,22 +514,24 @@ func parseType(t feapi.SignalType) int32 {
 		return 1
 	case 5: // modapprove
 		return 2
+	case 6: // modignore (This should not be saved to BE or communicated out.)
+		return 3
 	/*----------  Truststate types  ----------*/
 	/**----------  PT truststate types  ----------*/
-	case 6: // follow
+	case 7: // follow
 		return 1
-	case 7: // block
+	case 8: // block
 		return 2
 	/**----------  Naming truststate types  ----------*/
-	case 8: // name assign
+	case 9: // name assign
 		return 1
 	/**----------  F451 truststate types  ----------*/
-	case 9: // censor assign
+	case 10: // censor assign
 		return 1
 	/*----------  PE truststate types  ----------*/
-	case 10: // elect
+	case 11: // elect
 		return 1
-	case 11: // disqualify
+	case 12: // disqualify
 		return 2
 	default:
 		return 0
@@ -545,6 +626,23 @@ func createInflightKey(i *feapi.ContentEventPayload) InflightKey {
 /*----------  Signal events  ----------*/
 
 func createInflightVote(i *feapi.SignalEventPayload) InflightVote {
+	/*----------  Handle meta  ----------*/
+	typeClass := parseTypeClass(i.GetSignalTypeClass())
+	meta := metaparse.VoteMeta{}
+	st := i.GetSignalText()
+	if len(st) > 0 {
+		switch typeClass {
+		case 2: // fg
+			meta.FGReason = st
+		case 3: // ma
+			meta.MAReason = st
+		}
+	}
+	metaString, err := metaparse.CreateMetaString(&meta)
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	/*----------  END Handle meta  ----------*/
 	return InflightVote{
 		Status: NewInflightStatus(STATUS_WAITING, i.GetEvent().GetEventType().String()),
 		Entity: beObj.Vote{
@@ -558,14 +656,29 @@ func createInflightVote(i *feapi.SignalEventPayload) InflightVote {
 			Board:     i.GetTargetBoard(),
 			Thread:    i.GetTargetThread(),
 			Target:    i.GetTargetFingerprint(),
-			TypeClass: parseTypeClass(i.GetSignalTypeClass()),
+			TypeClass: typeClass,
 			Type:      parseType(i.GetSignalType()),
-			Meta:      i.GetMeta(),
+			Meta:      metaString, // special
 		},
 	}
 }
 
 func createInflightTruststate(i *feapi.SignalEventPayload) InflightTruststate {
+	/*----------  Handle meta  ----------*/
+	typeClass := parseTypeClass(i.GetSignalTypeClass())
+	meta := metaparse.TruststateMeta{}
+	st := i.GetSignalText()
+	if len(st) > 0 {
+		switch typeClass {
+		case 5: // fg
+			meta.CanonicalName = st
+		}
+	}
+	metaString, err := metaparse.CreateMetaString(&meta)
+	if err != nil {
+		logging.LogCrash(err)
+	}
+	/*----------  END Handle meta  ----------*/
 	return InflightTruststate{
 		Status: NewInflightStatus(STATUS_WAITING, i.GetEvent().GetEventType().String()),
 		Entity: beObj.Truststate{
@@ -579,9 +692,9 @@ func createInflightTruststate(i *feapi.SignalEventPayload) InflightTruststate {
 			Target:    i.GetTargetFingerprint(),
 			Domain:    i.GetTargetDomain(),
 			Expiry:    i.GetTargetExpiry(),
-			TypeClass: parseTypeClass(i.GetSignalTypeClass()),
+			TypeClass: typeClass,
 			Type:      parseType(i.GetSignalType()),
-			Meta:      i.GetMeta(),
+			Meta:      metaString, // special
 		},
 	}
 }
@@ -605,7 +718,7 @@ func (o *inflights) Prune() {
 	newInflightBoards := []InflightBoard{}
 	for k, _ := range o.InflightBoards {
 		if o.InflightBoards[k].Status.Fulfilled() {
-			o.FulfilledBoards = append(o.FulfilledBoards, o.InflightBoards[k])
+			// o.FulfilledBoards = append(o.FulfilledBoards, o.InflightBoards[k])
 			continue
 		}
 		newInflightBoards = append(newInflightBoards, o.InflightBoards[k])
@@ -615,7 +728,7 @@ func (o *inflights) Prune() {
 	newInflightThreads := []InflightThread{}
 	for k, _ := range o.InflightThreads {
 		if o.InflightThreads[k].Status.Fulfilled() {
-			o.FulfilledThreads = append(o.FulfilledThreads, o.InflightThreads[k])
+			// o.FulfilledThreads = append(o.FulfilledThreads, o.InflightThreads[k])
 			continue
 		}
 		newInflightThreads = append(newInflightThreads, o.InflightThreads[k])
@@ -625,7 +738,7 @@ func (o *inflights) Prune() {
 	newInflightPosts := []InflightPost{}
 	for k, _ := range o.InflightPosts {
 		if o.InflightPosts[k].Status.Fulfilled() {
-			o.FulfilledPosts = append(o.FulfilledPosts, o.InflightPosts[k])
+			// o.FulfilledPosts = append(o.FulfilledPosts, o.InflightPosts[k])
 			continue
 		}
 		newInflightPosts = append(newInflightPosts, o.InflightPosts[k])
@@ -635,7 +748,7 @@ func (o *inflights) Prune() {
 	newInflightVotes := []InflightVote{}
 	for k, _ := range o.InflightVotes {
 		if o.InflightVotes[k].Status.Fulfilled() {
-			o.FulfilledVotes = append(o.FulfilledVotes, o.InflightVotes[k])
+			// o.FulfilledVotes = append(o.FulfilledVotes, o.InflightVotes[k])
 			continue
 		}
 		newInflightVotes = append(newInflightVotes, o.InflightVotes[k])
@@ -645,7 +758,7 @@ func (o *inflights) Prune() {
 	newInflightKeys := []InflightKey{}
 	for k, _ := range o.InflightKeys {
 		if o.InflightKeys[k].Status.Fulfilled() {
-			o.FulfilledKeys = append(o.FulfilledKeys, o.InflightKeys[k])
+			// o.FulfilledKeys = append(o.FulfilledKeys, o.InflightKeys[k])
 			continue
 		}
 		newInflightKeys = append(newInflightKeys, o.InflightKeys[k])
@@ -655,7 +768,7 @@ func (o *inflights) Prune() {
 	newInflightTruststates := []InflightTruststate{}
 	for k, _ := range o.InflightTruststates {
 		if o.InflightTruststates[k].Status.Fulfilled() {
-			o.FulfilledTruststates = append(o.FulfilledTruststates, o.InflightTruststates[k])
+			// o.FulfilledTruststates = append(o.FulfilledTruststates, o.InflightTruststates[k])
 			continue
 		}
 		newInflightTruststates = append(newInflightTruststates, o.InflightTruststates[k])
@@ -664,3 +777,5 @@ func (o *inflights) Prune() {
 
 	o.commit()
 }
+
+// ^ Disabled moving them to 'fulfilled x' section because we're not showing it in the UI yet.

@@ -89,13 +89,24 @@ func convertToBinaryString(input []byte) string {
 	return result
 }
 
+var bailoutTimeSeconds int
+
 // Mid level functions
 
 // Create creates the Hashcash proof of with the given difficulty. This function has an inner loop which adds a random element to the input and tries to find enough zeros at the beginning of the SHA1 hash of the result.
 func Create(input string, difficulty int, privKey *ed25519.PrivateKey) (string, error) {
+	if bailoutTimeSeconds == 0 {
+		if globals.BackendConfig != nil {
+			bailoutTimeSeconds = globals.BackendConfig.GetPoWBailoutTimeSeconds()
+		}
+
+		if globals.FrontendConfig != nil {
+			bailoutTimeSeconds = globals.FrontendConfig.GetPoWBailoutTimeSeconds()
+		}
+	}
 	// First of all, check if BailoutSeconds exists. If this does not exist we have to exit as the allotted maximum time until a PoW is created will be zero.
 	difficulty64 := int64(difficulty)
-	if globals.FrontendConfig.GetPoWBailoutTimeSeconds() == 0 {
+	if bailoutTimeSeconds == 0 {
 		return "", errors.New(fmt.Sprint(
 			"Please initialise BailoutSeconds first."))
 	}
@@ -130,7 +141,7 @@ func Create(input string, difficulty int, privKey *ed25519.PrivateKey) (string, 
 		input + string(saltBytes)
 	// Take time here
 	timeCounter := int(time.Now().Unix())
-	bailoutSeconds := globals.FrontendConfig.GetPoWBailoutTimeSeconds()
+	bailoutSeconds := bailoutTimeSeconds
 	for {
 		// This is the tight loop.
 		// Check if the bailout time has passed.

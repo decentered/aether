@@ -118,7 +118,8 @@ func getDbSize() int {
 		dbLoc := filepath.Join(globals.BackendConfig.GetUserDirectory(), "backend", "AetherDB.db")
 		fi, _ := os.Stat(dbLoc)
 		// get the size
-		size := fi.Size() / 1048576 // Assuming 1Mb = 1048576 bytes (binary, not decimal)
+		// size := fi.Size() / 1048576 // Assuming 1Mb = 1048576 bytes (binary, not decimal)
+		size := fi.Size() / 1000000
 		return int(size)
 	default:
 		logging.LogCrash(fmt.Sprintf("This database type is not supported: %s", globals.BackendConfig.GetDbEngine()))

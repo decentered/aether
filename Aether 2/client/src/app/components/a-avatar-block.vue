@@ -7,10 +7,11 @@
     </div>
     <div class="profile-name">
       <div class="profile-name-text">
-        {{getUserName()}}
+        <a-username :owner="this.user"></a-username>
+        <!-- {{getUserName()}} -->
       </div>
     </div>
-    <div class="profile-fingerprint">
+    <div class="profile-fingerprint" v-if="!nofingerprint">
       <div class="profile-fingerprint-text">
         {{user.fingerprint}}
       </div>
@@ -22,7 +23,7 @@
   var globalMethods = require('../services/globals/methods')
   export default {
     name: 'a-avatar-block',
-    props: ['user', 'clickable'],
+    props: ['user', 'clickable', 'nofingerprint'],
     data() {
       return {}
     },

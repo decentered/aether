@@ -6,7 +6,7 @@ import (
 	// "aether-core/frontend/clapiconsumer"
 	"aether-core/frontend/feapiserver"
 	// "aether-core/protos/clapi"
-	// "aether-core/frontend/festructs"
+	"aether-core/frontend/festructs"
 	// "aether-core/frontend/inflights"
 	"aether-core/frontend/kvstore"
 	"aether-core/services/globals"
@@ -37,6 +37,12 @@ var cmdRun = &cobra.Command{
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		EstablishConfigs(cmd)
+		// Start frontend kvstore
+		kvstore.OpenKVStore()
+		defer kvstore.CloseKVStore()
+		kvstore.CheckKVStoreReady()
+		// Start notifications subsystem
+		festructs.InstantiateNotificationsSingleton()
 		// start frontend server
 		gotValidPort := make(chan bool)
 		go feapiserver.StartFrontendServer(gotValidPort)
@@ -44,13 +50,13 @@ var cmdRun = &cobra.Command{
 		go besupervisor.StartLocalBackend()
 		for globals.FrontendTransientConfig.BackendReady != true {
 			// Block until the backend tells the frontend via gRPC that it is ready.
+			time.Sleep(time.Millisecond * 100)
+			// ^ If you don't have sleep here, this will block and stop execution forever.
 		}
 		// debug
 		// go testBackend()
 		// end debug
-		kvstore.OpenKVStore()
-		defer kvstore.CloseKVStore()
-		kvstore.CheckKVStoreReady()
+
 		startSchedules()
 		// feapiserver.SendAmbients(false)
 
@@ -78,6 +84,18 @@ func startSchedules() {
 		logging.Logcf(1, "We've refreshed the frontend. It took: %s", elapsed)
 
 	}, 2*time.Minute, time.Duration(0), nil)
+
+	// Refresh the SFW list every hour.
+	globals.FrontendTransientConfig.StopSFWListUpdateCycle = scheduling.ScheduleRepeat(func() {
+		start := time.Now()
+		globals.FrontendConfig.ContentRelations.SFWList.Refresh()
+		elapsed := time.Since(start)
+		logging.Logcf(1, "We've refreshed the SFW list. It took: %s", elapsed)
+
+		// Also - prune the notifications carrier while you're at it
+		festructs.NotificationsSingleton.Prune()
+
+	}, 1*time.Hour, time.Duration(0), nil)
 }
 
 // func testBackend() {

@@ -4,8 +4,14 @@
       <template v-if="$store.state.route.name === 'Board>ThreadsNewList'">
         <a-thread-entity v-for="thr in inflightNewThreads.slice().reverse()" :thread="thr.entity" :inflightStatus="thr.status" :key="thr.Fingerprint"></a-thread-entity>
       </template>
-      <a-thread-entity v-for="thr in threadsList" :thread="thr" :key="thr.Fingerprint"></a-thread-entity>
+      <a-thread-entity v-for="thr in bracketedCurrentBoardsThreads" :thread="thr" :key="thr.Fingerprint"></a-thread-entity>
       <a-no-content no-content-text="There are no threads yet. You should write something." v-if="hasNoContent"></a-no-content>
+      <div class="load-more-carrier" v-show="!(loadMoreCaret + loadMoreBatchSize >= currentBoardsThreads.length)">
+        <a class="button is-warning is-outlined load-more-button" @click="loadMore()">
+      LOAD MORE
+            </a>
+      </div>
+      <a-fin-puck v-show="(loadMoreCaret + loadMoreBatchSize >= currentBoardsThreads.length)"></a-fin-puck>
     </div>
   </div>
 </template>
@@ -16,20 +22,13 @@
     name: 'boardroot',
     data() {
       return {
-        currentBoardsThreadsNew: []
+        currentBoardsThreadsNew: [],
+        loadMoreCaret: 0,
+        loadMoreBatchSize: 50,
       }
     },
     computed: {
       ...Vuex.mapState(['currentBoardsThreads']),
-      threadsList(this: any) {
-        // return this.currentBoardsThreads
-        if (this.$store.state.route.name === 'Board' || this.$store.state.route.name === undefined) {
-          return this.currentBoardsThreads
-        }
-        if (this.$store.state.route.name === 'Board>ThreadsNewList') {
-          return this.currentBoardsThreadsNew
-        }
-      },
       inflightNewThreads(this: any) {
         let inflightNewThreads = []
         for (let val of this.$store.state.ambientStatus.inflights.threadsList) {
@@ -47,19 +46,32 @@
       },
       hasNoContent(this: any) {
         if (this.$store.state.route.name === 'Board' || this.$store.state.route.name === undefined) {
-          if (this.threadsList.length === 0) {
-            return true
+          if (this.currentBoardsThreads.length > 0) {
+            return false
           }
+          return true
         }
-        if (this.$store.state.route.name === 'Board>ThreadsNewList') {
-          if (this.inflightNewThreads.length === 0) {
-            return true
-          }
+        // If Board>ThreadsNewList
+        if (this.inflightNewThreads.length > 0) {
+          return false
         }
-        return false
-      }
+        if (this.currentBoardsThreads.length > 0) {
+          return false
+        }
+        return true
+      },
+      bracketedCurrentBoardsThreads(this: any) {
+        return this.currentBoardsThreads.slice(0, this.loadMoreCaret + this.loadMoreBatchSize)
+      },
     },
-    methods: {},
+    methods: {
+      loadMore(this: any) {
+        if (this.loadMoreCaret + this.loadMoreBatchSize >= this.currentBoardsThreads.length) {
+          return
+        }
+        this.loadMoreCaret = this.loadMoreCaret + this.loadMoreBatchSize
+      },
+    },
     mounted(this: any) {
       // console.log('this is currentboardsthreads')
       // console.log(this.currentBoardsThreads)
@@ -69,5 +81,12 @@
 </script>
 
 <style lang="scss" scoped>
-
+  @import "../../../scss/bulmastyles";
+  .load-more-carrier {
+    display: flex;
+    padding: 20px 0 0 0;
+    .load-more-button {
+      margin: auto;
+    }
+  }
 </style>

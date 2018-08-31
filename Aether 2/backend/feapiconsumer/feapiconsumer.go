@@ -7,6 +7,7 @@ package feapiconsumer
 
 import (
 	pb "aether-core/protos/feapi"
+	"aether-core/protos/feobjects"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
 	// "fmt"
@@ -35,5 +36,25 @@ func SendBackendReady() {
 	_, err := c.BackendReady(ctx, &payload)
 	if err != nil {
 		logging.Logf(1, "SendBackendReady encountered an error. Err: %v", err)
+	}
+}
+
+// The way this works is that you set whatever you need into the backend ambient status here, and calling SendBackendAmbientStatus will send it over. The reason for that is when you send a partial backend ambient status, it will actually delete the other values from the client, because the client cannot know if the value was set to its zero value, or wasn't set at all.
+var BackendAmbientStatus feobjects.BackendAmbientStatus
+
+func SendBackendAmbientStatus() {
+	c, conn := StartFrontendAPIConnection()
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), globals.BackendConfig.GetGRPCServiceTimeout())
+	defer cancel()
+	if len(BackendAmbientStatus.BackendConfigLocation) == 0 {
+		BackendAmbientStatus.BackendConfigLocation = globals.GetBackendConfigLocation()
+	}
+	payload := pb.BackendAmbientStatusPayload{
+		BackendAmbientStatus: &BackendAmbientStatus,
+	}
+	_, err := c.SendBackendAmbientStatus(ctx, &payload)
+	if err != nil {
+		logging.Logf(1, "SendBackendAmbientStatus encountered an error. Err: %v", err)
 	}
 }

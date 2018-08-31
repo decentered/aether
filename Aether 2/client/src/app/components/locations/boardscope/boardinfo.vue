@@ -39,6 +39,16 @@
           {{timeString($store.state.currentBoard.lastupdate)}}
         </div>
       </div>
+      <div class="user-data-field-container">
+        <div class="user-data-field-header">
+          Fingerprint
+        </div>
+        <div class="user-data-field">
+          <div class="fingerprint-text">
+            {{$store.state.currentBoard.fingerprint}}
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -175,6 +185,7 @@
 </script>
 
 <style lang="scss" scoped>
+  @import "../../../scss/globals";
   .board-info {
     padding: 20px;
   }
@@ -210,6 +221,19 @@
       p:last-of-type {
         margin-bottom: 0;
       }
+    }
+
+    .fingerprint-text {
+      font-family: "SCP Bold";
+      word-wrap: break-word;
+      width: 258px;
+      font-size: 80%;
+      margin-top: 10px;
+      margin-bottom: 6px;
+      color: $a-grey-600;
+      background-color: rgba(255, 255, 255, 0.075);
+      padding: 2px 6px;
+      margin-left: -5px;
     }
   }
 </style>

@@ -7,37 +7,44 @@
         </div>
       </template>
       <template v-else>
-        <a-board-entity v-for="board in whitelistedBoards" :board="board"></a-board-entity>
-        <div class="load-more-carrier" v-show="whitelistedBoards.length >= this.whitelistedLastLoadedItem">
-          <a class="button is-warning is-outlined load-more-button" @click="loadMoreWhitelisted()">
+        <a-board-entity v-for="board in bracketedSfwlistedBoards" :board="board"></a-board-entity>
+        <template v-if="bracketedSfwlistedBoards.length >= sfwlistedCaret + sfwlistedBatchSize">
+          <div class="load-more-carrier">
+            <a class="button is-warning is-outlined load-more-button" @click="loadMoreSFWListed()">
         LOAD MORE
               </a>
-        </div>
-        <div class="non-whitelist-info">
-          <p>
-            You've reached to the end of the whitelisted boards list.
-          </p>
-          <p>
-            Whitelisted boards are the suggested boards that are chosen to be interesting and work-safe, and they contain some of the higher-quality discussion and content the network has available.
-          </p>
-          <p>
-            If you prefer, you can view the list of non-whitelisted boards. A board being non-whitelisted is not necessarily a negative signal. It might mean that the board was just formed, or that it is interesting and high quality but not work-safe, which is perfectly fine, or any combination of many other reasons.
-          </p>
-          <p>
-            However, it also means that the quality will be much more varied. Proceed at your own risk. Here be dragons.
-          </p>
-          <a @click="toggleNonWhitelisted()" v-show="true">
-          <span v-show="!nonWhitelistedVisible">I'm OK with that, show me</span>
-          <span v-show="nonWhitelistedVisible">Hide</span>
-        </a>
-        </div>
-        <template v-if="nonWhitelistedVisible">
-          <a-board-entity v-for="board in nonWhitelistedBoards" :board="board"></a-board-entity>
-          <div class="load-more-carrier" v-show="nonWhitelistedBoards.length >= this.nonWhitelistedLastLoadedItem">
-            <a class="button is-warning is-outlined load-more-button" @click="loadMoreNonWhitelisted()">
-          LOAD MORE
-                </a>
           </div>
+        </template>
+        <template v-else>
+          <a-fin-puck></a-fin-puck>
+        </template>
+        <div class="non-sfwlist-info" v-show="!$store.state.ambientStatus.frontendambientstatus.sfwlistdisabled">
+          <div class="non-sfwlist-info-carrier">
+            <p>
+              <span class="nonsfw-header">This is the end of the safe-for-work communities list.</span>
+              <br>
+              <br>You can view the list of non-SFW communities below. (New communities are considered non-SFW at first.)
+              <router-link to="/sfwlist">More info</router-link>
+            </p>
+            <div class="show-non-sfw" v-if="!nonSFWListedVisible">
+              <a @click="toggleNonSFWListed()">Show non-SFW communities</a>
+              <br>
+            </div>
+          </div>
+
+        </div>
+        <template v-if="nonSFWListedVisible">
+          <a-board-entity v-for="board in bracketedNonSFWListedBoards" :board="board"></a-board-entity>
+          <template v-if="bracketedNonSFWListedBoards.length >= nonsfwlistedCaret + nonsfwlistedBatchSize">
+            <div class="load-more-carrier">
+              <a class="button is-warning is-outlined load-more-button" @click="loadMoreNonSFWListed()">
+            LOAD MORE
+                  </a>
+            </div>
+          </template>
+          <template v-else>
+            <a-fin-puck></a-fin-puck>
+          </template>
         </template>
       </template>
     </div>
@@ -50,12 +57,17 @@
     name: 'globalroot',
     data() {
       return {
-        nonWhitelistedVisible: false,
-        nonWhitelistedFirstLoadedItem: 0,
-        nonWhitelistedLastLoadedItem: 25,
-        whitelistedFirstLoadedItem: 0,
-        whitelistedLastLoadedItem: 25,
-        batchSize: 25,
+        nonSFWListedVisible: false,
+        // nonSFWListedFirstLoadedItem: 0,
+        // nonSFWListedLastLoadedItem: 25,
+        // sfwlistedFirstLoadedItem: 0,
+        // sfwlistedLastLoadedItem: 25,
+        // batchSize: 25,
+        moreInfoOpen: true,
+        sfwlistedCaret: 0,
+        sfwlistedBatchSize: 25,
+        nonsfwlistedCaret: 0,
+        nonsfwlistedBatchSize: 25,
       }
     },
     computed: {
@@ -63,40 +75,50 @@
       loadingComplete(this: any) {
         return this.allBoardsLoadComplete
       },
-      whitelistedBoards(this: any) {
-        let whitelisted = []
+      bracketedSfwlistedBoards(this: any) {
+        let sfwlisted = []
         let vm = this
-        for (var i = 0; i < this['allBoards'].length; i++) {
-          (function(i) {
-            if (vm.allBoards[i].whitelisted) {
-              whitelisted.push(vm.allBoards[i])
-            }
-          })(i)
+        if (this.$store.state.ambientStatus.frontendambientstatus.sfwlistdisabled) {
+          // SFW list is disabled. All communities are sfw listed communities.
+          sfwlisted = this.allBoards
+        } else {
+          for (var i = 0; i < this.allBoards.length; i++) {
+            (function(i) {
+              if (vm.allBoards[i].sfwlisted) {
+                sfwlisted.push(vm.allBoards[i])
+              }
+            })(i)
+          }
         }
-        return whitelisted.slice(this.whitelistedFirstLoadedItem, this.whitelistedLastLoadedItem)
+        return sfwlisted.slice(0, this.sfwlistedCaret + this.sfwlistedBatchSize)
       },
-      nonWhitelistedBoards(this: any) {
-        let nonWhitelisted = []
+      bracketedNonSFWListedBoards(this: any) {
+        let nonSFWListed = []
         let vm = this
         for (var i = 0; i < this['allBoards'].length; i++) {
           (function(i) {
-            if (!vm.allBoards[i].whitelisted) {
-              nonWhitelisted.push(vm.allBoards[i])
+            if (!vm.allBoards[i].sfwlisted) {
+              nonSFWListed.push(vm.allBoards[i])
             }
           })(i)
         }
-        return nonWhitelisted.slice(this.nonWhitelistedFirstLoadedItem, this.nonWhitelistedLastLoadedItem)
+        return nonSFWListed.slice(0, this.nonsfwlistedCaret + this.nonsfwlistedBatchSize)
       }
     },
     methods: {
-      toggleNonWhitelisted(this: any) {
-        this.nonWhitelistedVisible = !this.nonWhitelistedVisible
+      toggleNonSFWListed(this: any) {
+        this.nonSFWListedVisible = !this.nonSFWListedVisible
       },
-      loadMoreNonWhitelisted(this: any) {
-        this.nonWhitelistedLastLoadedItem = this.nonWhitelistedLastLoadedItem + this.batchSize
+      loadMoreNonSFWListed(this: any) {
+        // this.nonSFWListedLastLoadedItem = this.nonSFWListedLastLoadedItem + this.batchSize
+        this.nonsfwlistedCaret = this.nonsfwlistedCaret + this.nonsfwlistedBatchSize
       },
-      loadMoreWhitelisted(this: any) {
-        this.whitelistedLastLoadedItem = this.whitelistedLastLoadedItem + this.batchSize
+      loadMoreSFWListed(this: any) {
+        // this.sfwlistedLastLoadedItem = this.sfwlistedLastLoadedItem + this.batchSize
+        this.sfwlistedCaret = this.sfwlistedCaret + this.sfwlistedBatchSize
+      },
+      toggleMoreInfo(this: any) {
+        this.moreInfoOpen ? this.moreInfoOpen = false : this.moreInfoOpen = true
       }
     }
   }
@@ -105,21 +127,38 @@
 <style lang="scss" scoped>
   @import "../../../scss/bulmastyles";
   @import "../../../scss/globals";
-  .non-whitelist-info {
+  .non-sfwlist-info {
     font-family: "SCP Regular";
     margin: 20px;
     padding: 20px;
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: rgba(0, 0, 0, 0.25);
+    border-radius: 3px;
     a {
       font-family: 'SCP Bold';
       &:hover {
         color: $a-grey-800;
       }
     }
+    .bold {
+      font-family: 'SCP Bold';
+    }
+    .header {
+      font-family: 'SCP Bold';
+      font-size: 150%;
+      margin-bottom: 15px;
+      margin-top: 50px;
+    }
+    .non-sfwlist-info-carrier {
+      font-family: 'SCP Semibold';
+      max-width: 750px;
+      .nonsfw-header {
+        // font-family: 'SCP Bold';
+      }
+    }
   }
 
   .button {
-    font-family: 'SSP Semibold'
+    font-family: 'SSP Bold'
   }
 
   .load-more-carrier {

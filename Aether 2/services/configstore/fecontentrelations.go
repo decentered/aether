@@ -2,7 +2,7 @@
 
 // This package is the content equivalent of user relations, it handles actions like subscribing and unsubscribing to a board, following a thread, and so on.
 
-// This package also handles the optional whitelist for boards, which is used to highlight especially interesting communities. Neither this whitelist, nor the API for it is *not* a part of the protocol, only a part of this specific c0 client app.
+// This package also handles the optional SFWList for boards, which is used to highlight especially interesting communities. Neither this SFWList, nor the API for it is *not* a part of the protocol, only a part of this specific c0 client app.
 
 /**
  *
@@ -16,6 +16,7 @@ package configstore
 
 import (
 	"sync"
+	"time"
 )
 
 type Board struct {
@@ -35,36 +36,12 @@ type ContentRelations struct {
 	Initialised   bool
 	SubbedBoards  []Board
 	SubbedThreads []Thread
-	Whitelist     whitelist
-}
-
-type whitelist struct {
-	Disabled   bool
-	LastUpdate int64
-	Source     string
-	Boards     []string
+	SFWList       sfwlist
 }
 
 func (c *ContentRelations) Init() {
 	c.Initialised = true
 }
-
-func (wl *whitelist) Update() {
-	if wl.Disabled {
-		return
-	}
-	if len(wl.Source) == 0 {
-		wl.Source = "www.example.com/whitelist" // todo
-	}
-	// If last update was less than an hour ago, return
-	// Check the whitelist source
-}
-
-// func (c *ContentRelations) GetAllSubbedBoards() []Board {
-// 	c.lock.Lock()
-// 	defer c.lock.Unlock()
-// 	return c.SubbedBoards
-// }
 
 // func (c *ContentRelations) GetAllSubbedThreads() []Thread {
 // 	c.lock.Lock()
@@ -72,10 +49,7 @@ func (wl *whitelist) Update() {
 // 	return c.SubbedThreads
 // }
 
-func (c *ContentRelations) RefreshWhitelist() {
-	c.Whitelist.Boards = []string{}
-	c.Whitelist.Boards = []string{"00886d50e598e43984d0df37f83b2398d371a9cc8417a9bba521a95c2da45ffe"} // debug
-}
+/*----------  Subscription status  ----------*/
 
 func (c *ContentRelations) IsSubbedBoard(fp string) (isSubbed, notifyEnabled bool, lastSeen int64) {
 	loc := c.FindBoard(fp)
@@ -85,23 +59,9 @@ func (c *ContentRelations) IsSubbedBoard(fp string) (isSubbed, notifyEnabled boo
 	return false, false, 0
 }
 
-func (c *ContentRelations) IsWhitelistedBoard(fp string) (isWhitelisted bool) {
-	c.RefreshWhitelist()
-	return c.FindBoardInWhitelist(fp) != -1
-}
-
 func (c *ContentRelations) FindBoard(fp string) int {
 	for key, _ := range c.SubbedBoards {
 		if c.SubbedBoards[key].Fingerprint == fp {
-			return key
-		}
-	}
-	return -1
-}
-
-func (c *ContentRelations) FindBoardInWhitelist(fp string) int {
-	for key, _ := range c.Whitelist.Boards {
-		if c.Whitelist.Boards[key] == fp {
 			return key
 		}
 	}
@@ -116,6 +76,33 @@ func (c *ContentRelations) FindThread(fp string) int {
 	}
 	return -1
 }
+
+func (c *ContentRelations) GetAllSubbedBoards() []Board {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.SubbedBoards
+}
+
+/*----------  Signals (silenced/notify, etc.) status  ----------*/
+
+// SetBoardSignal sets the board signal into the storage. If a board is subscribed, we set the notify signal as well, if a subscription is removed, we remove the entry.
+func (c *ContentRelations) SetBoardSignal(
+	fp string, subscribed, notify bool, lastseen int64, lastSeenOnly bool) (committed bool) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if lastSeenOnly {
+		c.insertLastSeenForBoard(fp, lastseen)
+		return
+	}
+	if subscribed {
+		c.insertBoard(fp, notify, lastseen, lastSeenOnly)
+	} else {
+		c.removeBoard(fp)
+	}
+	return true
+}
+
+/*----------  Internal work functions  ----------*/
 
 func (c *ContentRelations) insertBoard(fp string, notify bool, lastseen int64, lastSeenOnly bool) {
 	if i := c.FindBoard(fp); i != -1 {
@@ -158,23 +145,6 @@ func (c *ContentRelations) removeThread(fp string) {
 	}
 }
 
-// SetBoardSignal sets the board signal into the storage. If a board is subscribed, we set the notify signal as well, if a subscription is removed, we remove the entry.
-func (c *ContentRelations) SetBoardSignal(
-	fp string, subscribed, notify bool, lastseen int64, lastSeenOnly bool) (committed bool) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if lastSeenOnly {
-		c.insertLastSeenForBoard(fp, lastseen)
-		return
-	}
-	if subscribed {
-		c.insertBoard(fp, notify, lastseen, lastSeenOnly)
-	} else {
-		c.removeBoard(fp)
-	}
-	return true
-}
-
 // func (c *ContentRelations) SubBoard(fp string, notify bool) {
 // 	c.insertBoard(fp, notify)
 // }
@@ -196,3 +166,60 @@ func (c *ContentRelations) SetBoardSignal(
 // 	defer c.lock.Unlock()
 // 	c.removeThread(fp)
 // }
+
+/*----------  SFW list  ----------*/
+
+type sfwlist struct {
+	LastUpdate int64
+	Source     string
+	Boards     []string
+}
+
+func (list *sfwlist) Update() {
+	if fc.GetSFWListDisabled() == false {
+		return
+	}
+	if len(list.Source) == 0 {
+		list.Source = "https://data.getaether.net/sfwlist.json" // todo
+	}
+	// If last update was less than an hour ago, return
+	// Check the sfwlist source
+}
+
+func (list *sfwlist) GetSFWListDisabled() bool {
+	return fc.GetSFWListDisabled()
+}
+
+func (list *sfwlist) SetSFWListDisabled(state bool) {
+	fc.SetSFWListDisabled(state)
+}
+
+func (list *sfwlist) Refresh() {
+	if list.GetSFWListDisabled() {
+		return
+	}
+	list.Boards = []string{}
+	list.Debug_InsertSFWListStub()
+	list.LastUpdate = time.Now().Unix()
+}
+
+func (list *sfwlist) IsSFWListedBoard(fp string) (isSFWListed bool) {
+	if list.GetSFWListDisabled() {
+		return true
+	}
+	list.Refresh()
+	return list.FindBoardInSFWList(fp) != -1
+}
+
+func (list *sfwlist) FindBoardInSFWList(fp string) int {
+	for key, _ := range list.Boards {
+		if list.Boards[key] == fp {
+			return key
+		}
+	}
+	return -1
+}
+
+func (list *sfwlist) Debug_InsertSFWListStub() {
+	list.Boards = []string{"00886d50e598e43984d0df37f83b2398d371a9cc8417a9bba521a95c2da45ffe"} // debug
+}

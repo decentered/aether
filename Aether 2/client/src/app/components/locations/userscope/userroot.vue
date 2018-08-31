@@ -7,6 +7,8 @@
         </div> -->
         <div class="user-data-field">
           <template v-if="!editPaneOpen">
+            <a-no-content no-content-text="This user hasn't written a bio." quoteDisabled="true" v-if="visibleEntity.info.length === 0">
+            </a-no-content>
             <a-markdown :content="visibleEntity.info"></a-markdown>
             <div class="inflight-box" v-if="isVisibleInflightEntity">
               <a-inflight-info :status="visibleInflightStatus"></a-inflight-info>
@@ -190,6 +192,10 @@
   .user-data-field-container {
     &:first-of-type {
       margin-top: 0;
+    }
+    .no-content {
+      margin: 0;
+      margin-bottom: 10px;
     }
     margin-top: 17px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.25);

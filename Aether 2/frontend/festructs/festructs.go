@@ -9,6 +9,8 @@ import (
 	"aether-core/services/logging"
 	// "github.com/willf/bloom"
 	pbstructs "aether-core/protos/mimapi"
+	"math"
+	"sort"
 )
 
 // Compiled types
@@ -46,10 +48,12 @@ func NewCPost(rp *pbstructs.Post) CompiledPost {
 	// Needs: Compiledcontentsignals, owner, bymod, byop, blocked, approved flags
 }
 
-// RefreshContentSignals refreshes an existing compiled thread's compileduser and signals.
+// RefreshContentSignals refreshes an existing compiled post's compileduser and signals.
 func (c *CompiledPost) RefreshContentSignals(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, nowts int64) {
 	cs := CompiledContentSignals{}
 	cs.Insert(c.Fingerprint, catds, cfgs, cmas, nowts)
+	// Move values that need to be retained
+	cs.SelfModIgnored = c.CompiledContentSignals.SelfModIgnored
 	c.CompiledContentSignals = cs
 }
 
@@ -81,9 +85,108 @@ func (c *CompiledPost) Insert(ce CompiledPost) {
 	}
 }
 
-func (c *CompiledPost) Refresh(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, boardSpecificUserHeaders CUserBatch, nowts int64) {
+func (c *CompiledPost) Refresh(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, boardSpecificUserHeaders CUserBatch, nowts int64, bc *BoardCarrier, tc *ThreadCarrier) {
 	c.RefreshUserHeader(boardSpecificUserHeaders)
 	c.RefreshContentSignals(catds, cfgs, cmas, nowts)
+	c.RefreshExogenousContentSignals(bc, tc)
+}
+
+// RefreshExogenousContentSignals is where we compile and calculate the content signals that depend on external entitites.
+func (c *CompiledPost) RefreshExogenousContentSignals(bc *BoardCarrier, tc *ThreadCarrier) {
+	/*
+		The signals processed here are:
+		ByMod            bool
+		ByFollowedPerson bool
+		ByBlockedPerson  bool
+		ByOP             bool
+		ModBlocked       bool
+		ModApproved      bool
+
+		creator's userheader: (ask to own userheader)
+		- following / blocked state,
+		- bymod state
+
+		thread owner fingerprint (ask to thread carrier)
+		- byop state
+
+		issuer's userheader (ask to board carrier)
+		- modblock / modapprove state
+	*/
+
+	us := &c.Owner.CompiledUserSignals
+
+	/*----------  ByMod state  ----------*/
+	c.CompiledContentSignals.ByMod = isMod(us)
+
+	/*----------  Following / blocked state  ----------*/
+	c.CompiledContentSignals.ByFollowedPerson = us.FollowedBySelf
+	c.CompiledContentSignals.ByBlockedPerson = us.BlockedBySelf
+
+	/*----------  ByOp state  ----------*/
+	if tc != nil {
+		// ^ Nil gate, because this can be also used by a thread, not just a post
+		if tc.Threads[0].Owner.Fingerprint == c.Owner.Fingerprint {
+			c.CompiledContentSignals.ByOP = true
+		}
+	}
+	/*----------  Modblock / modapprove state  ----------*/
+	// Behaviour: if at least one modblock, block it, if there is at least one modapprove, unblock it. so if something is both modblocked and modapproved, it will be visible.
+	// Approvals
+	for k, _ := range c.CompiledContentSignals.ModApprovals {
+		sourcefp := c.CompiledContentSignals.ModApprovals[k].SourceFp
+		b := &CompiledBoard{}
+		for k, _ := range bc.Boards {
+			if bc.Boards[k].Fingerprint == bc.Fingerprint {
+				b = &bc.Boards[k]
+			}
+		}
+		uh := b.GetUserHeader(sourcefp)
+		if isMod(&uh.CompiledUserSignals) {
+			c.CompiledContentSignals.ModApproved = true
+		}
+	}
+	// Blocks
+	for k, _ := range c.CompiledContentSignals.ModBlocks {
+		sourcefp := c.CompiledContentSignals.ModBlocks[k].SourceFp
+		b := &CompiledBoard{}
+		for k, _ := range bc.Boards {
+			if bc.Boards[k].Fingerprint == bc.Fingerprint {
+				b = &bc.Boards[k]
+			}
+		}
+		uh := b.GetUserHeader(sourcefp)
+		if isMod(&uh.CompiledUserSignals) {
+			c.CompiledContentSignals.ModBlocked = true
+		}
+	}
+}
+
+func isMod(us *CompiledUserSignals) bool {
+	/*
+		These signals have different levels of weight. The order is like this, from weakest to strongest:
+		- Default made mod
+		- Network made mod
+		- Network made non-mod
+		- Self made mod
+		- Self made non-mod
+	*/
+	isMod := false
+	if us.MadeModByDefault {
+		isMod = true
+	}
+	if us.MadeModByNetwork {
+		isMod = true
+	}
+	if us.MadeNonModByNetwork {
+		isMod = false
+	}
+	if us.MadeModBySelf {
+		isMod = true
+	}
+	if us.MadeNonModBySelf {
+		isMod = false
+	}
+	return isMod
 }
 
 // Batch compiled sets
@@ -122,19 +225,25 @@ func (batch *CPostBatch) InsertFromProtobuf(ces []*pbstructs.Post) {
 	}
 }
 
-func (batch *CPostBatch) Find(threadfp string) int {
+func (batch *CPostBatch) Find(postfp string) int {
 	for k, _ := range *batch {
-		if threadfp == (*batch)[k].Fingerprint {
+		if postfp == (*batch)[k].Fingerprint {
 			return k
 		}
 	}
 	return -1
 }
 
-func (batch *CPostBatch) Refresh(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, boardSpecificUserHeaders CUserBatch, nowts int64) {
+func (batch *CPostBatch) Refresh(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, boardSpecificUserHeaders CUserBatch, nowts int64, bc *BoardCarrier, tc *ThreadCarrier) {
 	for k, _ := range *batch {
-		(*batch)[k].Refresh(catds, cfgs, cmas, boardSpecificUserHeaders, nowts)
+		(*batch)[k].Refresh(catds, cfgs, cmas, boardSpecificUserHeaders, nowts, bc, tc)
 	}
+}
+
+func (batch *CPostBatch) Sort() {
+	sort.Slice((*batch), func(i, j int) bool {
+		return ((*batch)[i].CompiledContentSignals.Upvotes - (*batch)[i].CompiledContentSignals.Downvotes) > ((*batch)[j].CompiledContentSignals.Upvotes - (*batch)[j].CompiledContentSignals.Downvotes)
+	})
 }
 
 type CompiledThread struct {
@@ -150,6 +259,7 @@ type CompiledThread struct {
 	LastUpdate             int64
 	Meta                   string
 	PostsCount             int
+	Score                  float64
 }
 
 func NewCThread(rp *pbstructs.Thread) CompiledThread {
@@ -175,6 +285,8 @@ func NewCThread(rp *pbstructs.Thread) CompiledThread {
 func (c *CompiledThread) RefreshContentSignals(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, nowts int64) {
 	cs := CompiledContentSignals{}
 	cs.Insert(c.Fingerprint, catds, cfgs, cmas, nowts)
+	// Move values that need to be retained
+	cs.SelfModIgnored = c.CompiledContentSignals.SelfModIgnored
 	c.CompiledContentSignals = cs
 }
 
@@ -207,9 +319,93 @@ func (c *CompiledThread) Insert(ce CompiledThread) {
 	}
 }
 
-func (c *CompiledThread) Refresh(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, boardSpecificUserHeaders CUserBatch, nowts int64) {
+// CalcScore calculates the rank score for this thread.
+func (c *CompiledThread) CalcScore() {
+	// We need: upvotes, downvotes, current timestamp, creation
+	voteScore := c.CompiledContentSignals.Upvotes - c.CompiledContentSignals.Downvotes
+	orderOfMagnitude := math.Log10(math.Max(1, math.Abs(float64(voteScore))))
+	sign := 0
+	if voteScore > 0 {
+		sign = 1
+	}
+	if voteScore < 0 {
+		sign = -1
+	}
+	sec := c.Creation - 1533081600 // > Here we go again, Gordon Freeman
+	score := (float64(sign) * orderOfMagnitude) + (float64(sec) / 42300)
+	// > Approximate half life of Sodium-24
+	c.Score = score
+}
+
+func (c *CompiledThread) Refresh(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, boardSpecificUserHeaders CUserBatch, nowts int64, bc *BoardCarrier) {
 	c.RefreshUserHeader(boardSpecificUserHeaders)
 	c.RefreshContentSignals(catds, cfgs, cmas, nowts)
+	c.RefreshExogenousContentSignals(bc)
+	c.CalcScore()
+}
+
+// RefreshExogenousContentSignals is where we compile and calculate the content signals that depend on external entitites.
+func (c *CompiledThread) RefreshExogenousContentSignals(bc *BoardCarrier) {
+	// ^ c: compiledthread, tc: threadcarrier. different things.
+	/*
+		The signals processed here are:
+		ByMod            bool
+		ByFollowedPerson bool
+		ByBlockedPerson  bool
+		ByOP             bool
+		ModBlocked       bool
+		ModApproved      bool
+
+		creator's userheader: (ask to own userheader)
+		- following / blocked state,
+		- bymod state
+
+		issuer's userheader (ask to board carrier)
+		- modblock / modapprove state
+	*/
+
+	us := &c.Owner.CompiledUserSignals
+
+	/*----------  ByMod state  ----------*/
+	c.CompiledContentSignals.ByMod = isMod(us)
+
+	/*----------  Following / blocked state  ----------*/
+	c.CompiledContentSignals.ByFollowedPerson = us.FollowedBySelf
+	c.CompiledContentSignals.ByBlockedPerson = us.BlockedBySelf
+
+	/*----------  ByOp state  ----------*/
+	/*----------  We don't do ByOp state in this one  ----------*/
+
+	/*----------  Modblock / modapprove state  ----------*/
+	// Behaviour: if at least one modblock, block it, if there is at least one modapprove, unblock it. so if something is both modblocked and modapproved, it will be visible.
+	// Approvals
+	for k, _ := range c.CompiledContentSignals.ModApprovals {
+		sourcefp := c.CompiledContentSignals.ModApprovals[k].SourceFp
+		b := &CompiledBoard{}
+		for k, _ := range bc.Boards {
+			if bc.Boards[k].Fingerprint == bc.Fingerprint {
+				b = &bc.Boards[k]
+			}
+		}
+		uh := b.GetUserHeader(sourcefp)
+		if isMod(&uh.CompiledUserSignals) {
+			c.CompiledContentSignals.ModApproved = true
+		}
+	}
+	// Blocks
+	for k, _ := range c.CompiledContentSignals.ModBlocks {
+		sourcefp := c.CompiledContentSignals.ModBlocks[k].SourceFp
+		b := &CompiledBoard{}
+		for k, _ := range bc.Boards {
+			if bc.Boards[k].Fingerprint == bc.Fingerprint {
+				b = &bc.Boards[k]
+			}
+		}
+		uh := b.GetUserHeader(sourcefp)
+		if isMod(&uh.CompiledUserSignals) {
+			c.CompiledContentSignals.ModBlocked = true
+		}
+	}
 }
 
 // Batch thread
@@ -258,10 +454,23 @@ func (batch *CThreadBatch) Find(threadfp string) int {
 	return -1
 }
 
-func (batch *CThreadBatch) Refresh(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, boardSpecificUserHeaders CUserBatch, nowts int64) {
+func (batch *CThreadBatch) Refresh(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, boardSpecificUserHeaders CUserBatch, nowts int64, bc *BoardCarrier) {
 	for k, _ := range *batch {
-		(*batch)[k].Refresh(catds, cfgs, cmas, boardSpecificUserHeaders, nowts)
+		(*batch)[k].Refresh(catds, cfgs, cmas, boardSpecificUserHeaders, nowts, bc)
 	}
+}
+
+// Sort sorts the threads in the batch according to their score.
+func (batch *CThreadBatch) SortByScore() {
+	sort.Slice((*batch), func(i, j int) bool {
+		return (*batch)[i].Score > (*batch)[j].Score
+	})
+}
+
+func (batch *CThreadBatch) SortByCreation() {
+	sort.Slice((*batch), func(i, j int) bool {
+		return (*batch)[i].Creation > (*batch)[j].Creation
+	})
 }
 
 // The things missing from Key: expiry, info, meta
@@ -420,23 +629,47 @@ func NewCBoard(rp *pbstructs.Board) CompiledBoard {
 	// Needs: Compiledcontentsignals, owner, bymod, byop, blocked, approved flags
 }
 
-func (cb *CompiledBoard) GetUser() {
-	// todo - this will look at the global, pull the appropriate entity, merge it with the local data in this scope and return that. should take a pointer to the global data, and return a compiled user.
-
-	// This would drastically simplify merging of stuff.
+// GetUserHeader attempts to get the local user header if available within that board scope, if not, it attempts to get the global user header, if present.
+func (cb *CompiledBoard) GetUserHeader(fp string) CompiledUser {
+	for k, _ := range cb.LocalScopeUserHeaders {
+		if cb.LocalScopeUserHeaders[k].Fingerprint == fp {
+			return cb.LocalScopeUserHeaders[k]
+		}
+	}
+	uhc := UserHeaderCarrier{}
+	err := globals.KvInstance.One("Fingerprint", fp, &uhc)
+	if err != nil {
+		logging.Logf(1, "We could not get the requested user from the global user headers. Error: %v, We asked for: %v", err, fp)
+		return CompiledUser{}
+	}
+	if len(uhc.Users) > 0 {
+		return uhc.Users[0]
+	}
+	return CompiledUser{}
 }
 
 func (cb *CompiledBoard) GetDefaultMods() []string {
 	var dm []string
 	dm = append(dm, cb.Owner.Fingerprint)
 	dm = append(dm, cb.BoardOwners...)
-	return dm
+	// To map and back again to remove dedupes.
+	m := make(map[string]bool)
+	for k, _ := range dm {
+		m[dm[k]] = true
+	}
+	result := []string{}
+	for k, _ := range m {
+		result = append(result, k)
+	}
+	return result
 }
 
 // RefreshContentSignals refreshes an existing compiled board's userheadercarrier and signals.
 func (c *CompiledBoard) RefreshContentSignals(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, nowts int64) {
 	cs := CompiledContentSignals{}
 	cs.Insert(c.Fingerprint, catds, cfgs, cmas, nowts)
+	// Move values that need to be retained
+	cs.SelfModIgnored = c.CompiledContentSignals.SelfModIgnored
 	c.CompiledContentSignals = cs
 }
 
@@ -468,9 +701,75 @@ func (c *CompiledBoard) Insert(ce CompiledBoard) {
 	}
 }
 
-func (c *CompiledBoard) Refresh(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, boardSpecificUserHeaders CUserBatch, nowts int64) {
+func (c *CompiledBoard) Refresh(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, boardSpecificUserHeaders CUserBatch, nowts int64, bc *BoardCarrier) {
 	c.RefreshUserHeader(boardSpecificUserHeaders)
 	c.RefreshContentSignals(catds, cfgs, cmas, nowts)
+	c.RefreshExogenousContentSignals(bc)
+}
+
+// RefreshExogenousContentSignals is where we compile and calculate the content signals that depend on external entitites.
+func (c *CompiledBoard) RefreshExogenousContentSignals(bc *BoardCarrier) {
+	// ^ c: compiledthread, tc: threadcarrier. different things.
+	/*
+		The signals processed here are:
+		ByMod            bool
+		ByFollowedPerson bool
+		ByBlockedPerson  bool
+		ByOP             bool
+		ModBlocked       bool
+		ModApproved      bool
+
+		creator's userheader: (ask to own userheader)
+		- following / blocked state,
+		- bymod state
+
+		issuer's userheader (ask to board carrier)
+		- modblock / modapprove state
+	*/
+
+	us := &c.Owner.CompiledUserSignals
+
+	/*----------  ByMod state  ----------*/
+	c.CompiledContentSignals.ByMod = isMod(us)
+	// ^ In a board, this will always be default true
+
+	/*----------  Following / blocked state  ----------*/
+	c.CompiledContentSignals.ByFollowedPerson = us.FollowedBySelf
+	c.CompiledContentSignals.ByBlockedPerson = us.BlockedBySelf
+
+	/*----------  ByOp state  ----------*/
+	/*----------  We don't do ByOp state in this one  ----------*/
+
+	/*----------  Modblock / modapprove state  ----------*/
+	// Behaviour: if at least one modblock, block it, if there is at least one modapprove, unblock it. so if something is both modblocked and modapproved, it will be visible.
+	// Approvals
+	for k, _ := range c.CompiledContentSignals.ModApprovals {
+		sourcefp := c.CompiledContentSignals.ModApprovals[k].SourceFp
+		b := &CompiledBoard{}
+		for k, _ := range bc.Boards {
+			if bc.Boards[k].Fingerprint == bc.Fingerprint {
+				b = &bc.Boards[k]
+			}
+		}
+		uh := b.GetUserHeader(sourcefp)
+		if isMod(&uh.CompiledUserSignals) {
+			c.CompiledContentSignals.ModApproved = true
+		}
+	}
+	// Blocks
+	for k, _ := range c.CompiledContentSignals.ModBlocks {
+		sourcefp := c.CompiledContentSignals.ModBlocks[k].SourceFp
+		b := &CompiledBoard{}
+		for k, _ := range bc.Boards {
+			if bc.Boards[k].Fingerprint == bc.Fingerprint {
+				b = &bc.Boards[k]
+			}
+		}
+		uh := b.GetUserHeader(sourcefp)
+		if isMod(&uh.CompiledUserSignals) {
+			c.CompiledContentSignals.ModBlocked = true
+		}
+	}
 }
 
 type CBoardBatch []CompiledBoard
@@ -513,9 +812,9 @@ func (batch *CBoardBatch) Find(boardfp string) int {
 	return -1
 }
 
-func (batch *CBoardBatch) Refresh(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, boardSpecificUserHeaders CUserBatch, nowts int64) {
+func (batch *CBoardBatch) Refresh(catds *CATDBatch, cfgs *CFGBatch, cmas *CMABatch, boardSpecificUserHeaders CUserBatch, nowts int64, bc *BoardCarrier) {
 	for k, _ := range *batch {
-		(*batch)[k].Refresh(catds, cfgs, cmas, boardSpecificUserHeaders, nowts)
+		(*batch)[k].Refresh(catds, cfgs, cmas, boardSpecificUserHeaders, nowts, bc)
 	}
 }
 
@@ -533,6 +832,12 @@ func (batch *CBoardBatch) GetBoardSpecificUserHeaders() CUserBatch {
 		b = append(b, (*batch)[k].LocalScopeUserHeaders...)
 	}
 	return b
+}
+
+func (batch *CBoardBatch) SortByThreadsCount() {
+	sort.Slice((*batch), func(i, j int) bool {
+		return (*batch)[i].ThreadsCount > (*batch)[j].ThreadsCount
+	})
 }
 
 ////////////////////
@@ -821,6 +1126,8 @@ func parseCanonicalName(ccn CompiledCN) (cname, cnamesource string) {
 // CompiledContentSignals is the final compiled form of all signals that relate to a specific entity, baked directly into that content entity.
 type CompiledContentSignals struct {
 	TargetFingerprint string
+	/*----------  Endogenous signals  ----------*/
+	// (Signals that are directly generated from Vote entities pointing to the target)
 	// ATD
 	Upvotes            int
 	Downvotes          int
@@ -831,11 +1138,17 @@ type CompiledContentSignals struct {
 	SelfATDLastUpdate  int64
 	// ^ In aggregate types such as ATDs, we have to carry over the creation, lastupdate and fingerprint to the client, because the client needs those information to be able to edit the signal. In other types we carry those information in the signal entity itself, since they are not aggregated, the client can figure out what to do based on determining which one is self.
 	// FG
-	Reports []ExplainedSignal
+	Reports      []ExplainedSignal
+	SelfReported bool
 	// MA
-	ModBlocks    []ExplainedSignal
-	ModApprovals []ExplainedSignal
-	// Signals generated after combining the above with the user entity
+	ModBlocks       []ExplainedSignal
+	ModApprovals    []ExplainedSignal
+	SelfModBlocked  bool
+	SelfModApproved bool
+	SelfModIgnored  bool // Only available as self, is not communicated out.
+
+	/*----------  Exogenous Signals  ----------*/
+	// (Signals generated after combining the above with external entities - second generation signals)
 	ByMod bool
 	// ^ Because receiving a mod signal means nothing without knowing we trust that mod or not, which comes from the user entity's signals.
 	ByFollowedPerson bool
@@ -891,6 +1204,7 @@ func (s *CompiledContentSignals) Insert(
 			// }
 		}
 		s.Reports = expss
+		s.SelfReported = cfg.SelfReported
 	}
 	// compile mas
 	i3 := cmas.Find(targetfp)
@@ -906,6 +1220,8 @@ func (s *CompiledContentSignals) Insert(
 					s.ModApprovals, cma.MAs[k].CnvToExplainedSignal())
 			}
 		}
+		s.SelfModBlocked = cma.SelfModBlocked
+		s.SelfModApproved = cma.SelfModApproved
 	}
 	s.LastRefreshed = nowts
 }
@@ -970,4 +1286,61 @@ func InitialiseKvStore() {
 	if err5 != nil {
 		logging.Logf(1, "UserHeaderCarrier init encountered a problem. Error: %v", err5)
 	}
+}
+
+/*----------  Reports tab entry  ----------*/
+
+/*
+	This is generated after the fact, after the core entities are compiled. It collects all the items with reports and puts them into a sortable payload form.
+
+*/
+type ReportsTabEntry struct {
+	Fingerprint   string
+	BoardPayload  CompiledBoard
+	ThreadPayload CompiledThread
+	PostPayload   CompiledPost
+	Timestamp     int64
+}
+
+func NewReportsTabEntryFromBoard(e *CompiledBoard) *ReportsTabEntry {
+	return &ReportsTabEntry{
+		Fingerprint:  e.Fingerprint,
+		BoardPayload: *e,
+		Timestamp:    getNewestReportTimestamp(&e.CompiledContentSignals),
+	}
+}
+
+func NewReportsTabEntryFromThread(e *CompiledThread) *ReportsTabEntry {
+	return &ReportsTabEntry{
+		Fingerprint:   e.Fingerprint,
+		ThreadPayload: *e,
+		Timestamp:     getNewestReportTimestamp(&e.CompiledContentSignals),
+	}
+}
+
+func NewReportsTabEntryFromPost(e *CompiledPost) *ReportsTabEntry {
+	return &ReportsTabEntry{
+		Fingerprint: e.Fingerprint,
+		PostPayload: *e,
+		Timestamp:   getNewestReportTimestamp(&e.CompiledContentSignals),
+	}
+}
+
+func getNewestReportTimestamp(c *CompiledContentSignals) int64 {
+	var newest int64
+	for k, _ := range c.Reports {
+		if stamp := max(c.Reports[k].Creation, c.Reports[k].LastUpdate); stamp > newest {
+			newest = stamp
+		}
+	}
+	return newest
+}
+
+type ReportsTabEntryBatch []ReportsTabEntry
+
+func max(n1, n2 int64) int64 {
+	if n1 > n2 {
+		return n1
+	}
+	return n2
 }

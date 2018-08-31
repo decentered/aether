@@ -17,6 +17,7 @@ $a-grey-800: #D8DEE9; // Lightest (~white)
 /*  */
 
 // Rainbow
+// $a-red: #EC5f67;
 $a-red: #EC5f67;
 $a-orange: #F99157;
 $a-yellow: #FAC863;
@@ -47,6 +48,9 @@ $a-red-70: rgba(236, 95, 103, 0.70);
 $a-red-80: rgba(236, 95, 103, 0.80);
 $a-red-90: rgba(236, 95, 103, 0.90);
 $a-red-100:$a-red;
+
+$a-purple-80: rgba(197, 148, 201, 0.8);
+$a-earth-80: rgba(171, 121, 103, 0.8);
 //
 
 /* Separators */
@@ -81,8 +85,7 @@ $link-hover-ghost-extension-length: 5px;
     width: 0;
     height: 0;
     display: none;
-  }
-  color:inherit;
+  } // color:inherit;
 }
 
 @mixin generateScrollbar($scrollbarColour) {

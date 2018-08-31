@@ -27,7 +27,7 @@
             <div class="action-tag">
               <div class="preview-tag" @click="togglePreview(block)" v-show="block._previewIsVisible"><a href="https://github.com/adam-p/markdown-here/wiki/Markdown-Cheatsheet">MARKDOWN</a> PREVIEW</div>
             </div>
-            <div class="preview-button-in-composer" :class="{'enabled': block._previewIsVisible}" v-if="!block.previewDisabled" @click="togglePreview(block)">
+            <div class="preview-button-in-composer" hasTooltip title="Markdown preview" :class="{'enabled': block._previewIsVisible}" v-if="!block.previewDisabled" @click="togglePreview(block)">
               <icon name="eye"></icon>
             </div>
           </div>
@@ -94,9 +94,10 @@
 <script lang="ts">
   var Vue = require('../../../node_modules/vue/dist/vue.js')
   var Autosize = require('../../../node_modules/autosize')
+  var Tooltips = require('../services/tooltips/tooltips')
   export default {
     name: 'a-composer',
-    props: ['spec',],
+    props: ['spec', ],
     data() {
       return {
         baseData: {},
@@ -136,6 +137,7 @@
     mounted(this: any) {
       // console.log(this.baseData.content)
       this.startAutosize(this)
+      Tooltips.Mount()
       // This is specific to new thread, and it allows the screen to be fixed to the bottom as the user types more and more into the thread body. In absence of this, the bottom of the page goes out of the screen and only scrolls down when the text itself crosses into the unseen zone. This instead keeps the bottom of the page fixed to the bottom, so long as it has touched bottom once before.
       if (this.baseData.fixToBottom) {
         let vm = this
@@ -153,10 +155,13 @@
         observer.observe(this.scrollTarget)
       }
       if (this.baseData.autofocus) {
-    // Select first text area and bring it into focus
-    document.getElementsByTagName('textarea')[0].focus()
-    // ^ Heads up, this only works when the web inspector is closed.    
+        // Select first text area and bring it into focus
+        document.getElementsByTagName('textarea')[0].focus()
+        // ^ Heads up, this only works when the web inspector is closed.
       }
+    },
+    updated(this: any) {
+      // Tooltips.Mount()
     },
     methods: {
       textareaKeydown(this: any, index: any, event: any) {
@@ -217,8 +222,10 @@
       maybeCommit(this: any) {
         if (this.formIsValid) {
           this.baseData.commitAction(this.baseData.fields)
+          // Silence warnings so after the delete, it won't end up in a warning state. This can happen if the action is delayed to close the window but still has committed.
           for (let val of this.baseData.fields) {
             val.content = ''
+            val._touched = false
           }
         }
       }
@@ -285,6 +292,10 @@ postComposer: {
     margin-bottom: 15px;
     display: flex;
     flex-direction: column;
+
+    &:last-of-type {
+      margin-bottom: 0;
+    }
 
     &.single-row {
       padding-top: 10px;
@@ -370,6 +381,9 @@ postComposer: {
       cursor: default;
       * {
         user-select: none;
+      }
+      .actions {
+        font-family: "SSP Bold";
       }
     }
   }
@@ -483,6 +497,15 @@ postComposer: {
     padding-left: 10px;
     p:last-of-type {
       margin-bottom: 0;
+    }
+  }
+
+  .composer .description {
+    b {
+      font-family: "SSP Bold"
+    }
+    i {
+      font-family: "SSP Regular Italic"
     }
   }
 </style>

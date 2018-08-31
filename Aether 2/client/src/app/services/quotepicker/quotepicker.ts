@@ -173,7 +173,7 @@ let quotes: Quote[] = [
     Author: 'Li Bai 李白'
   },
   {
-    Quote: 'The fault, dear Brutus, is not in our stars, <br>But in ourselves, that we are underlings.',
+    Quote: 'The fault, my dear Brutus, is not in our stars, <br>But in ourselves, that we are underlings.',
     Author: 'Julius Caesar, Shakespeare'
   },
   {
@@ -187,6 +187,10 @@ let quotes: Quote[] = [
   {
     Quote: 'The more pleasures a man captures, the more masters he will have to serve.',
     Author: 'Lucius Annaeus Seneca'
+  },
+  {
+    Quote: 'Anyone who isn’t embarrassed of who they were last year probably isn’t learning enough. ',
+    Author: 'Alain de Botton'
   },
 ]
 

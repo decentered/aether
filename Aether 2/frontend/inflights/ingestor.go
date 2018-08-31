@@ -27,8 +27,11 @@ Ingest runs when the app is opened, to get rid of anything that might be waiting
 (Committing to kvstore on its own does not automatically trigger an ingest because we're doing it in quite a few places.3)
 */
 func (o *inflights) Ingest() {
-	o.ingestLock.Lock()
-	defer o.ingestLock.Unlock()
+	if o.ingestRunning {
+		return
+	}
+	// o.ingestLock.Lock()
+	// defer o.ingestLock.Unlock()
 	o.ingestRunning = true
 	defer func() {
 		o.ingestRunning = false

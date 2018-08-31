@@ -10,6 +10,7 @@ interface Globals {
   FrontendClientConnInitialised: boolean;
   ClientAPIServerPort: number;
   FrontendDaemonStarted: boolean;
+  RendererReady: boolean
 }
 
 let glob: Globals = {
@@ -18,6 +19,7 @@ let glob: Globals = {
   FrontendClientConnInitialised: false,
   ClientAPIServerPort: 0,
   FrontendDaemonStarted: false,
+  RendererReady: false,
 }
 
 module.exports = glob

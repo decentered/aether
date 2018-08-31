@@ -51,13 +51,13 @@ let exportedMethods = {
       return 'just now'
     }
     if (secondsPast < 60) {
-      return secondsPast + 's'
+      return secondsPast + 's ago'
     }
     if (secondsPast < 3600) {
-      return Math.floor(secondsPast / 60) + 'm'
+      return Math.floor(secondsPast / 60) + 'm ago'
     }
     if (secondsPast <= 86400) {
-      return Math.floor(secondsPast / 3600) + 'h'
+      return Math.floor(secondsPast / 3600) + 'h ago'
     }
     // If older than a day
     let day: any

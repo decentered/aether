@@ -8,6 +8,7 @@ import (
 	// "fmt"
 	"github.com/asdine/storm"
 	"github.com/jmoiron/sqlx"
+	cdir "github.com/shibukawa/configdir"
 	"os"
 	"path/filepath"
 )
@@ -28,4 +29,16 @@ func GetDbSize() int {
 	// get the size
 	size := fi.Size() / 1000000
 	return int(size)
+}
+
+func GetBackendConfigLocation() string {
+	configDirs := cdir.New(BackendTransientConfig.OrgIdentifier, BackendTransientConfig.AppIdentifier)
+	folders := configDirs.QueryFolders(cdir.Global)
+	return filepath.Join(folders[0].Path, "backend", "backend_config.json")
+}
+
+func GetFrontendConfigLocation() string {
+	configDirs := cdir.New(FrontendTransientConfig.OrgIdentifier, FrontendTransientConfig.AppIdentifier)
+	folders := configDirs.QueryFolders(cdir.Global)
+	return filepath.Join(folders[0].Path, "frontend", "frontend_config.json")
 }

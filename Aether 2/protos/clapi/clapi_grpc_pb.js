@@ -94,9 +94,120 @@ function deserialize_clapi_FEReadyResponse(buffer_arg) {
   return clapi_clapi_pb.FEReadyResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_clapi_HomeViewPayload(arg) {
+  if (!(arg instanceof clapi_clapi_pb.HomeViewPayload)) {
+    throw new Error('Expected argument of type clapi.HomeViewPayload');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_clapi_HomeViewPayload(buffer_arg) {
+  return clapi_clapi_pb.HomeViewPayload.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_clapi_HomeViewResponse(arg) {
+  if (!(arg instanceof clapi_clapi_pb.HomeViewResponse)) {
+    throw new Error('Expected argument of type clapi.HomeViewResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_clapi_HomeViewResponse(buffer_arg) {
+  return clapi_clapi_pb.HomeViewResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_clapi_ModModeEnabledStatusPayload(arg) {
+  if (!(arg instanceof clapi_clapi_pb.ModModeEnabledStatusPayload)) {
+    throw new Error('Expected argument of type clapi.ModModeEnabledStatusPayload');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_clapi_ModModeEnabledStatusPayload(buffer_arg) {
+  return clapi_clapi_pb.ModModeEnabledStatusPayload.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_clapi_ModModeEnabledStatusResponse(arg) {
+  if (!(arg instanceof clapi_clapi_pb.ModModeEnabledStatusResponse)) {
+    throw new Error('Expected argument of type clapi.ModModeEnabledStatusResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_clapi_ModModeEnabledStatusResponse(buffer_arg) {
+  return clapi_clapi_pb.ModModeEnabledStatusResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_clapi_NotificationsPayload(arg) {
+  if (!(arg instanceof clapi_clapi_pb.NotificationsPayload)) {
+    throw new Error('Expected argument of type clapi.NotificationsPayload');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_clapi_NotificationsPayload(buffer_arg) {
+  return clapi_clapi_pb.NotificationsPayload.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_clapi_NotificationsResponse(arg) {
+  if (!(arg instanceof clapi_clapi_pb.NotificationsResponse)) {
+    throw new Error('Expected argument of type clapi.NotificationsResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_clapi_NotificationsResponse(buffer_arg) {
+  return clapi_clapi_pb.NotificationsResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_clapi_OnboardCompleteStatusPayload(arg) {
+  if (!(arg instanceof clapi_clapi_pb.OnboardCompleteStatusPayload)) {
+    throw new Error('Expected argument of type clapi.OnboardCompleteStatusPayload');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_clapi_OnboardCompleteStatusPayload(buffer_arg) {
+  return clapi_clapi_pb.OnboardCompleteStatusPayload.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_clapi_OnboardCompleteStatusResponse(arg) {
+  if (!(arg instanceof clapi_clapi_pb.OnboardCompleteStatusResponse)) {
+    throw new Error('Expected argument of type clapi.OnboardCompleteStatusResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_clapi_OnboardCompleteStatusResponse(buffer_arg) {
+  return clapi_clapi_pb.OnboardCompleteStatusResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_clapi_PopularViewPayload(arg) {
+  if (!(arg instanceof clapi_clapi_pb.PopularViewPayload)) {
+    throw new Error('Expected argument of type clapi.PopularViewPayload');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_clapi_PopularViewPayload(buffer_arg) {
+  return clapi_clapi_pb.PopularViewPayload.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_clapi_PopularViewResponse(arg) {
+  if (!(arg instanceof clapi_clapi_pb.PopularViewResponse)) {
+    throw new Error('Expected argument of type clapi.PopularViewResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_clapi_PopularViewResponse(buffer_arg) {
+  return clapi_clapi_pb.PopularViewResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 
 // These "Set", "Get" verbs are written from the viewpoint of the consumer of this api.
 var ClientAPIService = exports.ClientAPIService = {
+  // ----------  Methods used by frontend  ----------
   frontendReady: {
     path: '/clapi.ClientAPI/FrontendReady',
     requestStream: false,
@@ -119,6 +230,7 @@ var ClientAPIService = exports.ClientAPIService = {
     responseSerialize: serialize_clapi_AmbientsResponse,
     responseDeserialize: deserialize_clapi_AmbientsResponse,
   },
+  // ^ Ambient *entities*. This is poorly named, we should make it more specific
   sendAmbientStatus: {
     path: '/clapi.ClientAPI/SendAmbientStatus',
     requestStream: false,
@@ -130,6 +242,7 @@ var ClientAPIService = exports.ClientAPIService = {
     responseSerialize: serialize_clapi_AmbientStatusResponse,
     responseDeserialize: deserialize_clapi_AmbientStatusResponse,
   },
+  // ^ Ambient *status* (fe, be status)
   sendAmbientLocalUserEntity: {
     path: '/clapi.ClientAPI/SendAmbientLocalUserEntity',
     requestStream: false,
@@ -140,6 +253,61 @@ var ClientAPIService = exports.ClientAPIService = {
     requestDeserialize: deserialize_clapi_AmbientLocalUserEntityPayload,
     responseSerialize: serialize_clapi_AmbientLocalUserEntityResponse,
     responseDeserialize: deserialize_clapi_AmbientLocalUserEntityResponse,
+  },
+  sendHomeView: {
+    path: '/clapi.ClientAPI/SendHomeView',
+    requestStream: false,
+    responseStream: false,
+    requestType: clapi_clapi_pb.HomeViewPayload,
+    responseType: clapi_clapi_pb.HomeViewResponse,
+    requestSerialize: serialize_clapi_HomeViewPayload,
+    requestDeserialize: deserialize_clapi_HomeViewPayload,
+    responseSerialize: serialize_clapi_HomeViewResponse,
+    responseDeserialize: deserialize_clapi_HomeViewResponse,
+  },
+  sendPopularView: {
+    path: '/clapi.ClientAPI/SendPopularView',
+    requestStream: false,
+    responseStream: false,
+    requestType: clapi_clapi_pb.PopularViewPayload,
+    responseType: clapi_clapi_pb.PopularViewResponse,
+    requestSerialize: serialize_clapi_PopularViewPayload,
+    requestDeserialize: deserialize_clapi_PopularViewPayload,
+    responseSerialize: serialize_clapi_PopularViewResponse,
+    responseDeserialize: deserialize_clapi_PopularViewResponse,
+  },
+  sendNotifications: {
+    path: '/clapi.ClientAPI/SendNotifications',
+    requestStream: false,
+    responseStream: false,
+    requestType: clapi_clapi_pb.NotificationsPayload,
+    responseType: clapi_clapi_pb.NotificationsResponse,
+    requestSerialize: serialize_clapi_NotificationsPayload,
+    requestDeserialize: deserialize_clapi_NotificationsPayload,
+    responseSerialize: serialize_clapi_NotificationsResponse,
+    responseDeserialize: deserialize_clapi_NotificationsResponse,
+  },
+  sendOnboardCompleteStatus: {
+    path: '/clapi.ClientAPI/SendOnboardCompleteStatus',
+    requestStream: false,
+    responseStream: false,
+    requestType: clapi_clapi_pb.OnboardCompleteStatusPayload,
+    responseType: clapi_clapi_pb.OnboardCompleteStatusResponse,
+    requestSerialize: serialize_clapi_OnboardCompleteStatusPayload,
+    requestDeserialize: deserialize_clapi_OnboardCompleteStatusPayload,
+    responseSerialize: serialize_clapi_OnboardCompleteStatusResponse,
+    responseDeserialize: deserialize_clapi_OnboardCompleteStatusResponse,
+  },
+  sendModModeEnabledStatus: {
+    path: '/clapi.ClientAPI/SendModModeEnabledStatus',
+    requestStream: false,
+    responseStream: false,
+    requestType: clapi_clapi_pb.ModModeEnabledStatusPayload,
+    responseType: clapi_clapi_pb.ModModeEnabledStatusResponse,
+    requestSerialize: serialize_clapi_ModModeEnabledStatusPayload,
+    requestDeserialize: deserialize_clapi_ModModeEnabledStatusPayload,
+    responseSerialize: serialize_clapi_ModModeEnabledStatusResponse,
+    responseDeserialize: deserialize_clapi_ModModeEnabledStatusResponse,
   },
 };
 

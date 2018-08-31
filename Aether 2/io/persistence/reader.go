@@ -682,7 +682,7 @@ func ReadDbThreads(
 	boardfp string,
 	ownerfp string, limit, offset int,
 ) ([]DbThread, error) {
-	logging.Logf(1, "read db threads hits with owner: %v", ownerfp)
+	// logging.Logf(1, "read db threads hits with owner: %v", ownerfp)
 	var dbArr []DbThread
 	var query string
 	var args []interface{}

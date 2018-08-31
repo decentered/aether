@@ -58,7 +58,7 @@
       }
       .goback {
         padding-top: 40px;
-        font-family: "SSP Semibold"
+        font-family: "SSP Bold"
       }
     }
   }

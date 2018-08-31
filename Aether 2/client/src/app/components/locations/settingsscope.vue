@@ -3,15 +3,17 @@
     <div class="settingsscope">
       <div class="settings-navigation">
         <router-link class="nav-item" to="/intro">Beginner's guide</router-link>
-        <router-link class="nav-item" to="/settings">Settings</router-link>
-        <!-- <router-link class="nav-item" to="/settings/advanced">Advanced</router-link> -->
+        <router-link class="nav-item" to="/settings">Preferences</router-link>
+        <router-link class="nav-item" to="/modship">Mod mode</router-link>
+        <router-link class="nav-item" to="/status">App status</router-link>
         <router-link class="nav-item" to="/membership">Membership</router-link>
         <div class="spacer"></div>
         <router-link class="nav-item" to="/about">About</router-link>
         <router-link class="nav-item" to="/changelog">Changelog</router-link>
         <div class="spacer"></div>
-        <router-link v-if="!localUserExists" class="nav-item" to="/newuser">Create new user</router-link>
+        <router-link v-if="!localUserExists && localUserArrived" class="nav-item" to="/newuser">Create new user</router-link>
         <router-link class="nav-item" to="/adminsquickstart">Admin's quickstart</router-link>
+        <router-link class="nav-item" to="/sfwlist">Safe-for-work list</router-link>
         <a class="nav-item" href="https://www.getaether.net/faq">FAQ
           <span class="icon-container">
             <icon name="external-link-alt"></icon>
@@ -63,8 +65,7 @@
     padding: 30px; // width: 800px;
     margin: 20px 20px 0 20px; // background-color: rgba(255, 255, 255, 0.05); // border: 1px solid rgba(0, 0, 0, 0.25);
     background-color: rgba(0, 0, 0, 0.25);
-    border-radius: 2px; // padding-left: 20%;
-    // padding-right: 20%;
+    border-radius: 3px; // padding-right: 20%;
     width: fit-content;
   }
 

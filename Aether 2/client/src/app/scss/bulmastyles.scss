@@ -21,7 +21,7 @@ Bulma styling so that we have only what we need, and in the right colours.
 $primary:$a-orange;
 $link: $a-cerulean;
 $info: $a-turquoise;
-$success: $a-green;
+$success: $a-purple;
 $warning: $a-yellow;
 $danger: $a-red;
 
@@ -34,6 +34,10 @@ $dropdown-content-background-color: $dropdown-base;
 $dropdown-item-hover-color: $a-grey-800;
 $dropdown-item-hover-background-color: #000000;
 
-
 // 6. Import the rest of Bulma
 @import "./../../../node_modules/bulma";
+
+// 7. Set overrides
+a:hover {
+  color: unset;
+}

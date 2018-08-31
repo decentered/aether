@@ -74,6 +74,28 @@ function deserialize_beapi_BoardsResponse(buffer_arg) {
   return beapi_beapi_pb.BoardsResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_beapi_ConnectToRemoteRequest(arg) {
+  if (!(arg instanceof beapi_beapi_pb.ConnectToRemoteRequest)) {
+    throw new Error('Expected argument of type beapi.ConnectToRemoteRequest');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_beapi_ConnectToRemoteRequest(buffer_arg) {
+  return beapi_beapi_pb.ConnectToRemoteRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_beapi_ConnectToRemoteResponse(arg) {
+  if (!(arg instanceof beapi_beapi_pb.ConnectToRemoteResponse)) {
+    throw new Error('Expected argument of type beapi.ConnectToRemoteResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_beapi_ConnectToRemoteResponse(buffer_arg) {
+  return beapi_beapi_pb.ConnectToRemoteResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_beapi_KeysRequest(arg) {
   if (!(arg instanceof beapi_beapi_pb.KeysRequest)) {
     throw new Error('Expected argument of type beapi.KeysRequest');
@@ -346,6 +368,17 @@ var BackendAPIService = exports.BackendAPIService = {
     requestDeserialize: deserialize_beapi_MintedContentPayload,
     responseSerialize: serialize_beapi_MintedContentResponse,
     responseDeserialize: deserialize_beapi_MintedContentResponse,
+  },
+  sendConnectToRemoteRequest: {
+    path: '/beapi.BackendAPI/SendConnectToRemoteRequest',
+    requestStream: false,
+    responseStream: false,
+    requestType: beapi_beapi_pb.ConnectToRemoteRequest,
+    responseType: beapi_beapi_pb.ConnectToRemoteResponse,
+    requestSerialize: serialize_beapi_ConnectToRemoteRequest,
+    requestDeserialize: deserialize_beapi_ConnectToRemoteRequest,
+    responseSerialize: serialize_beapi_ConnectToRemoteResponse,
+    responseDeserialize: deserialize_beapi_ConnectToRemoteResponse,
   },
 };
 

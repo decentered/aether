@@ -135,6 +135,7 @@ func (c *CompiledATD) Insert(atd AddsToDiscussionSignal) {
 type CompiledFG struct {
 	TargetFingerprint string
 	FGs               []FollowsGuidelinesSignal
+	SelfReported      bool
 	LastRefreshed     int64
 }
 
@@ -161,6 +162,9 @@ func (c *CompiledFG) Insert(sg FollowsGuidelinesSignal) {
 			return
 		}
 		c.FGs[k] = sg // overwrite existing if the new one is newer
+		if sg.BaseVoteSignal.Self {
+			c.SelfReported = true
+		}
 		if c.LastRefreshed < sg.LastRefreshed {
 			c.LastRefreshed = sg.LastRefreshed
 		}
@@ -168,6 +172,9 @@ func (c *CompiledFG) Insert(sg FollowsGuidelinesSignal) {
 	}
 	// It's not extant. We'll be adding it if this is the right bucket
 	c.FGs = append(c.FGs, sg)
+	if sg.BaseVoteSignal.Self {
+		c.SelfReported = true
+	}
 	if c.LastRefreshed < sg.LastRefreshed {
 		c.LastRefreshed = sg.LastRefreshed
 	}
@@ -178,6 +185,8 @@ func (c *CompiledFG) Insert(sg FollowsGuidelinesSignal) {
 type CompiledMA struct {
 	TargetFingerprint string
 	MAs               []ModActionsSignal
+	SelfModBlocked    bool
+	SelfModApproved   bool
 	LastRefreshed     int64
 }
 
@@ -204,6 +213,15 @@ func (c *CompiledMA) Insert(sg ModActionsSignal) {
 			return
 		}
 		c.MAs[k] = sg // overwrite existing if the new one is newer
+		if sg.BaseVoteSignal.Self {
+			// You can have selfmodblocked and selfmodapproved at the same time. It doesn't make sense, but hey, people don't make sense either.
+			if sg.BaseVoteSignal.Type == 1 {
+				c.SelfModBlocked = true
+			}
+			if sg.BaseVoteSignal.Type == 2 {
+				c.SelfModApproved = true
+			}
+		}
 		if c.LastRefreshed < sg.LastRefreshed {
 			c.LastRefreshed = sg.LastRefreshed
 		}
@@ -211,6 +229,15 @@ func (c *CompiledMA) Insert(sg ModActionsSignal) {
 	}
 	// It's not extant. We'll be adding it if this is the right bucket
 	c.MAs = append(c.MAs, sg)
+	if sg.BaseVoteSignal.Self {
+		// You can have selfmodblocked and selfmodapproved at the same time. It doesn't make sense, but hey, people don't make sense either.
+		if sg.BaseVoteSignal.Type == 1 {
+			c.SelfModBlocked = true
+		}
+		if sg.BaseVoteSignal.Type == 2 {
+			c.SelfModApproved = true
+		}
+	}
 	if c.LastRefreshed < sg.LastRefreshed {
 		c.LastRefreshed = sg.LastRefreshed
 	}

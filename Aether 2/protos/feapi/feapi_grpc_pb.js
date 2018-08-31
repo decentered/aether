@@ -31,6 +31,28 @@ function deserialize_feapi_AllBoardsResponse(buffer_arg) {
   return feapi_feapi_pb.AllBoardsResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_feapi_AmbientStatusRequest(arg) {
+  if (!(arg instanceof feapi_feapi_pb.AmbientStatusRequest)) {
+    throw new Error('Expected argument of type feapi.AmbientStatusRequest');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_AmbientStatusRequest(buffer_arg) {
+  return feapi_feapi_pb.AmbientStatusRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_AmbientStatusResponse(arg) {
+  if (!(arg instanceof feapi_feapi_pb.AmbientStatusResponse)) {
+    throw new Error('Expected argument of type feapi.AmbientStatusResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_AmbientStatusResponse(buffer_arg) {
+  return feapi_feapi_pb.AmbientStatusResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_feapi_BEReadyRequest(arg) {
   if (!(arg instanceof feapi_feapi_pb.BEReadyRequest)) {
     throw new Error('Expected argument of type feapi.BEReadyRequest');
@@ -53,6 +75,28 @@ function deserialize_feapi_BEReadyResponse(buffer_arg) {
   return feapi_feapi_pb.BEReadyResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_feapi_BackendAmbientStatusPayload(arg) {
+  if (!(arg instanceof feapi_feapi_pb.BackendAmbientStatusPayload)) {
+    throw new Error('Expected argument of type feapi.BackendAmbientStatusPayload');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_BackendAmbientStatusPayload(buffer_arg) {
+  return feapi_feapi_pb.BackendAmbientStatusPayload.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_BackendAmbientStatusResponse(arg) {
+  if (!(arg instanceof feapi_feapi_pb.BackendAmbientStatusResponse)) {
+    throw new Error('Expected argument of type feapi.BackendAmbientStatusResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_BackendAmbientStatusResponse(buffer_arg) {
+  return feapi_feapi_pb.BackendAmbientStatusResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_feapi_BoardAndThreadsRequest(arg) {
   if (!(arg instanceof feapi_feapi_pb.BoardAndThreadsRequest)) {
     throw new Error('Expected argument of type feapi.BoardAndThreadsRequest');
@@ -73,6 +117,28 @@ function serialize_feapi_BoardAndThreadsResponse(arg) {
 
 function deserialize_feapi_BoardAndThreadsResponse(buffer_arg) {
   return feapi_feapi_pb.BoardAndThreadsResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_BoardReportsRequest(arg) {
+  if (!(arg instanceof feapi_feapi_pb.BoardReportsRequest)) {
+    throw new Error('Expected argument of type feapi.BoardReportsRequest');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_BoardReportsRequest(buffer_arg) {
+  return feapi_feapi_pb.BoardReportsRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_BoardReportsResponse(arg) {
+  if (!(arg instanceof feapi_feapi_pb.BoardReportsResponse)) {
+    throw new Error('Expected argument of type feapi.BoardReportsResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_BoardReportsResponse(buffer_arg) {
+  return feapi_feapi_pb.BoardReportsResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
 function serialize_feapi_BoardSignalRequest(arg) {
@@ -119,6 +185,50 @@ function deserialize_feapi_ContentEventResponse(buffer_arg) {
   return feapi_feapi_pb.ContentEventResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_feapi_FEConfigChangesPayload(arg) {
+  if (!(arg instanceof feapi_feapi_pb.FEConfigChangesPayload)) {
+    throw new Error('Expected argument of type feapi.FEConfigChangesPayload');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_FEConfigChangesPayload(buffer_arg) {
+  return feapi_feapi_pb.FEConfigChangesPayload.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_FEConfigChangesResponse(arg) {
+  if (!(arg instanceof feapi_feapi_pb.FEConfigChangesResponse)) {
+    throw new Error('Expected argument of type feapi.FEConfigChangesResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_FEConfigChangesResponse(buffer_arg) {
+  return feapi_feapi_pb.FEConfigChangesResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_HomeViewRequest(arg) {
+  if (!(arg instanceof feapi_feapi_pb.HomeViewRequest)) {
+    throw new Error('Expected argument of type feapi.HomeViewRequest');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_HomeViewRequest(buffer_arg) {
+  return feapi_feapi_pb.HomeViewRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_HomeViewResponse(arg) {
+  if (!(arg instanceof feapi_feapi_pb.HomeViewResponse)) {
+    throw new Error('Expected argument of type feapi.HomeViewResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_HomeViewResponse(buffer_arg) {
+  return feapi_feapi_pb.HomeViewResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_feapi_InflightsPruneRequest(arg) {
   if (!(arg instanceof feapi_feapi_pb.InflightsPruneRequest)) {
     throw new Error('Expected argument of type feapi.InflightsPruneRequest');
@@ -139,6 +249,116 @@ function serialize_feapi_InflightsPruneResponse(arg) {
 
 function deserialize_feapi_InflightsPruneResponse(buffer_arg) {
   return feapi_feapi_pb.InflightsPruneResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_NotificationsRequest(arg) {
+  if (!(arg instanceof feapi_feapi_pb.NotificationsRequest)) {
+    throw new Error('Expected argument of type feapi.NotificationsRequest');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_NotificationsRequest(buffer_arg) {
+  return feapi_feapi_pb.NotificationsRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_NotificationsResponse(arg) {
+  if (!(arg instanceof feapi_feapi_pb.NotificationsResponse)) {
+    throw new Error('Expected argument of type feapi.NotificationsResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_NotificationsResponse(buffer_arg) {
+  return feapi_feapi_pb.NotificationsResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_NotificationsSignalPayload(arg) {
+  if (!(arg instanceof feapi_feapi_pb.NotificationsSignalPayload)) {
+    throw new Error('Expected argument of type feapi.NotificationsSignalPayload');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_NotificationsSignalPayload(buffer_arg) {
+  return feapi_feapi_pb.NotificationsSignalPayload.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_NotificationsSignalResponse(arg) {
+  if (!(arg instanceof feapi_feapi_pb.NotificationsSignalResponse)) {
+    throw new Error('Expected argument of type feapi.NotificationsSignalResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_NotificationsSignalResponse(buffer_arg) {
+  return feapi_feapi_pb.NotificationsSignalResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_OnboardCompleteRequest(arg) {
+  if (!(arg instanceof feapi_feapi_pb.OnboardCompleteRequest)) {
+    throw new Error('Expected argument of type feapi.OnboardCompleteRequest');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_OnboardCompleteRequest(buffer_arg) {
+  return feapi_feapi_pb.OnboardCompleteRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_OnboardCompleteResponse(arg) {
+  if (!(arg instanceof feapi_feapi_pb.OnboardCompleteResponse)) {
+    throw new Error('Expected argument of type feapi.OnboardCompleteResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_OnboardCompleteResponse(buffer_arg) {
+  return feapi_feapi_pb.OnboardCompleteResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_PopularViewRequest(arg) {
+  if (!(arg instanceof feapi_feapi_pb.PopularViewRequest)) {
+    throw new Error('Expected argument of type feapi.PopularViewRequest');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_PopularViewRequest(buffer_arg) {
+  return feapi_feapi_pb.PopularViewRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_PopularViewResponse(arg) {
+  if (!(arg instanceof feapi_feapi_pb.PopularViewResponse)) {
+    throw new Error('Expected argument of type feapi.PopularViewResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_PopularViewResponse(buffer_arg) {
+  return feapi_feapi_pb.PopularViewResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_SendAddressPayload(arg) {
+  if (!(arg instanceof feapi_feapi_pb.SendAddressPayload)) {
+    throw new Error('Expected argument of type feapi.SendAddressPayload');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_SendAddressPayload(buffer_arg) {
+  return feapi_feapi_pb.SendAddressPayload.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_feapi_SendAddressResponse(arg) {
+  if (!(arg instanceof feapi_feapi_pb.SendAddressResponse)) {
+    throw new Error('Expected argument of type feapi.SendAddressResponse');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_feapi_SendAddressResponse(buffer_arg) {
+  return feapi_feapi_pb.SendAddressResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
 function serialize_feapi_SetClientAPIServerPortRequest(arg) {
@@ -254,17 +474,7 @@ function deserialize_feapi_UserAndGraphResponse(buffer_arg) {
 
 // These "Set", "Get" verbs are written from the viewpoint of the consumer of this api.
 var FrontendAPIService = exports.FrontendAPIService = {
-  backendReady: {
-    path: '/feapi.FrontendAPI/BackendReady',
-    requestStream: false,
-    responseStream: false,
-    requestType: feapi_feapi_pb.BEReadyRequest,
-    responseType: feapi_feapi_pb.BEReadyResponse,
-    requestSerialize: serialize_feapi_BEReadyRequest,
-    requestDeserialize: deserialize_feapi_BEReadyRequest,
-    responseSerialize: serialize_feapi_BEReadyResponse,
-    responseDeserialize: deserialize_feapi_BEReadyResponse,
-  },
+  // ----------  Methods used by client  ----------
   setClientAPIServerPort: {
     path: '/feapi.FrontendAPI/SetClientAPIServerPort',
     requestStream: false,
@@ -374,6 +584,130 @@ var FrontendAPIService = exports.FrontendAPIService = {
     requestDeserialize: deserialize_feapi_InflightsPruneRequest,
     responseSerialize: serialize_feapi_InflightsPruneResponse,
     responseDeserialize: deserialize_feapi_InflightsPruneResponse,
+  },
+  requestAmbientStatus: {
+    path: '/feapi.FrontendAPI/RequestAmbientStatus',
+    requestStream: false,
+    responseStream: false,
+    requestType: feapi_feapi_pb.AmbientStatusRequest,
+    responseType: feapi_feapi_pb.AmbientStatusResponse,
+    requestSerialize: serialize_feapi_AmbientStatusRequest,
+    requestDeserialize: deserialize_feapi_AmbientStatusRequest,
+    responseSerialize: serialize_feapi_AmbientStatusResponse,
+    responseDeserialize: deserialize_feapi_AmbientStatusResponse,
+  },
+  // ^ Client requests ambient status to be sent in.
+  requestHomeView: {
+    path: '/feapi.FrontendAPI/RequestHomeView',
+    requestStream: false,
+    responseStream: false,
+    requestType: feapi_feapi_pb.HomeViewRequest,
+    responseType: feapi_feapi_pb.HomeViewResponse,
+    requestSerialize: serialize_feapi_HomeViewRequest,
+    requestDeserialize: deserialize_feapi_HomeViewRequest,
+    responseSerialize: serialize_feapi_HomeViewResponse,
+    responseDeserialize: deserialize_feapi_HomeViewResponse,
+  },
+  requestPopularView: {
+    path: '/feapi.FrontendAPI/RequestPopularView',
+    requestStream: false,
+    responseStream: false,
+    requestType: feapi_feapi_pb.PopularViewRequest,
+    responseType: feapi_feapi_pb.PopularViewResponse,
+    requestSerialize: serialize_feapi_PopularViewRequest,
+    requestDeserialize: deserialize_feapi_PopularViewRequest,
+    responseSerialize: serialize_feapi_PopularViewResponse,
+    responseDeserialize: deserialize_feapi_PopularViewResponse,
+  },
+  requestNotifications: {
+    path: '/feapi.FrontendAPI/RequestNotifications',
+    requestStream: false,
+    responseStream: false,
+    requestType: feapi_feapi_pb.NotificationsRequest,
+    responseType: feapi_feapi_pb.NotificationsResponse,
+    requestSerialize: serialize_feapi_NotificationsRequest,
+    requestDeserialize: deserialize_feapi_NotificationsRequest,
+    responseSerialize: serialize_feapi_NotificationsResponse,
+    responseDeserialize: deserialize_feapi_NotificationsResponse,
+  },
+  setNotificationsSignal: {
+    path: '/feapi.FrontendAPI/SetNotificationsSignal',
+    requestStream: false,
+    responseStream: false,
+    requestType: feapi_feapi_pb.NotificationsSignalPayload,
+    responseType: feapi_feapi_pb.NotificationsSignalResponse,
+    requestSerialize: serialize_feapi_NotificationsSignalPayload,
+    requestDeserialize: deserialize_feapi_NotificationsSignalPayload,
+    responseSerialize: serialize_feapi_NotificationsSignalResponse,
+    responseDeserialize: deserialize_feapi_NotificationsSignalResponse,
+  },
+  // rpc RequestOnboardCompleteStatus(OnboardCompleteStatusRequest) returns (OnboardCompleteStatusResponse) {}
+  setOnboardComplete: {
+    path: '/feapi.FrontendAPI/SetOnboardComplete',
+    requestStream: false,
+    responseStream: false,
+    requestType: feapi_feapi_pb.OnboardCompleteRequest,
+    responseType: feapi_feapi_pb.OnboardCompleteResponse,
+    requestSerialize: serialize_feapi_OnboardCompleteRequest,
+    requestDeserialize: deserialize_feapi_OnboardCompleteRequest,
+    responseSerialize: serialize_feapi_OnboardCompleteResponse,
+    responseDeserialize: deserialize_feapi_OnboardCompleteResponse,
+  },
+  sendAddress: {
+    path: '/feapi.FrontendAPI/SendAddress',
+    requestStream: false,
+    responseStream: false,
+    requestType: feapi_feapi_pb.SendAddressPayload,
+    responseType: feapi_feapi_pb.SendAddressResponse,
+    requestSerialize: serialize_feapi_SendAddressPayload,
+    requestDeserialize: deserialize_feapi_SendAddressPayload,
+    responseSerialize: serialize_feapi_SendAddressResponse,
+    responseDeserialize: deserialize_feapi_SendAddressResponse,
+  },
+  sendFEConfigChanges: {
+    path: '/feapi.FrontendAPI/SendFEConfigChanges',
+    requestStream: false,
+    responseStream: false,
+    requestType: feapi_feapi_pb.FEConfigChangesPayload,
+    responseType: feapi_feapi_pb.FEConfigChangesResponse,
+    requestSerialize: serialize_feapi_FEConfigChangesPayload,
+    requestDeserialize: deserialize_feapi_FEConfigChangesPayload,
+    responseSerialize: serialize_feapi_FEConfigChangesResponse,
+    responseDeserialize: deserialize_feapi_FEConfigChangesResponse,
+  },
+  requestBoardReports: {
+    path: '/feapi.FrontendAPI/RequestBoardReports',
+    requestStream: false,
+    responseStream: false,
+    requestType: feapi_feapi_pb.BoardReportsRequest,
+    responseType: feapi_feapi_pb.BoardReportsResponse,
+    requestSerialize: serialize_feapi_BoardReportsRequest,
+    requestDeserialize: deserialize_feapi_BoardReportsRequest,
+    responseSerialize: serialize_feapi_BoardReportsResponse,
+    responseDeserialize: deserialize_feapi_BoardReportsResponse,
+  },
+  // ----------  Methods used by backend  ----------
+  backendReady: {
+    path: '/feapi.FrontendAPI/BackendReady',
+    requestStream: false,
+    responseStream: false,
+    requestType: feapi_feapi_pb.BEReadyRequest,
+    responseType: feapi_feapi_pb.BEReadyResponse,
+    requestSerialize: serialize_feapi_BEReadyRequest,
+    requestDeserialize: deserialize_feapi_BEReadyRequest,
+    responseSerialize: serialize_feapi_BEReadyResponse,
+    responseDeserialize: deserialize_feapi_BEReadyResponse,
+  },
+  sendBackendAmbientStatus: {
+    path: '/feapi.FrontendAPI/SendBackendAmbientStatus',
+    requestStream: false,
+    responseStream: false,
+    requestType: feapi_feapi_pb.BackendAmbientStatusPayload,
+    responseType: feapi_feapi_pb.BackendAmbientStatusResponse,
+    requestSerialize: serialize_feapi_BackendAmbientStatusPayload,
+    requestDeserialize: deserialize_feapi_BackendAmbientStatusPayload,
+    responseSerialize: serialize_feapi_BackendAmbientStatusResponse,
+    responseDeserialize: deserialize_feapi_BackendAmbientStatusResponse,
   },
 };
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="info-marker" hasTooltip :title="infoText">
+  <div class="info-marker" hasInfomark :title="infoText">
     <div class="info-anchor">
       <icon class="info-anchor-icon" :style="{'width': width+'px', 'height': height+'px', 'fill': fill}" name="question-circle"></icon>
     </div>
@@ -18,7 +18,7 @@
       Tooltips.MountInfomark()
     },
     updated() {
-      Tooltips.MountInfomark()
+      // Tooltips.MountInfomark()
     },
     computed: {
       infoText(this: any) {

@@ -6,12 +6,12 @@
         <div class="current-status-text">
           {{inflightStatus.statustext}}
           <template v-if="inflightStatus.completionpercent === 100 && inflightStatus.eventtype != 'UPDATE'">
-            You can <a class="refresher-link" @click.prevent="refresherFunc">refresh</a> to interact with it.
+            You can <a class="refresher-link" @click.prevent="refresherFunc">refresh</a> when all minting is done to interact with it.
           </template>
         </div>
         <div class="flex-spacer"></div>
         <div class="more-info">
-          <a-info-marker width="12" height="12" header="Your submission is currently being minted." text="Every new change you make requires a proof of work to be minted to prove the other nodes that you're a real user. This can take a couple seconds to a couple minutes depending on your preferred proof-of-work strength. <br><br> If these are taking too long, you can reduce the strength from settings. (Be mindful that dropping it too low can cause them to reject your messages.)"></a-info-marker>
+          <a-info-marker header="Your submission is currently being minted." text="<p>Every new change you make requires a proof of work to be minted to prove the other nodes that you're a real user. This can take a couple seconds to a couple minutes depending on your preferred proof-of-work strength. </p><p>If these are taking too long, you can reduce the strength from settings. (Be mindful that dropping it too low can cause them to reject your messages.)</p>"></a-info-marker>
         </div>
       </div>
     </div>

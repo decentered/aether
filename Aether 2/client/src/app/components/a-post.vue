@@ -1,5 +1,5 @@
 <template>
-  <div class="post" :class="{'inflight': isInflightEntity}">
+  <div class="post" :class="{'inflight': isInflightEntity, 'notification-highlight': isNotificationsHighlight, 'self-owned': post.selfcreated|| isVisibleInflightEntity}" :id="'post-'+post.fingerprint">
     <div class="inflight-box" v-if="isVisibleInflightEntity">
       <a-inflight-info :status="visibleInflightStatus" :refresherFunc="refresh"></a-inflight-info>
     </div>
@@ -13,7 +13,7 @@
     </div>
     <div class="meta-container">
       <div class="author">
-        <a-username :owner="post.owner"></a-username>
+        <a-username :isop="byOp" :owner="post.owner"></a-username>
       </div>
       <div class="post-datetime">
         <a-timestamp :creation="postCreation" :lastupdate="postLastUpdate"></a-timestamp>
@@ -31,20 +31,107 @@
             <a class="action edit" v-show="post.selfcreated" @click="toggleEditPane">
             Edit
           </a>
-            <a class="action report" v-show="!post.selfcreated" @click="toggleReportPane">
+            <a class="action report" v-show="!post.selfcreated && !reportSubmitted && !reportSubmittedBefore" @click="toggleReportPane">
             Report
           </a>
+            <a class="action moderate" v-if="isMod" @click="toggleModActionPane">
+            Moderate
+          </a>
+          </div>
+          <div class="modtools">
+            <div class="reports-list-container modtools-block" v-if="reportsListVisible">
+              <div class="confirmation-container" v-if="reportSubmitted || reportSubmittedBefore" :class="{'no-bottom-margin':reportsList.length === 0}">
+                <div class="inprogress" v-if="reportSubmitted">
+                  Thanks! Your report is <b><em>currently being submitted</em></b> to the mods of this community.
+                </div>
+                <div class="complete" v-if="reportSubmittedBefore">
+                  Thanks! Your report is <b><em>successfully submitted</em></b> to the mods of this community. You can see it below.
+                </div>
+              </div>
+              <div class="reports-header" v-if="reportsList.length > 1 || (!reportSubmittedBefore && !reportSubmitted)">
+                User reports
+              </div>
+              <div class="report-container" v-for="report in reportsList" :class="{'own-report': report.sourcefp === $store.state.localUser.fingerprint}">
+                <div class="meta-container">
+                  <div class="post-datetime">
+                    <a-timestamp :creation="report.creation" :lastupdate="report.lastupdate"></a-timestamp>
+                  </div>
+                  <div class="author">
+                    <template v-if="report.sourcefp !== $store.state.localUser.fingerprint">
+                      <router-link :to="'/user/'+report.sourcefp">See author</router-link>
+                    </template>
+                    <template v-else>
+                      <a-username :owner="report.sourcefp"></a-username>
+                    </template>
+                  </div>
+                </div>
+                <template v-if="report.reason.length > 0">
+                  <div class="report-text">{{report.reason}}</div>
+                </template>
+                <template v-else>
+                  <div class="report-text no-reason">(no reason given)</div>
+                </template>
+              </div>
+            </div>
+            <div class="report-composer-container" v-if="reportPaneOpen">
+              <a-composer :spec="reportSpec"></a-composer>
+            </div>
+            <template v-if="isMod">
+              <div class="mod-actions-container  modtools-block" v-if="modActionsVisible">
+                <div class="mod-actions-header">
+                  Moderation
+                  <a-info-marker header="You can issue moderation commands here. " text="<p><b>Approve</b> marks that content as okay, and it will remain visible even if it receives <em>Delete</em>s from other mods.</p><p><b>Delete</b> marks that content as a rule violation, and it will be removed.</p><p><b>Ignore</b> is only available in <em>Reports</em> page, and it marks the content as not interesting either way. As a result, it will no longer show up on the <em>Reports</em> page.</p> <p><a href='#/modship'><b>More info about moderation</b></a></p>"></a-info-marker>
+                </div>
+                <div class="buttons-row" v-show="(!(modApprovalPaneOpen || modDeletePaneOpen) && !modActionTaken) ">
+                  <a class="button is-success is-outlined" @click="toggleModApprovalPane">
+                    APPROVE
+                  </a>
+                  <a class="button is-success  is-outlined" v-show="isinreportsview" @click="submitModIgnore">
+                    IGNORE
+                  </a>
+                  <a class="button is-success  is-outlined" @click="toggleModDeletePane">
+                    DELETE
+                  </a>
+                </div>
+                <div class="modapproval-composer-container" v-if="modApprovalPaneOpen">
+                  <a-composer :spec="modApprovalSpec"></a-composer>
+                </div>
+                <div class="approval-confirmation-container" v-if="modApprovalSubmitted || modApprovalSubmittedBefore">
+                  <div class="inprogress" v-if="modApprovalSubmitted">
+                    Thanks! Your approval is <b><em>currently being minted</em></b> for submission.
+                  </div>
+                  <div class="complete" v-if="modApprovalSubmittedBefore">
+                    Thanks! Your approval is <b><em>successfully submitted.</em></b>
+                  </div>
+                </div>
+                <div class="moddelete-composer-container" v-if="modDeletePaneOpen">
+                  <a-composer :spec="modDeleteSpec"></a-composer>
+                </div>
+                <div class="delete-confirmation-container" v-if="modDeleteSubmitted || modDeleteSubmittedBefore">
+                  <div class="inprogress" v-if="modDeleteSubmitted">
+                    Thanks! Your deletion is <b><em>currently being minted</em></b> for submission.
+                  </div>
+                  <div class="complete" v-if="modDeleteSubmittedBefore">
+                    Thanks! Your deletion is <b><em>successfully submitted.</em></b>
+                  </div>
+                </div>
+                <div class="ignore-confirmation-container" v-if="modIgnoreSubmitted || modIgnoreSubmittedBefore">
+                  <div class="inprogress" v-if="modIgnoreSubmitted">
+                    Thanks! Your ignore is <b><em>currently being processed</em></b>.
+                  </div>
+                  <div class="complete" v-if="modIgnoreSubmittedBefore">
+                    Thanks! Your ignore is <b><em>successfully submitted.</em></b> You won't be notified of new reports for this content in the Reports tab.
+                  </div>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
         <a-ballot v-if="actionsVisible" :contentsignals="post.compiledcontentsignals" :boardfp="post.board" :threadfp="post.thread"></a-ballot>
       </div>
-
-      <div class="report-container" v-if="reportPaneOpen">
-        <a-composer :spec="reportSpec"></a-composer>
-      </div>
       <a-composer :spec="postComposerSpec" v-if="replyPaneOpen"></a-composer>
       <a-post v-for="iflChild in inflightChildren" :post="iflChild.entity" :inflightStatus="iflChild.status"></a-post>
-      <a-post v-for="child in post.children" :post="child"></a-post>
+      <a-post v-for="child in post.childrenList" :post="child" :notificationparent="notificationparent" :notificationhighlights="notificationhighlights" :notificationfocus="notificationfocus"></a-post>
     </template>
   </div>
 </template>
@@ -58,7 +145,37 @@
   export default {
     name: 'a-post',
     mixins: [mixins.localUserMixin],
-    props: ['post', 'inflightStatus', 'uncompiled'],
+    // props: ['post', 'inflightStatus', 'uncompiled', 'notificationparent', 'notificationhighlights', 'notificationfocus'],
+    props: {
+      post: {
+        type: Object,
+        default: function() { return undefined },
+      },
+      inflightStatus: {
+        type: Object,
+        default: function() { return undefined },
+      },
+      uncompiled: {
+        type: Boolean,
+        default: false,
+      },
+      notificationparent: {
+        type: String,
+        default: "",
+      },
+      notificationhighlights: {
+        type: Array,
+        default: function() { return [] },
+      },
+      notificationfocus: {
+        type: String,
+        default: "",
+      },
+      isinreportsview: {
+        type: Boolean,
+        default: false,
+      }
+    },
     data(this: any): any {
       return {
         hasUpvoted: false,
@@ -66,7 +183,14 @@
         replyPaneOpen: false,
         editPaneOpen: false,
         reportPaneOpen: false,
+        modActionsPaneOpen: false,
+        modApprovalPaneOpen: false,
+        modDeletePaneOpen: false,
         collapsed: false,
+        reportSubmitted: false,
+        modApprovalSubmitted: false,
+        modDeleteSubmitted: false,
+        modIgnoreSubmitted: false,
         postComposerSpec: {
           fields: [{
             id: "postBody",
@@ -83,7 +207,8 @@
           commitActionName: "SUBMIT",
           cancelAction: this.toggleReplyPane,
           cancelActionName: "CANCEL",
-          autofocus: true,
+          autofocus: false,
+          // ^ Why? Because autofocus focuses on the first entity on the page.. Not great when you have multiple possible composers on the same page.
         },
         postEditExistingSpec: {
           fields: [{
@@ -120,11 +245,78 @@
           commitActionName: "REPORT",
           cancelAction: this.toggleReportPane,
           cancelActionName: "CANCEL",
-          autofocus: true,
+          autofocus: false,
+        },
+        modApprovalSpec: {
+          fields: [{
+            id: 'approvalReason',
+            emptyWarningDisabled: true,
+            visibleName: "Approve",
+            description: "Optional. Enter the reason why you're approving this. ",
+            placeholder: "Approval reason",
+            maxCharCount: 256,
+            heightRows: 1,
+            previewDisabled: true,
+            content: '',
+            optional: true,
+          }],
+          commitAction: this.submitModApproval,
+          commitActionName: "APPROVE",
+          cancelAction: this.toggleModApprovalPane,
+          cancelActionName: "CANCEL",
+        },
+        modDeleteSpec: {
+          fields: [{
+            id: 'deleteReason',
+            emptyWarningDisabled: true,
+            visibleName: "Delete",
+            description: "Optional. Enter the reason why you're deleting this. ",
+            placeholder: "Deletion reason",
+            maxCharCount: 256,
+            heightRows: 1,
+            previewDisabled: true,
+            content: '',
+            optional: true,
+          }],
+          commitAction: this.submitModDelete,
+          commitActionName: "DELETE",
+          cancelAction: this.toggleModDeletePane,
+          cancelActionName: "CANCEL",
         },
       }
     },
     computed: {
+      /*----------  Notifications highlight / focus stuff  ----------*/
+      isNotificationsParent(this: any) {
+        if (globalMethods.IsUndefined(this.post.fingerprint)) {
+          return false
+        }
+        if (this.post.fingerprint === this.notificationparent) {
+          return true
+        }
+        return false
+      },
+      isNotificationsHighlight(this: any) {
+        if (globalMethods.IsUndefined(this.post.fingerprint)) {
+          return false
+        }
+        for (let val of this.notificationhighlights) {
+          if (this.post.fingerprint === val) {
+            return true
+          }
+        }
+        return false
+      },
+      isNotificationsFocus(this: any) {
+        if (globalMethods.IsUndefined(this.post.fingerprint)) {
+          return false
+        }
+        if (this.post.fingerprint === this.notificationfocus) {
+          return true
+        }
+        return false
+      },
+      /*----------  END: Notifications highlight / focus stuff  ----------*/
       /*
         This requires a little bit of an explanation, since there is a few layers of stuff here.
 
@@ -188,6 +380,9 @@
           if (this.postFingerprint !== val.entity.provable.fingerprint) {
             continue
           }
+          if (val.status.eventtype !== 'UPDATE') {
+            continue
+          }
           iflEdits.push(val)
         }
         return iflEdits
@@ -231,10 +426,151 @@
         }
         return true
       },
+      /*----------  Reports  ----------*/
+      reportSubmittedBefore(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        if (this.post.compiledcontentsignals.selfreported) {
+          return true
+        }
+        return false
+      },
+      selfReportText(this: any): string {
+        if (this.uncompiled || this.isInflightEntity) {
+          return ""
+        }
+        if (globalMethods.IsUndefined(this.$store.state.localUser)) {
+          return ""
+        }
+        for (let val of this.post.compiledcontentsignals.reportsList) {
+          if (val.sourcefp === this.$store.state.localUser.fingerprint) {
+            return val.reason
+          }
+        }
+        return ""
+      },
+      reportsListVisible(this: any) {
+        // If uncompiled or inflight, always false
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        // If mod mode is enabled, true if reports are present
+        if (this.$store.state.modModeEnabledArrived && this.$store.state.modModeEnabled) {
+          if (this.post.compiledcontentsignals.reportsList.length > 0) {
+            return true
+          }
+        }
+        // If mod mode is not enabled, and not uncompiled and not inflight, if a report has been submitted now or before, true
+        if (this.reportSubmitted || this.reportSubmittedBefore) {
+          return true
+        }
+        return false
+      },
+      reportsList(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return []
+        }
+        if (this.$store.state.modModeEnabledArrived && this.$store.state.modModeEnabled) {
+          return this.post.compiledcontentsignals.reportsList
+        }
+        let nonModReports: any = []
+        // only reports created by self
+        if (globalMethods.IsUndefined(this.$store.state.localUser)) {
+          return nonModReports
+        }
+        for (let val of this.post.compiledcontentsignals.reportsList) {
+          if (val.sourcefp === this.$store.state.localUser.fingerprint) {
+            nonModReports.push(val)
+          }
+        }
+        return nonModReports
+      },
+      /*----------  Mod mode and actions  ----------*/
+      modDeleteSubmittedBefore(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        if (this.post.compiledcontentsignals.selfmodblocked) {
+          return true
+        }
+        return false
+      },
+      modApprovalSubmittedBefore(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        if (this.post.compiledcontentsignals.selfmodapproved) {
+          return true
+        }
+        return false
+      },
+      modIgnoreSubmittedBefore(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        if (this.post.compiledcontentsignals.selfmodignored) {
+          return true
+        }
+        return false
+      },
+      isMod(this: any) {
+        if (this.$store.state.modModeEnabledArrived && this.$store.state.modModeEnabled) {
+          return true
+        }
+        return false
+      },
+      modActionSubmitted(this: any) {
+        if (this.modApprovalSubmitted || this.modDeleteSubmitted || this.modIgnoreSubmitted) {
+          return true
+        }
+        return false
+      },
+      modActionSubmittedBefore(this: any) {
+        if (this.modApprovalSubmittedBefore || this.modDeleteSubmittedBefore || this.modIgnoreSubmittedBefore) {
+          return true
+        }
+        return false
+      },
+      modActionsVisible(this: any) {
+        if (this.reportsListVisible) {
+          return true
+        }
+        if (this.modActionsPaneOpen) {
+          return true
+        }
+        if (this.modActionSubmitted || this.modActionSubmittedBefore || this.modIgnoreSubmittedBefore) {
+          return true
+        }
+        return false
+      },
+      modActionTaken(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        if (this.modApprovalSubmitted || this.modApprovalSubmittedBefore || this.modDeleteSubmitted || this.modDeleteSubmittedBefore || this.modIgnoreSubmitted || this.modIgnoreSubmittedBefore) {
+          return true
+        }
+        return false
+      },
+      /*----------  By op  ----------*/
+      byOp(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        return this.post.compiledcontentsignals.byop
+      }
     },
     mounted(this: any) {
       // console.log("post self created")
       // console.log(this.post.selfcreated)
+      if (this.isNotificationsFocus) {
+        // this.$el.scrollIntoView()
+        this.$el.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        }, );
+      }
     },
     methods: {
       getOwnerName(owner: any): string {
@@ -325,8 +661,71 @@
             reportReason = val.content
           }
         }
-        fe.ReportToMod(this.post.fingerprint, '', reportReason, function(resp: any) {
+        let vm = this
+        fe.ReportToMod(this.post.fingerprint, '', reportReason, this.post.board, this.post.thread, function(resp: any) {
           console.log(resp.toObject())
+          vm.toggleReportPane()
+          vm.reportSubmitted = true
+        })
+      },
+      /*----------  Moderation actions  ----------*/
+      toggleModActionPane(this: any) {
+        if (this.modActionsPaneOpen) {
+          this.modActionsPaneOpen = false
+        } else {
+          this.modActionsPaneOpen = true
+        }
+      },
+      /*----------  Approval modaction  ----------*/
+      toggleModApprovalPane(this: any) {
+        if (this.modApprovalPaneOpen) {
+          this.modApprovalPaneOpen = false
+        } else {
+          this.modApprovalPaneOpen = true
+        }
+      },
+      submitModApproval(this: any, fields: any) {
+        let approvalReason = ""
+        for (let val of fields) {
+          if (val.id === 'approvalReason') {
+            approvalReason = val.content
+          }
+        }
+        let vm = this
+        fe.ModApprove(this.post.fingerprint, '', approvalReason, this.post.board, this.post.thread, function(resp: any) {
+          console.log(resp.toObject())
+          vm.toggleModApprovalPane()
+          vm.modApprovalSubmitted = true
+        })
+      },
+      /*----------  Delete modaction  ----------*/
+      toggleModDeletePane(this: any) {
+        if (this.modDeletePaneOpen) {
+          this.modDeletePaneOpen = false
+        } else {
+          this.modDeletePaneOpen = true
+        }
+      },
+      submitModDelete(this: any, fields: any) {
+        let deleteReason = ""
+        for (let val of fields) {
+          if (val.id === 'deleteReason') {
+            deleteReason = val.content
+          }
+        }
+        let vm = this
+        fe.ModDelete(this.post.fingerprint, '', deleteReason, this.post.board, this.post.thread, function(resp: any) {
+          console.log(resp.toObject())
+          vm.toggleModDeletePane()
+          vm.modDeleteSubmitted = true
+        })
+      },
+      /*----------  Ignore modaction  ----------*/
+      submitModIgnore(this: any) {
+        let vm = this
+        fe.ModIgnore(this.post.fingerprint, '', '', this.post.board, this.post.thread, function(resp: any) {
+          console.log(resp.toObject())
+          vm.modIgnoreSubmitted = true
         })
       },
       /*----------  Refresh func inflight info  ----------*/
@@ -350,6 +749,7 @@
 </style>
 
 <style lang="scss" scoped>
+  @import"../scss/bulmastyles";
   @import "../scss/globals";
   .post {
     display: flex;
@@ -394,7 +794,7 @@
       padding-top: 0px;
     }
     &:hover {
-      .ballot {
+      >.content>.ballot {
         visibility: visible;
       }
     }
@@ -408,10 +808,6 @@
       font-size: 14.4px;
       line-height: 21.6px;
     }
-  }
-
-  .report-container {
-    padding-top: 35px;
   }
 
   .expand-container {
@@ -435,6 +831,126 @@
       height: 12px;
       margin: 0 auto;
       margin-top: 15px;
+    }
+  }
+
+  .notification-parent {
+    // background-color: red;
+    border-color: $a-cerulean;
+  }
+
+  .self-owned {
+    // background-color: red;
+    border-color: $a-cerulean;
+  }
+
+
+  .notification-highlight {
+    border-color: $a-orange; // background-color: blue;
+  }
+  /*----------  Reports  ----------*/
+
+  .report-composer-container {
+    padding-top: 30px;
+  }
+
+  .modtools {
+    font-size: 16px;
+    font-family: "SSP Bold";
+    .modtools-block {
+      margin-top: 5px;
+      &:first-of-type {
+        margin-top: 20px;
+      }
+    }
+  }
+
+  .reports-list-container {
+    // padding: 15px 20px 20px 20px;
+    padding: 20px;
+    background-color: rgba(0, 0, 0, 0.25); // margin-top: 20px;
+    border-radius: 3px; // font-size: 105%;
+    color: $a-grey-600;
+
+    .reports-header {
+      font-family: "SSP Bold";
+      font-size: 110%;
+      color: $a-grey-800;
+    }
+    .report-container {
+      border-left: 3px solid rgba(255, 255, 255, 0.15);
+      padding-left: 20px;
+      margin-top: 15px;
+
+      &.own-report {
+        border-color: $a-cerulean;
+      }
+
+      .report-text {
+        font-family: "SSP Regular";
+        font-size: 110%;
+        &.no-reason {
+          font-family: "SSP Regular Italic"
+        }
+      }
+
+      .meta-container {
+        display: flex;
+        .post-datetime {
+          margin-right: 10px;
+          margin-left: 0;
+          font-family: "SSP Regular Italic";
+          color: $a-grey-600;
+        }
+      }
+    }
+  }
+
+
+  .mod-actions-container {
+    padding: 20px;
+    background-color: rgba(0, 0, 0, 0.25); // margin-top: 20px;
+    border-radius: 3px; // font-size: 110%;
+    color: $a-grey-600;
+    .mod-actions-header {
+      font-family: "SSP Bold";
+      margin-bottom: 15px;
+      font-size: 110%;
+      color: $a-grey-800;
+    }
+    .buttons-row {
+      margin-top: 25px;
+    }
+    .button {
+      margin-right: 5px;
+    }
+
+    .modapproval-composer-container,
+    .moddelete-composer-container {
+      margin-top: 15px;
+    }
+
+    .approval-confirmation-container,
+    .delete-confirmation-container,
+    .ignore-confirmation-container {
+      margin-top: 15px;
+      margin-bottom: 0;
+      font-size: 110%;
+    }
+  }
+
+  .confirmation-container,
+  .approval-confirmation-container,
+  .delete-confirmation-container,
+  .ignore-confirmation-container {
+    font-family: "SSP Regular";
+    font-size: 110%;
+    margin-bottom: 15px;
+    &.no-bottom-margin {
+      margin-bottom: 0;
+    }
+    b em {
+      font-family: "SSP Bold Italic";
     }
   }
 </style>

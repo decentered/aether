@@ -19,6 +19,9 @@ let mixins = {
       },
       localUserExists(this: any) {
         return this.$store.state.localUserExists
+      },
+      localUserArrived(this: any) {
+        return this.$store.state.localUserArrived
       }
     }
   },

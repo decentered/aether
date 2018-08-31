@@ -55,9 +55,38 @@ This will do three main things:
 		go beapiserver.StartBackendServer(gotValidPort)
 		<-gotValidPort // Only proceed after this is true.
 		feapiconsumer.SendBackendReady()
+		collectAmbientStatusData()
+		feapiconsumer.SendBackendAmbientStatus()
 		server.StartMimServer()
 		shutdown()
 	},
+}
+
+// collectAmbientStatusData gathers information from different pieces of the system to gather existing data, to send it at boot.
+/*
+	I know you're gonna think this is a neat function, can we put this on a schedule and make it update the client? No, you can't do that, because the function below actually resets the values to defaults. So if you actually end up running this, it will override existing values for stuff like status. So you can accidentally say the database is available while it is inserting, etc.
+*/
+func collectAmbientStatusData() {
+	/*----------  Network, In, outbounds  ----------*/
+
+	/*Last outbound connection duration and last outbound conn timestamp is set in sync library */
+	feapiconsumer.BackendAmbientStatus.LastInboundConnTimestamp = globals.BackendTransientConfig.Bouncer.GetLastInboundSyncTimestamp(false)
+	feapiconsumer.BackendAmbientStatus.InboundsCount15 = int32(len(globals.BackendTransientConfig.Bouncer.GetInboundsInLastXMinutes(15)))
+
+	feapiconsumer.BackendAmbientStatus.OutboundsCount15 = int32(len(globals.BackendTransientConfig.Bouncer.GetOutboundsInLastXMinutes(15, false)))
+	/*----------  Network misc  ----------*/
+	/* UPNP status is set in the UPNP library */
+	// feapiconsumer.BackendAmbientStatus.UPNPStatus = "Idle"
+	feapiconsumer.BackendAmbientStatus.LocalNodeExternalIP = globals.BackendConfig.GetExternalIp() // todo
+	feapiconsumer.BackendAmbientStatus.LocalNodeExternalPort = int32(globals.BackendConfig.GetExternalPort())
+	/*----------  Database  ----------*/
+	/*Db Status, LastInsertDurationSeconds and LastDbInsertTimestamp is set in writer at batchInsert */
+	feapiconsumer.BackendAmbientStatus.DatabaseStatus = "Available"
+	feapiconsumer.BackendAmbientStatus.DbSizeMb = int64(globals.GetDbSize())
+	feapiconsumer.BackendAmbientStatus.MaxDbSizeMb = int64(globals.BackendConfig.GetMaxDbSizeMb())
+	/*----------  Caching  ----------*/
+	feapiconsumer.BackendAmbientStatus.CachingStatus = "Idle"
+	feapiconsumer.BackendAmbientStatus.LastCacheGenerationTimestamp = globals.BackendConfig.GetLastCacheGenerationTimestamp()
 }
 
 func startSchedules() {

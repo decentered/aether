@@ -8,7 +8,16 @@
   var globalMethods = require('../services/globals/methods')
   export default {
     name: 'a-timestamp',
-    props: ['creation', 'lastupdate'],
+    props: {
+      creation: {
+        type: Number,
+        default: 0
+      },
+      lastupdate: {
+        type: Number,
+        default: 0
+      }
+    },
     data() {
       return {}
     },
@@ -20,7 +29,8 @@
     methods: {
       computeTimestamp(this: any): string {
         let ts = this.creation > this.lastupdate ? this.creation : this.lastupdate
-        return globalMethods.TimeSince(ts)
+        let edited = this.creation > this.lastupdate ? "" : " (edited)"
+        return globalMethods.TimeSince(ts) + edited
       },
     }
   }

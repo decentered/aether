@@ -90,7 +90,7 @@ let crumbActions = {
       updatedCrumbs.push(makeCurrentBoardCrumb(context))
     } else if (context.state.route.name === 'Board>ThreadsNewList') {
       updatedCrumbs.push(makeCurrentBoardCrumb(context))
-      updatedCrumbs.push(createEndCrumb(context, 'threadsNewList', 'New Threads', ''))
+      updatedCrumbs.push(createEndCrumb(context, 'threadsNewList', 'New threads', ''))
     } else if (context.state.route.name === 'Board>NewThread') {
       updatedCrumbs.push(makeCurrentBoardCrumb(context))
       updatedCrumbs.push(createEndCrumb(context, 'newThread', 'New thread', ''))
@@ -100,6 +100,9 @@ let crumbActions = {
     } else if (context.state.route.name === 'Board>Elections') {
       updatedCrumbs.push(makeCurrentBoardCrumb(context))
       updatedCrumbs.push(createEndCrumb(context, 'elections', 'Elections', ''))
+    } else if (context.state.route.name === 'Board>Reports') {
+      updatedCrumbs.push(makeCurrentBoardCrumb(context))
+      updatedCrumbs.push(createEndCrumb(context, 'reports', 'Reports', ''))
     } else if (context.state.route.name === 'Board>BoardInfo') {
       updatedCrumbs.push(makeCurrentBoardCrumb(context))
       updatedCrumbs.push(createEndCrumb(context, 'info', 'Info', ''))
@@ -110,6 +113,7 @@ let crumbActions = {
       updatedCrumbs.push(makeGlobalCrumb())
     } else if (context.state.route.name === 'Global>Subbed') {
       updatedCrumbs.push(makeGlobalCrumb())
+      updatedCrumbs.push(createEndCrumb(context, 'subscribed', 'Subscribed', ''))
     } else if (context.state.route.name === 'Global>NewBoard') {
       updatedCrumbs.push(makeGlobalCrumb())
       updatedCrumbs.push(createEndCrumb(context, 'newBoard', 'New community', ''))
@@ -168,6 +172,20 @@ let crumbActions = {
         Link: 'adminsquickstart',
         Fingerprint: ''
       })
+    } else if (context.state.route.name === 'SFWList') {
+      updatedCrumbs.push({
+        EntityType: '',
+        VisibleName: `Safe-for-work list`,
+        Link: 'sfwlist',
+        Fingerprint: ''
+      })
+    } else if (context.state.route.name === 'Modship') {
+      updatedCrumbs.push({
+        EntityType: '',
+        VisibleName: `Mod mode`,
+        Link: 'modship',
+        Fingerprint: ''
+      })
     } else if (context.state.route.name === 'NewUser') {
       updatedCrumbs.push({
         EntityType: '',
@@ -186,6 +204,9 @@ let crumbActions = {
     } else if (context.state.route.name === 'User>Posts') {
       updatedCrumbs.push(makeCurrentUserCrumb(context))
       updatedCrumbs.push(createEndCrumb(context, 'posts', 'Posts', ''))
+    } else if (context.state.route.name === 'User>Notifications') {
+      updatedCrumbs.push(makeCurrentUserCrumb(context))
+      updatedCrumbs.push(createEndCrumb(context, 'notifications', 'Notifications', ''))
     } else if (context.state.route.name === 'Status') {
       updatedCrumbs.push(createEndCrumb(context, 'status', 'Status', ''))
     } else if (context.state.route.name === 'Popular') {

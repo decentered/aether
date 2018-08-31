@@ -4,6 +4,7 @@
 package persistence
 
 import (
+	"aether-core/backend/feapiconsumer"
 	"aether-core/io/api"
 	"fmt"
 	// _ "github.com/mattn/go-sqlite3"
@@ -355,6 +356,11 @@ func (im *InsertMetrics) Add(im2 InsertMetrics) {
 
 // BatchInsert insert a set of objects in a batch as a transaction.
 func batchInsert(apiObjectsPtr *[]interface{}) (InsertMetrics, error) {
+	/*----------  Tell the frontend that we're doing something  ----------*/
+	feapiconsumer.BackendAmbientStatus.DatabaseStatus = "Inserting..."
+	feapiconsumer.SendBackendAmbientStatus()
+	/*----------  Done  ----------*/
+
 	apiObjects := *apiObjectsPtr
 	logging.Log(2, "Batch insert starting.")
 	defer logging.Log(2, "Batch insert is complete.")
@@ -458,6 +464,16 @@ func batchInsert(apiObjectsPtr *[]interface{}) (InsertMetrics, error) {
 	// 	defer conn.Close()
 	// 	metrics.SendMetrics(client)
 	// }
+
+	/*----------  Send sync metrics to frontend  ----------*/
+	feapiconsumer.BackendAmbientStatus.DatabaseStatus = "Available"
+	feapiconsumer.BackendAmbientStatus.LastInsertDurationSeconds = int32(elapsed.Seconds())
+	feapiconsumer.BackendAmbientStatus.LastDbInsertTimestamp = time.Now().Unix()
+	feapiconsumer.BackendAmbientStatus.DbSizeMb = int64(globals.GetDbSize())
+	feapiconsumer.BackendAmbientStatus.MaxDbSizeMb = int64(globals.BackendConfig.GetMaxDbSizeMb())
+	feapiconsumer.SendBackendAmbientStatus()
+	/*----------  And all done!  ----------*/
+
 	return im, nil
 }
 
@@ -805,11 +821,11 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 			obj.Board.Creation == 0 ||
 			obj.Board.EntityVersion == 0 ||
 			obj.Board.ProofOfWork == "" ||
-			((len(obj.Board.Owner) > 0 && len(obj.Board.OwnerPublicKey) == 0) ||
-				(len(obj.Board.Owner) == 0 && len(obj.Board.OwnerPublicKey) > 0)) {
+			len(obj.Board.Owner) == 0 ||
+			len(obj.Board.OwnerPublicKey) == 0 {
 			return errors.New(
 				fmt.Sprintf(
-					"This board has some required fields empty (One or more of: Name, Creation, PoW, EntityVersion), or Owner is empty when OwnerPublicKey is not, or vice versa. BoardPack: %#v\n", obj))
+					"This board has some required fields empty (One or more of: Name, Creation, PoW, EntityVersion, Owner, OwnerPublicKey). BoardPack: %#v\n", obj))
 		}
 		for _, bo := range obj.BoardOwners {
 			if bo.Level == 0 {
@@ -824,11 +840,11 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 			obj.Creation == 0 ||
 			obj.EntityVersion == 0 ||
 			obj.ProofOfWork == "" ||
-			((len(obj.Owner) > 0 && len(obj.OwnerPublicKey) == 0) ||
-				(len(obj.Owner) == 0 && len(obj.OwnerPublicKey) > 0)) {
+			len(obj.Owner) == 0 ||
+			len(obj.OwnerPublicKey) == 0 {
 			return errors.New(
 				fmt.Sprintf(
-					"This thread has some required fields empty (One or more of: Board, Name, Creation, PoW, EntityVersion), or Owner is empty when OwnerPublicKey is not, or vice versa. Thread: %#v\n", obj))
+					"This thread has some required fields empty (One or more of: Board, Name, Creation, PoW, EntityVersion, Owner, OwnerPublicKey). Thread: %#v\n", obj))
 		}
 	case DbPost:
 		if obj.Board == "" ||
@@ -838,11 +854,11 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 			obj.Creation == 0 ||
 			obj.EntityVersion == 0 ||
 			obj.ProofOfWork == "" ||
-			((len(obj.Owner) > 0 && len(obj.OwnerPublicKey) == 0) ||
-				(len(obj.Owner) == 0 && len(obj.OwnerPublicKey) > 0)) {
+			len(obj.Owner) == 0 ||
+			len(obj.OwnerPublicKey) == 0 {
 			return errors.New(
 				fmt.Sprintf(
-					"This post has some required fields empty (One or more of: Board, Thread, Parent, Body, Creation, PoW, EntityVersion), or Owner is empty when OwnerPublicKey is not, or vice versa. Post: %#v\n", obj))
+					"This post has some required fields empty (One or more of: Board, Thread, Parent, Body, Creation, PoW, EntityVersion, Owner, OwnerPublicKey). Post: %#v\n", obj))
 		}
 	case DbVote:
 		if obj.Board == "" ||
@@ -854,11 +870,11 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 			obj.EntityVersion == 0 ||
 			obj.Signature == "" ||
 			obj.ProofOfWork == "" ||
-			((len(obj.Owner) > 0 && len(obj.OwnerPublicKey) == 0) ||
-				(len(obj.Owner) == 0 && len(obj.OwnerPublicKey) > 0)) {
+			len(obj.Owner) == 0 ||
+			len(obj.OwnerPublicKey) == 0 {
 			return errors.New(
 				fmt.Sprintf(
-					"This vote has some required fields empty (One or more of: Board, Thread, Target, Owner, Type, Creation, Signature, PoW, EntityVersion), or Owner is empty when OwnerPublicKey is not, or vice versa. Vote: %#v\n", obj))
+					"This vote has some required fields empty (One or more of: Board, Thread, Target, Owner, Type, Creation, Signature, PoW, EntityVersion, Owner, OwnerPublicKey). Vote: %#v\n", obj))
 		}
 	case AddressPack:
 		/*
@@ -891,11 +907,11 @@ func enforceNoEmptyRequiredFields(object interface{}) error {
 			obj.EntityVersion == 0 ||
 			obj.ProofOfWork == "" ||
 			obj.Signature == "" ||
-			((len(obj.Owner) > 0 && len(obj.OwnerPublicKey) == 0) ||
-				(len(obj.Owner) == 0 && len(obj.OwnerPublicKey) > 0)) {
+			len(obj.Owner) == 0 ||
+			len(obj.OwnerPublicKey) == 0 {
 			return errors.New(
 				fmt.Sprintf(
-					"This trust state has some required fields empty (One or more of: Target, Owner, Type, Creation, PoW, Signature, EntityVersion), or Owner is empty when OwnerPublicKey is not, or vice versa. Truststate: %#v\n", obj))
+					"This trust state has some required fields empty (One or more of: Target, Owner, Type, Creation, PoW, Signature, EntityVersion, Owner, OwnerPublicKey). Truststate: %#v\n", obj))
 		}
 	}
 	return nil

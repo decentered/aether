@@ -8,6 +8,7 @@
       </template>
       <template v-else>
         <a-board-entity v-for="board in subbedBoards" :board="board"></a-board-entity>
+        <a-fin-puck></a-fin-puck>
       </template>
     </div>
   </div>
@@ -37,6 +38,8 @@
         return subbed
       }
     },
+    mounted(this: any) {},
+    updated(this: any) {}
   }
 </script>
 

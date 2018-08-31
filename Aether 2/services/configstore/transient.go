@@ -239,6 +239,7 @@ type FrontendTransientConfig struct {
 	RefresherCacheNowTimestamp int64
 	CurrentAmbientStatus       clapi.AmbientStatusPayload
 	StopRefresherCycle         chan bool
+	StopSFWListUpdateCycle     chan bool
 	BackendReady               bool
 	DefaultKeyType             string
 	EntityVersions             entityVersions

@@ -10,9 +10,13 @@ This is the main entry point to the client app. See app.vue for the start logic,
 */
 
 // Electron IPC setup before doing anything else
-var ipc = require('../../node_modules/electron-better-ipc')
+require('./services/eipc/eipc-renderer') // Register IPC events
+var ipc = require('../../node_modules/electron-better-ipc') // Register IPC caller
+// ^ Heads up, there are some IPC events registered in this renderermain, too.
+
 const clapiserver = require('./services/clapiserver/clapiserver')
 const feapiconsumer = require('./services/feapiconsumer/feapiconsumer')
+const globalMethods = require('./services/globals/methods')
 const clientAPIServerPort: number = clapiserver.StartClientAPIServer()
 console.log('renderer client api server port: ', clientAPIServerPort)
 ipc.callMain('SetClientAPIServerPort', clientAPIServerPort).then(function(feDaemonStarted: boolean) {
@@ -22,11 +26,14 @@ ipc.callMain('SetClientAPIServerPort', clientAPIServerPort).then(function(feDaem
   }
 })
 
+
+
 /*----------  Vue + its plugins  ----------*/
 
 
 var Vue = require('../../node_modules/vue/dist/vue.js')
 var VueRouter = require('../../node_modules/vue-router').default
+
 Vue.use(VueRouter)
 
 // Register icons for our own use.
@@ -73,6 +80,14 @@ Vue.component('a-inflight-info', require('./components/a-inflight-info.vue').def
 Vue.component('a-info-marker', require('./components/a-info-marker.vue').default)
 Vue.component('a-spinner', require('./components/a-spinner.vue').default)
 Vue.component('a-notfound', require('./components/a-notfound.vue').default)
+Vue.component('a-guidelight', require('./components/a-guidelight.vue').default)
+Vue.component('a-home-header', require('./components/a-home-header.vue').default)
+Vue.component('a-popular-header', require('./components/a-popular-header.vue').default)
+Vue.component('a-notifications-icon', require('./components/a-notifications-icon.vue').default)
+Vue.component('a-notification-entity', require('./components/a-notification-entity.vue').default)
+Vue.component('a-main-app-loader', require('./components/a-main-app-loader.vue').default)
+Vue.component('a-global-header', require('./components/a-global-header.vue').default)
+Vue.component('a-fin-puck', require('./components/a-fin-puck.vue').default)
 
 /*----------  Third party components  ----------*/
 
@@ -96,6 +111,7 @@ const BoardRoot = require('./components/locations/boardscope/boardroot.vue').def
 const BoardInfo = require('./components/locations/boardscope/boardinfo.vue').default
 const ModActivity = require('./components/locations/boardscope/modactivity.vue').default
 const Elections = require('./components/locations/boardscope/elections.vue').default
+const Reports = require('./components/locations/boardscope/reports.vue').default
 
 /*----------  Thread scope (thread entity + list of posts)  ----------*/
 const NewThread = require('./components/locations/boardscope/newthread.vue').default
@@ -111,6 +127,8 @@ const Changelog = require('./components/locations/settingsscope/changelog.vue').
 const AdminsQuickstart = require('./components/locations/settingsscope/adminsquickstart.vue').default
 const Intro = require('./components/locations/settingsscope/intro.vue').default
 const NewUser = require('./components/locations/settingsscope/newuser.vue').default
+const SFWList = require('./components/locations/settingsscope/sfwlist.vue').default
+const Modship = require('./components/locations/settingsscope/modship.vue').default
 
 /*----------  User scope  ----------*/
 const UserScope = require('./components/locations/userscope.vue').default
@@ -118,10 +136,22 @@ const UserRoot = require('./components/locations/userscope/userroot.vue').defaul
 const UserBoards = require('./components/locations/userscope/userboards.vue').default
 const UserThreads = require('./components/locations/userscope/userthreads.vue').default
 const UserPosts = require('./components/locations/userscope/userposts.vue').default
+const Notifications = require('./components/locations/userscope/notifications.vue').default
 
 /*----------  Status scope  ----------*/
 
 const Status = require('./components/locations/status.vue').default
+
+/*----------  Onboarding scope  ----------*/
+
+const OnboardScope = require('./components/locations/onboardscope.vue').default
+const OnboardRoot = require('./components/locations/onboardscope/onboardroot.vue').default
+const Onboard1 = require('./components/locations/onboardscope/onboard1.vue').default
+const Onboard2 = require('./components/locations/onboardscope/onboard2.vue').default
+const Onboard3 = require('./components/locations/onboardscope/onboard3.vue').default
+const Onboard4 = require('./components/locations/onboardscope/onboard4.vue').default
+const Onboard5 = require('./components/locations/onboardscope/onboard5.vue').default
+const Onboard6 = require('./components/locations/onboardscope/onboard6.vue').default
 
 /*----------  Routes  ----------*/
 
@@ -145,9 +175,20 @@ const routes = [
       { path: '/board/:boardfp/modactivity', component: ModActivity, name: 'Board>ModActivity', },
       { path: '/board/:boardfp/elections', component: Elections, name: 'Board>Elections', },
       { path: '/board/:boardfp/newthread', component: NewThread, name: 'Board>NewThread', },
+      { path: '/board/:boardfp/reports', component: Reports, name: 'Board>Reports', },
     ]
   }, {
-    path: '/board/:boardfp/thread/:threadfp', component: ThreadScope, name: 'Thread',
+    path: '/board/:boardfp/thread/:threadfp', component: ThreadScope, name: 'Thread', props: function(route: any) {
+      let highlightSelectors: any = []
+      if (!globalMethods.IsUndefined(route.query.highlightSelectors) && route.query.highlightSelectors.length > 0) {
+        highlightSelectors = JSON.parse(route.query.highlightSelectors)
+      }
+      return {
+        route_focusSelector: route.query.focusSelector,
+        route_parentSelector: route.query.parentSelector,
+        route_highlightSelectors: highlightSelectors,
+      }
+    }
   },
   {
     path: '/settings', component: SettingsScope,
@@ -161,6 +202,8 @@ const routes = [
       { path: '/changelog', component: Changelog, name: 'Changelog', },
       { path: '/adminsquickstart', component: AdminsQuickstart, name: 'AdminsQuickstart', },
       { path: '/newuser', component: NewUser, name: 'NewUser', },
+      { path: '/sfwlist', component: SFWList, name: 'SFWList', },
+      { path: '/modship', component: Modship, name: 'Modship', },
     ]
   },
   {
@@ -170,11 +213,23 @@ const routes = [
       { path: '/user/:userfp/boards', component: UserBoards, name: 'User>Boards' },
       { path: '/user/:userfp/threads', component: UserThreads, name: 'User>Threads' },
       { path: '/user/:userfp/posts', component: UserPosts, name: 'User>Posts' },
+      { path: '/user/:userfp/notifications', component: Notifications, name: 'User>Notifications' },
       { path: '*', redirect: '/user/:userfp' }
     ]
   },
   { path: '/status', component: Status, name: 'Status', },
-
+  {
+    path: '/onboard', components: { default: '', onboarding: OnboardScope },
+    children: [
+      { path: '', component: OnboardRoot, name: 'OnboardRoot', },
+      { path: '/onboard/1', component: Onboard1, name: 'Onboard1', },
+      { path: '/onboard/2', component: Onboard2, name: 'Onboard2', },
+      { path: '/onboard/3', component: Onboard3, name: 'Onboard3', },
+      { path: '/onboard/4', component: Onboard4, name: 'Onboard4', },
+      { path: '/onboard/5', component: Onboard5, name: 'Onboard5', },
+      { path: '/onboard/6', component: Onboard6, name: 'Onboard6', },
+    ]
+  },
   { path: '*', redirect: '/' }
 ]
 
@@ -187,9 +242,13 @@ const router = new VueRouter({
   scrollBehavior() { // Always return to top while navigating.
     return { x: 0, y: 0 }
   },
+  // ^ This does not work because we are using a fixed container and scroll inside it. Attempting to do it like this attempts to scroll the main container, which does not scroll. There is no way to specify which container needs to be scrolled, so we need to implement our own scroll behaviour.
   routes: routes,
   // mode: 'history'
 })
+
+// This keeps track of history, so we can appropriately disable back / forward buttons as needed.
+// router.afterEach(HistoryWriter)
 
 const Store = require('./store').default
 
@@ -198,6 +257,9 @@ new Vue({
   template: '<a-app></a-app>',
   router: router,
   store: Store,
+  mounted(this: any) {
+    ipc.callMain('SetRendererReady', true)
+  }
 })
 
 
@@ -224,18 +286,30 @@ document.addEventListener('drop', function(event: any) { event.preventDefault() 
 
 /*----------  Some basic keyboard shortcuts  ----------*/
 
-Mousetrap.bind('<', function() {
+Mousetrap.bind('mod+,', function() {
   history.back()
   // if (event.target.nodeName.toLowerCase() !== 'textarea' && event.target.nodeName.toLowerCase() !== 'input' && event.target.contentEditable !== 'true') {
   //   history.back()
   // }
 })
 
-// Ctrl + Backspace: go forward (except when a text field or otherwise editable object is selected)
-Mousetrap.bind('>', function() {
+Mousetrap.bind('mod+.', function() {
   history.forward()
   // if (event.target.nodeName.toLowerCase() !== 'textarea' && event.target.nodeName.toLowerCase() !== 'input' && event.target.contentEditable !== 'true') {
   //   history.forward()
   // }
 })
 
+/*----------  IPC maps  ----------*/
+
+/*
+These are here instead of eipc/eipc-renderer because they do require access to things that are instantiated here, such as router, and there is no way to get to them without importing the main. Importing main is not an option. So these should be here until I split the router into its own service file that is imported separately. That way, eipc import from there, and not from main.
+*/
+ipc.answerMain('RouteTo', function(route: string) {
+  router.push(route)
+  return 'heard ya'
+})
+
+/*----------  Exports  ----------*/
+
+module.exports = { router: router }

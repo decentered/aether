@@ -13,6 +13,8 @@ import (
 	// "time"
 )
 
+var localBackendRestartAttempts int
+
 func StartLocalBackend() {
 	// todo - this needs to be replaced with running the binary instead of using "go ..." command.
 	// time.Sleep(1 * time.Second)
@@ -28,6 +30,14 @@ func StartLocalBackend() {
 		logging.Logf(1, "Local backend had an error. Err: %v", err)
 	}
 	logging.Log(1, "Local backend exited.")
+	if localBackendRestartAttempts < 3 {
+		localBackendRestartAttempts++
+		logging.Log(1, "Attempting to restart the local backend.")
+		StartLocalBackend()
+	} else {
+		logging.Log(1, "Local backend crashed more than 3 times in this run, something went very wrong. Killing the frontend.")
+		os.Exit(1)
+	}
 	// return nil
 }
 

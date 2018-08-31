@@ -1,5 +1,5 @@
 <template>
-  <div class="thread-entity" v-if="threadReadyToRender" :class="{'uncompiled': uncompiled}">
+  <div class="thread-entity" v-if="threadReadyToRender" :class="{'uncompiled': uncompiled, 'no-user-present': !localUserPresent}">
     <!-- Without above v-if it fails when currentThread===undefined -->
     <div class="signals-container" v-if="contentSignalsVisible">
       <div class="thread-actions">
@@ -11,12 +11,16 @@
         <icon name="comment-alt"></icon> {{currentThread.postscount}}
       </div>
     </div>
-    <div class="image-container" v-show="imageLoadedSuccessfully">
-      <div class="image-box" :style="'background-image: url('+ sanitisedLink +')'" @click="openLightbox">
+    <div class="image-container" v-show="imageLoadedSuccessfully || videoLoadedSuccessfully">
+      <div class="image-box" :style="'background-image: url('+ sanitisedLink +')'" @click.prevent="openLightbox" v-show="imageLoadedSuccessfully">
       </div>
-      <div class="lightbox" @click="closeLightbox" v-show="lightboxOpen">
-        <img :src="sanitisedLink" alt="" @load="handleImageLoadSuccess">
+      <video class="video-box" :src="sanitisedLink" preload="metadata" @click="openLightbox" v-show="videoLoadedSuccessfully" @loadeddata="handleVideoLoadSuccess"></video>
+      <div class="lightbox" @click.prevent="closeLightbox" v-show="lightboxOpen">
+        <img :src="sanitisedLink" alt="" @load="handleImageLoadSuccess" v-show="imageLoadedSuccessfully">
+        <video class="video-player" v-if="videoLoadedSuccessfully" preload="metadata" :src="sanitisedLink" muted="true" autoplay="true" loop="true" controls v-show="lightboxOpen"></video>
       </div>
+
+      <!-- @click="closeLightbox" -->
     </div>
     <div class="main-data-container">
       <div class="inflight-box" v-if="inflightBoxAtTopVisible">
@@ -25,8 +29,8 @@
       <div class="thread-name">
         {{currentThread.name}}
       </div>
-      <div class="thread-link">
-        <a :href="currentThread.link" @click.stop>{{currentThread.link}}</a>
+      <div class="thread-link" v-show="sanitisedLink.length > 0">
+        <a :href="currentThread.link" @click.stop>{{sanitisedLink}}</a>
       </div>
       <template v-if="!editPaneOpen">
         <a-markdown class="thread-body" :content="visibleThread.body"></a-markdown>
@@ -48,13 +52,101 @@
           <a class="action edit" v-show="currentThread.selfcreated" @click="toggleEditPane">
           Edit
         </a>
-          <a class="action report" v-show="!currentThread.selfcreated" @click="toggleReportPane">
+          <a class="action report" v-show="!currentThread.selfcreated && !reportSubmitted && !reportSubmittedBefore" @click="toggleReportPane">
           Report
+        </a>
+          <a class="action moderate" v-if="isMod" @click="toggleModActionPane">
+          Moderate
         </a>
         </div>
       </div>
-      <div class="report-container" v-if="reportPaneOpen">
-        <a-composer :spec="reportSpec"></a-composer>
+      <div class="modtools">
+        <div class="reports-list-container modtools-block" v-if="reportsListVisible">
+          <div class="confirmation-container" v-if="reportSubmitted || reportSubmittedBefore" :class="{'no-bottom-margin':reportsList.length === 0}">
+            <div class="inprogress" v-if="reportSubmitted">
+              Thanks! Your report is <b><em>currently being submitted</em></b> to the mods of this community.
+            </div>
+            <div class="complete" v-if="reportSubmittedBefore">
+              Thanks! Your report is <b><em>successfully submitted</em></b> to the mods of this community. You can see it below.
+            </div>
+          </div>
+          <div class="reports-header" v-if="reportsList.length > 1 || (!reportSubmittedBefore && !reportSubmitted)">
+            User reports
+          </div>
+          <div class="report-container" v-for="report in reportsList" :class="{'own-report': report.sourcefp === $store.state.localUser.fingerprint}">
+            <div class="meta-container">
+              <div class="post-datetime">
+                <a-timestamp :creation="report.creation" :lastupdate="report.lastupdate"></a-timestamp>
+              </div>
+              <div class="author">
+                <template v-if="report.sourcefp !== $store.state.localUser.fingerprint">
+                  <router-link :to="'/user/'+report.sourcefp">See author</router-link>
+                </template>
+                <template v-else>
+                  <a-username :owner="report.sourcefp"></a-username>
+                </template>
+              </div>
+            </div>
+            <template v-if="report.reason.length > 0">
+              <div class="report-text">{{report.reason}}</div>
+            </template>
+            <template v-else>
+              <div class="report-text no-reason">(no reason given)</div>
+            </template>
+          </div>
+        </div>
+        <div class="report-composer-container" v-if="reportPaneOpen">
+          <a-composer :spec="reportSpec"></a-composer>
+        </div>
+        <template v-if="isMod">
+          <div class="mod-actions-container modtools-block" v-if="modActionsVisible">
+            <div class="mod-actions-header">
+              Moderation
+              <a-info-marker header="You can issue moderation commands here. " text="<p><b>Approve</b> marks that content as okay, and it will remain visible even if it receives <em>Delete</em>s from other mods.</p><p><b>Delete</b> marks that content as a rule violation, and it will be removed.</p><p><b>Ignore</b> is only available in <em>Reports</em> page, and it marks the content as not interesting either way. As a result, it will no longer show up on the <em>Reports</em> page.</p> <p><a href='#/modship'><b>More info about moderation</b></a></p>"></a-info-marker>
+            </div>
+            <div class="buttons-row" v-show="(!(modApprovalPaneOpen || modDeletePaneOpen) && !modActionTaken) ">
+              <a class="button is-success is-outlined" @click="toggleModApprovalPane">
+              APPROVE
+            </a>
+              <a class="button is-success  is-outlined" v-show="isinreportsview" @click="submitModIgnore">
+                IGNORE
+              </a>
+              <a class="button is-success  is-outlined" @click="toggleModDeletePane">
+              DELETE
+            </a>
+            </div>
+            <div class="modapproval-composer-container" v-if="modApprovalPaneOpen">
+              <a-composer :spec="modApprovalSpec"></a-composer>
+            </div>
+            <div class="approval-confirmation-container" v-if="modApprovalSubmitted || modApprovalSubmittedBefore">
+              <div class="inprogress" v-if="modApprovalSubmitted">
+                Thanks! Your approval is <b><em>currently being minted</em></b> for submission.
+              </div>
+              <div class="complete" v-if="modApprovalSubmittedBefore">
+                Thanks! Your approval is <b><em>successfully submitted.</em></b>
+              </div>
+            </div>
+            <div class="moddelete-composer-container" v-if="modDeletePaneOpen">
+              <a-composer :spec="modDeleteSpec"></a-composer>
+            </div>
+            <div class="delete-confirmation-container" v-if="modDeleteSubmitted || modDeleteSubmittedBefore">
+              <div class="inprogress" v-if="modDeleteSubmitted">
+                Thanks! Your deletion is <b><em>currently being minted</em></b> for submission.
+              </div>
+              <div class="complete" v-if="modDeleteSubmittedBefore">
+                Thanks! Your deletion is <b><em>successfully submitted.</em></b>
+              </div>
+            </div>
+            <div class="ignore-confirmation-container" v-if="modIgnoreSubmitted || modIgnoreSubmittedBefore">
+              <div class="inprogress" v-if="modIgnoreSubmitted">
+                Thanks! Your ignore is <b><em>currently being processed</em></b>.
+              </div>
+              <div class="complete" v-if="modIgnoreSubmittedBefore">
+                Thanks! Your ignore is <b><em>successfully submitted.</em></b> You won't be notified of new reports for this content in the Reports tab.
+              </div>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
     <a-ballot v-if="actionsVisible" :contentsignals="currentThread.compiledcontentsignals" :boardfp="currentThread.board" :threadfp="currentThread.fingerprint"></a-ballot>
@@ -70,16 +162,42 @@
   export default {
     name: 'a-thread-header-entity',
     mixins: [mixins.localUserMixin],
-    props: ['inflightStatus', 'thread', 'uncompiled'],
+    // props: ['inflightStatus', 'thread', 'uncompiled'],
+    props: {
+      inflightStatus: {
+        type: Object,
+        default: function() { return undefined },
+      },
+      uncompiled: {
+        type: Boolean,
+        default: false,
+      },
+      thread: {
+        type: Object,
+        default: function() { return undefined },
+      },
+      isinreportsview: {
+        type: Boolean,
+        default: false,
+      }
+    },
     // ^ Unused as of now, since we do not allow inflight threads to be opened, but could be useful in the future.
     data(this: any): any {
       return {
         imageLoadedSuccessfully: false,
+        videoLoadedSuccessfully: false,
         hasUpvoted: false,
         hasDownvoted: false,
         editPaneOpen: false,
         reportPaneOpen: false,
+        modActionsPaneOpen: false,
+        modApprovalPaneOpen: false,
+        modDeletePaneOpen: false,
         lightboxOpen: false,
+        reportSubmitted: false,
+        modApprovalSubmitted: false,
+        modDeleteSubmitted: false,
+        modIgnoreSubmitted: false,
         threadEditExistingSpec: {
           fields: [{
             id: "threadBody",
@@ -115,9 +233,51 @@
           cancelAction: this.toggleReportPane,
           cancelActionName: "CANCEL",
         },
+        modApprovalSpec: {
+          fields: [{
+            id: 'approvalReason',
+            emptyWarningDisabled: true,
+            visibleName: "Approve",
+            description: "Optional. Enter the reason why you're approving this. ",
+            placeholder: "Approval reason",
+            maxCharCount: 256,
+            heightRows: 1,
+            previewDisabled: true,
+            content: '',
+            optional: true,
+          }],
+          commitAction: this.submitModApproval,
+          commitActionName: "APPROVE",
+          cancelAction: this.toggleModApprovalPane,
+          cancelActionName: "CANCEL",
+        },
+        modDeleteSpec: {
+          fields: [{
+            id: 'deleteReason',
+            emptyWarningDisabled: true,
+            visibleName: "Delete",
+            description: "Optional. Enter the reason why you're deleting this. ",
+            placeholder: "Deletion reason",
+            maxCharCount: 256,
+            heightRows: 1,
+            previewDisabled: true,
+            content: '',
+            optional: true,
+          }],
+          commitAction: this.submitModDelete,
+          commitActionName: "DELETE",
+          cancelAction: this.toggleModDeletePane,
+          cancelActionName: "CANCEL",
+        },
       }
     },
     computed: {
+      localUserPresent(this: any) {
+        if (this.localUserArrived && !this.localUserExists) {
+          return false
+        }
+        return true
+      },
       // ...Vuex.mapState(['currentThread']),
       currentThread(this: any) {
         return this.thread
@@ -186,6 +346,9 @@
         if (typeof this.currentThread.link === 'undefined') {
           return ""
         }
+        if (this.currentThread.link.length === 0) {
+          return ''
+        }
         if (this.currentThread.link.substring(0, 8) === 'https://' ||
           this.currentThread.link.substring(0, 7) === 'http://') {
           return this.currentThread.link
@@ -245,7 +408,7 @@
         if (this.localUserReadOnly) {
           return false
         }
-        if (this.uncompiled || this.isVisibleInflightEntity) {
+        if (this.uncompiled) {
           return false
         }
         return true
@@ -281,15 +444,150 @@
           return true
         }
         return false
-      }
+      },
+      /*----------  Reports  ----------*/
+      reportSubmittedBefore(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        if (this.thread.compiledcontentsignals.selfreported) {
+          return true
+        }
+        return false
+      },
+      selfReportText(this: any): string {
+        if (this.uncompiled || this.isInflightEntity) {
+          return ""
+        }
+        if (globalMethods.IsUndefined(this.$store.state.localUser)) {
+          return ""
+        }
+        for (let val of this.thread.compiledcontentsignals.reportsList) {
+          if (val.sourcefp === this.$store.state.localUser.fingerprint) {
+            return val.reason
+          }
+        }
+        return ""
+      },
+      reportsListVisible(this: any) {
+        // If uncompiled or inflight, always false
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        // If mod mode is enabled, true if reports are present
+        if (this.$store.state.modModeEnabledArrived && this.$store.state.modModeEnabled) {
+          if (this.thread.compiledcontentsignals.reportsList.length > 0) {
+            return true
+          }
+        }
+        // If mod mode is not enabled, and not uncompiled and not inflight, if a report has been submitted now or before, true
+        if (this.reportSubmitted || this.reportSubmittedBefore) {
+          return true
+        }
+        return false
+      },
+      reportsList(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return []
+        }
+        if (this.$store.state.modModeEnabledArrived && this.$store.state.modModeEnabled) {
+          return this.thread.compiledcontentsignals.reportsList
+        }
+        let nonModReports: any = []
+        // only reports created by self
+        if (globalMethods.IsUndefined(this.$store.state.localUser)) {
+          return nonModReports
+        }
+        for (let val of this.thread.compiledcontentsignals.reportsList) {
+          if (val.sourcefp === this.$store.state.localUser.fingerprint) {
+            nonModReports.push(val)
+          }
+        }
+        return nonModReports
+      },
+      /*----------  Mod mode and actions  ----------*/
+      modDeleteSubmittedBefore(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        if (this.thread.compiledcontentsignals.selfmodblocked) {
+          return true
+        }
+        return false
+      },
+      modApprovalSubmittedBefore(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        if (this.thread.compiledcontentsignals.selfmodapproved) {
+          return true
+        }
+        return false
+      },
+      modIgnoreSubmittedBefore(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        if (this.thread.compiledcontentsignals.selfmodignored) {
+          return true
+        }
+        return false
+      },
+      isMod(this: any) {
+        if (this.$store.state.modModeEnabledArrived && this.$store.state.modModeEnabled) {
+          return true
+        }
+        return false
+      },
+      modActionSubmitted(this: any) {
+        if (this.modApprovalSubmitted || this.modDeleteSubmitted || this.modIgnoreSubmitted) {
+          return true
+        }
+        return false
+      },
+      modActionSubmittedBefore(this: any) {
+        if (this.modApprovalSubmittedBefore || this.modDeleteSubmittedBefore || this.modIgnoreSubmittedBefore) {
+          return true
+        }
+        return false
+      },
+      modActionsVisible(this: any) {
+        if (this.reportsListVisible) {
+          return true
+        }
+        if (this.modActionsPaneOpen) {
+          return true
+        }
+        if (this.modActionSubmitted || this.modActionSubmittedBefore || this.modIgnoreSubmittedBefore) {
+          return true
+        }
+        return false
+      },
+      modActionTaken(this: any) {
+        if (this.uncompiled || this.isInflightEntity) {
+          return false
+        }
+        if (this.modApprovalSubmitted || this.modApprovalSubmittedBefore || this.modDeleteSubmitted || this.modDeleteSubmittedBefore || this.modIgnoreSubmitted || this.modIgnoreSubmittedBefore) {
+          return true
+        }
+        return false
+      },
     },
     methods: {
       /*----------  Lightbox open/close  ----------*/
       openLightbox(this: any) {
+        let vid: any = this.$el.getElementsByClassName('video-player')[0]
         this.lightboxOpen = true
+        if (!globalMethods.IsUndefined(vid)) {
+          vid.play()
+        }
       },
       closeLightbox(this: any) {
+        let vid: any = this.$el.getElementsByClassName('video-player')[0]
         this.lightboxOpen = false
+        if (!globalMethods.IsUndefined(vid)) {
+          vid.pause()
+        }
       },
       getOwnerName(owner: any): string {
         return globalMethods.GetOwnerName(owner)
@@ -335,18 +633,86 @@
             reportReason = val.content
           }
         }
-        fe.ReportToMod(this.currentThread.fingerprint, '', reportReason, function(resp: any) {
+        let vm = this
+        fe.ReportToMod(this.currentThread.fingerprint, '', reportReason, this.currentThread.board, this.currentThread.fingerprint, function(resp: any) {
           console.log(resp.toObject())
+          vm.toggleReportPane()
+          vm.reportSubmitted = true
         })
       },
       handleImageLoadSuccess(this: any) {
         this.imageLoadedSuccessfully = true
+      },
+      handleVideoLoadSuccess(this: any) {
+        // console.log('video loaded successfully')
+        this.videoLoadedSuccessfully = true
+      },
+      /*----------  Moderation actions  ----------*/
+      toggleModActionPane(this: any) {
+        if (this.modActionsPaneOpen) {
+          this.modActionsPaneOpen = false
+        } else {
+          this.modActionsPaneOpen = true
+        }
+      },
+      /*----------  Approval modaction  ----------*/
+      toggleModApprovalPane(this: any) {
+        if (this.modApprovalPaneOpen) {
+          this.modApprovalPaneOpen = false
+        } else {
+          this.modApprovalPaneOpen = true
+        }
+      },
+      submitModApproval(this: any, fields: any) {
+        let approvalReason = ""
+        for (let val of fields) {
+          if (val.id === 'approvalReason') {
+            approvalReason = val.content
+          }
+        }
+        let vm = this
+        fe.ModApprove(this.currentThread.fingerprint, '', approvalReason, this.currentThread.board, this.currentThread.fingerprint, function(resp: any) {
+          console.log(resp.toObject())
+          vm.toggleModApprovalPane()
+          vm.modApprovalSubmitted = true
+        })
+      },
+      /*----------  Delete modaction  ----------*/
+      toggleModDeletePane(this: any) {
+        if (this.modDeletePaneOpen) {
+          this.modDeletePaneOpen = false
+        } else {
+          this.modDeletePaneOpen = true
+        }
+      },
+      submitModDelete(this: any, fields: any) {
+        let deleteReason = ""
+        for (let val of fields) {
+          if (val.id === 'deleteReason') {
+            deleteReason = val.content
+          }
+        }
+        let vm = this
+        fe.ModDelete(this.currentThread.fingerprint, '', deleteReason, this.currentThread.board, this.currentThread.fingerprint, function(resp: any) {
+          console.log(resp.toObject())
+          vm.toggleModDeletePane()
+          vm.modDeleteSubmitted = true
+        })
+      },
+      /*----------  Ignore modaction  ----------*/
+      submitModIgnore(this: any) {
+        let vm = this
+        fe.ModIgnore(this.currentThread.fingerprint, '', '', this.currentThread.board, this.currentThread.fingerprint, function(resp: any) {
+          console.log(resp.toObject())
+          vm.modIgnoreSubmitted = true
+        })
       },
     },
   }
 </script>
 
 <style lang="scss" scoped>
+  @import"../scss/bulmastyles";
   @import "../scss/globals";
 
   .lightbox {
@@ -360,7 +726,8 @@
     right: 0;
     background-color: rgba(0, 0, 0, 0.5);
 
-    img {
+    img,
+    video {
       margin: auto;
       max-height: 90%;
       max-width: 90%;
@@ -373,6 +740,10 @@
     padding: 15px 5px;
     margin: 0 20px;
     color: $a-grey-800;
+    &.no-user-present {
+      padding-bottom: 25px;
+      border-bottom: 3px solid rgba(255, 255, 255, 0.05);
+    }
     .ballot {
       padding-top: 75px;
     }
@@ -429,12 +800,21 @@
         border-radius: 2px;
         background-color: $a-cerulean;
         background-size: cover;
+        background-position: center center;
         cursor: pointer;
 
         .thread-image {
           object-fit: cover;
           height: inherit;
         }
+      }
+      .video-box {
+        max-height: 150px;
+        max-width: 100%;
+        overflow: hidden;
+        border-radius: 2px;
+        overflow: hidden;
+        cursor: pointer;
       }
     }
 
@@ -479,7 +859,117 @@
     }
   }
 
-  .report-container {
-    padding-top: 35px;
+  .modtools {
+    font-size: 16px;
+    font-family: "SSP Bold";
+    .modtools-block {
+      margin-top: 5px;
+      &:first-of-type {
+        margin-top: 20px;
+      }
+    }
+  }
+
+  .report-composer-container {
+    padding-top: 30px;
+  }
+
+  .reports-list-container {
+    // padding: 15px 20px 20px 20px;
+    padding: 20px;
+    background-color: rgba(0, 0, 0, 0.25);
+    margin-top: 20px;
+    border-radius: 3px; // font-size: 105%;
+    color: $a-grey-600;
+
+    .reports-header {
+      font-family: "SSP Bold";
+      font-size: 110%;
+      color: $a-grey-800;
+    }
+    .report-container {
+      border-left: 3px solid rgba(255, 255, 255, 0.15);
+      padding-left: 20px;
+      margin-top: 15px;
+
+      &.own-report {
+        border-color: $a-cerulean;
+      }
+
+      .report-text {
+        font-family: "SSP Regular";
+        font-size: 110%;
+        &.no-reason {
+          font-family: "SSP Regular Italic"
+        }
+      }
+
+      .meta-container {
+        display: flex;
+        .post-datetime {
+          margin-right: 10px;
+          margin-left: 0;
+          font-family: "SSP Regular Italic";
+          color: $a-grey-600;
+        }
+      }
+    }
+  }
+
+
+  .mod-actions-container {
+    padding: 20px;
+    background-color: rgba(0, 0, 0, 0.25);
+    margin-top: 20px;
+    border-radius: 3px; // font-size: 110%;
+    color: $a-grey-600;
+    .mod-actions-header {
+      font-family: "SSP Bold";
+      margin-bottom: 15px;
+      font-size: 110%;
+      color: $a-grey-800;
+    }
+    .buttons-row {
+      margin-top: 25px;
+    }
+    .button {
+      margin-right: 5px;
+    }
+
+    .modapproval-composer-container,
+    .moddelete-composer-container {
+      margin-top: 15px;
+    }
+
+    .approval-confirmation-container,
+    .delete-confirmation-container,
+    .ignore-confirmation-container {
+      margin-top: 15px;
+      margin-bottom: 0;
+      font-size: 110%;
+    }
+  }
+
+  .confirmation-container,
+  .approval-confirmation-container,
+  .delete-confirmation-container,
+  .ignore-confirmation-container {
+    font-family: "SSP Regular";
+    font-size: 110%;
+    margin-bottom: 15px;
+    &.no-bottom-margin {
+      margin-bottom: 0;
+    }
+    b em {
+      font-family: "SSP Bold Italic";
+    }
   }
 </style>
+
+<!--
+ creation:1535323102
+ lastupdate:0
+ reason:"This is too coooll. Waay too cool. It shouldn't be allowed."
+ sourcefp:"85e03dda365a42caf48129e5832b80305868c470c4afccb400190b73e9c959b5"
+
+  -->

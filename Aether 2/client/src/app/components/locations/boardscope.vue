@@ -28,7 +28,26 @@
     name: 'boardscope',
     computed: {
       tabslist(this: any) {
-        return [{
+        let modTabsList = [{
+          'name': 'POPULAR',
+          'link': '/board/' + this.$store.state.currentBoardFp
+        }, {
+          'name': 'NEW',
+          'link': '/board/' + this.$store.state.currentBoardFp + '/new'
+        }, {
+          'name': 'INFO',
+          'link': '/board/' + this.$store.state.currentBoardFp + '/info'
+        }, {
+          'name': 'REPORTS',
+          'link': '/board/' + this.$store.state.currentBoardFp + '/reports'
+        }, {
+          'name': 'MOD ACTIVITY',
+          'link': '/board/' + this.$store.state.currentBoardFp + '/modactivity'
+        }, {
+          'name': 'ELECTIONS',
+          'link': '/board/' + this.$store.state.currentBoardFp + '/elections'
+        }]
+        let nonModTabsList = [{
           'name': 'POPULAR',
           'link': '/board/' + this.$store.state.currentBoardFp
         }, {
@@ -44,10 +63,20 @@
           'name': 'ELECTIONS',
           'link': '/board/' + this.$store.state.currentBoardFp + '/elections'
         }]
+        if (this.isMod) {
+          return modTabsList
+        }
+        return nonModTabsList
       },
       entityNotFound(this: any) {
         return this.$store.state.currentBoard.fingerprint.length === 0
       },
+      isMod(this: any) {
+        if (this.$store.state.modModeEnabledArrived && this.$store.state.modModeEnabled) {
+          return true
+        }
+        return false
+      }
     },
     data(this: any) {
       return {}

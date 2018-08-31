@@ -25,6 +25,7 @@
 </template>
 
 <script lang="ts">
+  var globalMethods = require('../../services/globals/methods')
   export default {
     name: 'userscope',
     data() {
@@ -45,8 +46,24 @@
         return this.$store.state.currentUserEntity.fingerprint.length === 0
       },
       tabslist(this: any) {
-        return [{
-          'name': 'INFO',
+        let selfUserTabsList = [{
+          'name': 'BIO',
+          'link': '/user/' + this.$store.state.currentUserEntity.fingerprint
+        }, {
+          'name': 'NOTIFICATIONS',
+          'link': '/user/' + this.$store.state.currentUserEntity.fingerprint + '/notifications'
+        }, {
+          'name': 'POSTS',
+          'link': '/user/' + this.$store.state.currentUserEntity.fingerprint + '/posts'
+        }, {
+          'name': 'THREADS',
+          'link': '/user/' + this.$store.state.currentUserEntity.fingerprint + '/threads'
+        }, {
+          'name': 'COMMUNITIES CREATED',
+          'link': '/user/' + this.$store.state.currentUserEntity.fingerprint + '/boards'
+        }]
+        let nonSelfUserTabsList = [{
+          'name': 'BIO',
           'link': '/user/' + this.$store.state.currentUserEntity.fingerprint
         }, {
           'name': 'POSTS',
@@ -55,9 +72,16 @@
           'name': 'THREADS',
           'link': '/user/' + this.$store.state.currentUserEntity.fingerprint + '/threads'
         }, {
-          'name': 'COMMUNITIES',
+          'name': 'COMMUNITIES CREATED',
           'link': '/user/' + this.$store.state.currentUserEntity.fingerprint + '/boards'
         }]
+        if (globalMethods.IsUndefined(this.$store.state.localUser)) {
+          return nonSelfUserTabsList
+        }
+        if (this.$store.state.currentUserEntity.fingerprint !== this.$store.state.localUser.fingerprint) {
+          return nonSelfUserTabsList
+        }
+        return selfUserTabsList
       }
     },
     mounted(this: any) {
@@ -78,6 +102,7 @@
     flex-direction: row;
     padding-bottom: 0;
     flex: none;
+    min-height: 100%;
   }
 
   .user-side {
@@ -98,6 +123,7 @@
       .user-info-flex-child {
         margin: auto;
         margin-top: 0;
+        max-width: 100%;
       }
     }
     .user-info {

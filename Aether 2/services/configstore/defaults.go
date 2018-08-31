@@ -27,7 +27,7 @@ PORTS quick cheatsheet (assuming all are available)
 // Backend defaults
 const (
 	defaultPoWBailoutTimeSeconds = 600
-	// ^ We'll try to mint the PoW for 20 minutes before giving up. This is mostly for the long tail, so that if people attempt PoW levels that are impossible, they won't be stuck with their machine forever trying to compute it in vain. Anything above 24 is just very hard / impossible (30 secs to 10+ minutes on long tail) on a consumer machine as of mid-2018.
+	// ^ We'll try to mint the PoW for 10 minutes before giving up. This is mostly for the long tail, so that if people attempt PoW levels that are impossible, they won't be stuck with their machine forever trying to compute it in vain. Anything above 24 is just very hard / impossible (30 secs to 10+ minutes on long tail) on a consumer machine as of mid-2018.
 	defaultTimeBlockSizeMinutes                    = 5
 	defaultPastBlocksToCheck                       = 3
 	defaultCacheGenerationIntervalHours            = 6
@@ -41,7 +41,7 @@ const (
 	defaultOnlineAddressFinderPageSize             = 99
 	defaultDispatchExclusionExpiryForLiveAddress   = 3 * time.Minute
 	defaultDispatchExclusionExpiryForStaticAddress = 72 * time.Hour
-	defaultPowStrength                             = 22
+	defaultPowStrength                             = 21
 	defaultExternalIp                              = "127.0.0.1" // Localhost, if this is still 127.0.0.1 at any point in the future we failed at finding this out.
 	defaultExternalIpType                          = 4           // IPv4
 	defaultExternalPort                            = 49999
@@ -73,6 +73,7 @@ const (
 	defaultBloomFilterSize                         = 10000
 	defaultBloomFilterFalsePositiveRatePercent     = 50  // 50%, divide by 100 in use.
 	defaultMinimumVoteThresholdForElectionValidity = 100 // Short of 10 votes on any direction, an election is not valid because the size is too small.
+	defaultKvStoreRetentionDays                    = 180
 )
 
 // Shared defaults between frontend and backend

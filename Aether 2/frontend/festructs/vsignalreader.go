@@ -9,12 +9,12 @@ import (
 	"aether-core/frontend/beapiconsumer"
 	pbstructs "aether-core/protos/mimapi"
 	"aether-core/services/globals"
-	// "aether-core/services/logging"
+	"aether-core/services/logging"
+	"aether-core/services/metaparse"
 	// "fmt"
 	// "github.com/davecgh/go-spew/spew"
 	// "golang.org/x/net/context"
 	// "google.golang.org/grpc"
-	"aether-core/services/metareader"
 	// "github.com/willf/bloom"
 )
 
@@ -70,6 +70,14 @@ func GetFGs(parentfp, parenttype, targetfp string, startts, nowts int64, noDesce
 	rawSignals := getVoteBasedSignal(parentfp, parenttype, targetfp, startts, nowts, 2, -1, noDescendants)
 	sgns := []FollowsGuidelinesSignal{}
 	for k, _ := range rawSignals {
+		vmeta, err := metaparse.ReadMeta("Vote", rawSignals[k].GetMeta())
+		if err != nil {
+			logging.Logf(2, "We failed to parse this Meta field. Raw Meta field: %v, Entity: %v Error: %v", targetfp, err)
+		}
+		fgreason := ""
+		if vmeta != nil {
+			fgreason = vmeta.(*metaparse.VoteMeta).FGReason
+		}
 		sgns = append(sgns, FollowsGuidelinesSignal{
 			BaseVoteSignal: BaseVoteSignal{
 				Fingerprint:       rawSignals[k].GetProvable().GetFingerprint(),
@@ -82,7 +90,7 @@ func GetFGs(parentfp, parenttype, targetfp string, startts, nowts int64, noDesce
 				Self:              rawSignals[k].GetOwnerPublicKey() == globals.FrontendConfig.GetMarshaledUserPublicKey(),
 				LastRefreshed:     nowts,
 			},
-			Reason: metareader.ReadSingleField(rawSignals[k].GetMeta(), "FGReason").(string),
+			Reason: fgreason,
 		})
 	}
 	return sgns
@@ -92,6 +100,14 @@ func GetMAs(parentfp, parenttype, targetfp string, startts, nowts int64, noDesce
 	rawSignals := getVoteBasedSignal(parentfp, parenttype, targetfp, startts, nowts, 3, -1, noDescendants)
 	sgns := []ModActionsSignal{}
 	for k, _ := range rawSignals {
+		vmeta, err := metaparse.ReadMeta("Vote", rawSignals[k].GetMeta())
+		if err != nil {
+			logging.Logf(2, "We failed to parse this Meta field. Raw Meta field: %v, Entity: %v Error: %v", targetfp, err)
+		}
+		mareason := ""
+		if vmeta != nil {
+			mareason = vmeta.(*metaparse.VoteMeta).MAReason
+		}
 		sgns = append(sgns, ModActionsSignal{
 			BaseVoteSignal: BaseVoteSignal{
 				Fingerprint:       rawSignals[k].GetProvable().GetFingerprint(),
@@ -104,7 +120,7 @@ func GetMAs(parentfp, parenttype, targetfp string, startts, nowts int64, noDesce
 				Self:              rawSignals[k].GetOwnerPublicKey() == globals.FrontendConfig.GetMarshaledUserPublicKey(),
 				LastRefreshed:     nowts,
 			},
-			Reason: metareader.ReadSingleField(rawSignals[k].GetMeta(), "MAReason").(string),
+			Reason: mareason,
 		})
 	}
 	return sgns

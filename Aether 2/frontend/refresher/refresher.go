@@ -11,23 +11,34 @@ import (
 	pbstructs "aether-core/protos/mimapi"
 	"aether-core/services/globals"
 	"aether-core/services/logging"
+	"aether-core/services/toolbox"
 	// "github.com/davecgh/go-spew/spew"
 	// "fmt"
 	"encoding/json"
+	"github.com/asdine/storm/q"
 	"strings"
 	"sync"
+	"time"
 )
 
 var (
 	GlobalStatistics festructs.GlobalStatisticsCarrier
 	// This will be updated by global statistics carrier when it finishes, and we'll be using this as a basis for election calculations on the global scope. Local scopes (boards' elections) have their own population counts.
 	RefreshRanBeforeOnThisRun bool
+	LastRefreshDuration       time.Duration
 )
 
 func Refresh() {
 	globals.FrontendTransientConfig.RefresherMutex.Lock()
 	defer globals.FrontendTransientConfig.RefresherMutex.Unlock()
 
+	/*----------  Set status visible in the client  ----------*/
+	clapiconsumer.FrontendAmbientStatus.RefresherStatus = "Compiling..."
+	clapiconsumer.SendFrontendAmbientStatus()
+
+	preRefresh()
+
+	timeStart := time.Now()
 	if !RefreshRanBeforeOnThisRun {
 		// logging.Logf(1, "This is the first refresh of this run. Initialising KvStore buckets.")
 		festructs.InitialiseKvStore()
@@ -58,9 +69,12 @@ func Refresh() {
 	ambientBoards := festructs.GetCurrentAmbients()
 	RefreshBoards(nowts, ambientBoards)
 	ambientBoards.Save() // Save the updated ambients (update happens inside refresh boards)
+	GenerateHomeView()
+	GeneratePopularView()
 	// at the end, delete too old lastrefresheds from the whole kvstore
 	DeleteStaleData(nowts)
 	// Finally, run the routines that we want after the refresh, mainly, letting the client know a refresh has happened, updating the ambients it has, and so on.
+	LastRefreshDuration = time.Since(timeStart)
 	postRefresh()
 }
 
@@ -76,7 +90,23 @@ func PrepNewGlobalStatistics() {
 
 // DeleteStaleData deletes the data that we've ceased updating. This does not mean the data is deleted from the backend store, it just means that the cache copy we keep on the frontend is. So if the user wants to see the same thing again, the click will cause a cache miss, it will be pulled and compiled from the backend again (if it's still extant there) and served to the user.
 func DeleteStaleData(nowts int64) {
-	// TODO
+	logging.Logf(1, "Starting deletion of stale data.")
+	cutoff := toolbox.CnvToCutoffDays(globals.FrontendConfig.GetKvStoreRetentionDays())
+	// Delete stale boards
+	query := globals.KvInstance.Select(q.Lte("LastRefreshed", cutoff))
+	err := query.Delete(new(festructs.BoardCarrier))
+	if err != nil {
+		logging.Logf(1, "Deletion of stale boards errored out. Err: %v", err)
+	}
+	err2 := query.Delete(new(festructs.ThreadCarrier))
+	if err2 != nil {
+		logging.Logf(1, "Deletion of stale threads errored out. Err: %v", err2)
+	}
+	err3 := query.Delete(new(festructs.UserHeaderCarrier))
+	if err3 != nil {
+		logging.Logf(1, "Deletion of stale user headers errored out. Err: %v", err3)
+	}
+	logging.Logf(1, "Stale data deletion is complete.")
 }
 
 func RefreshGlobalUserHeaders(newUserEntities []*pbstructs.Key, nowts int64) {
@@ -98,7 +128,13 @@ func RefreshGlobalUserHeaders(newUserEntities []*pbstructs.Key, nowts int64) {
 	for k, _ := range uhcBatch {
 		uhcBatch[k].Refresh([]string{}, GlobalStatistics.UserCount, nowts)
 		// ^ We have no default mods in global, and totalPop comes from global statistics.
+		/*
+			TODO FUTURE
+			This is where you calculate and insert the global mods assigned by the CA.
+		*/
 	}
+	// We need to add items coming in from this delta.
+
 	// logging.Logf(1, "This is the refreshed global user headers. %s", spew.Sdump(uhcBatch))
 }
 
@@ -119,15 +155,7 @@ func RefreshBoards(nowts int64, extantABs *festructs.AmbientBoardBatch) {
 		go RefreshBoard(bcBatch[k], &wg, extantABs)
 	}
 	wg.Wait()
-	// for k, _ := range bcBatch {
-	// 	RefreshBoardSingleCore(bcBatch[k])
-	// }
 }
-
-// func RefreshBoardSingleCore(bc festructs.BoardCarrier) {
-// 	bc.Refresh(globals.FrontendTransientConfig.RefresherCacheNowTimestamp)
-// 	RefreshThreads(&bc)
-// }
 
 // RefreshBoard does a few things. First of all, it updates the board statistics, then it updates the board's own user headers, then it updates the board's own entity, then it updates the board's thread entities, then it starts the process to refresh tracked threads and gives the newly updated thread entities to those threads, so that they don't have to compile those twice.
 func RefreshBoard(
@@ -135,12 +163,14 @@ func RefreshBoard(
 	wg *sync.WaitGroup,
 	extantABs *festructs.AmbientBoardBatch,
 ) {
-	bc.Refresh(globals.FrontendTransientConfig.RefresherCacheNowTimestamp)
+	bc.RefreshWithoutSave(globals.FrontendTransientConfig.RefresherCacheNowTimestamp)
 	refreshedAmbients := bc.ConstructAmbientBoards()
 	extantABs.UpdateBatch(refreshedAmbients)
 	RefreshThreads(&bc)
 	// UpdateBoardThreadsCount(&bc)
 	wg.Done()
+	bc.Threads.SortByScore()
+	bc.Save()
 }
 
 func RefreshThreads(bc *festructs.BoardCarrier) {
@@ -148,14 +178,12 @@ func RefreshThreads(bc *festructs.BoardCarrier) {
 	newThreadEntities := beapiconsumer.GetThreads(bc.LastReferenced, globals.FrontendTransientConfig.RefresherCacheNowTimestamp, []string{}, bc.Fingerprint, false, false)
 	bc.Threads.InsertFromProtobuf(newThreadEntities)
 	wg := sync.WaitGroup{}
-	// if bc.EntityCarrier.Boards[0].Name == "genesis" {
-	// 	logging.LogCrashf("Number of threads in this thing after proto insert: %v New thread entities: %v", len(bc.Threads), len(newThreadEntities))
-	// }
 	for k, _ := range bc.Threads {
 		wg.Add(1)
 		go RefreshThread(bc.Threads[k], bc, &wg)
 	}
 	wg.Wait()
+	// Thread refresh is done. Sort them based on score. This is the order we save them in.
 }
 
 // RefreshThread refreshes a thread. The way it does is that it first looks at whether we have an extant thread carrier for that thread. If we do, it triggers a refresh on it. If not, it creates one, fills it with the required data, and then it triggers a refresh on it.
@@ -169,11 +197,30 @@ func RefreshThread(cthread festructs.CompiledThread, bc *festructs.BoardCarrier,
 		}
 	}
 	tc.Refresh(bc.Boards.GetBoardSpecificUserHeaders(), bc, globals.FrontendTransientConfig.RefresherCacheNowTimestamp)
-	// UpdateThreadPostsCount(&tc)
 	wg.Done()
 }
 
+func preRefresh() {
+	// If time since the last SFW list pull is longer than an hour, refresh it first.
+	lastSFWListUpdate := globals.FrontendConfig.ContentRelations.SFWList.LastUpdate
+	if time.Since(time.Unix(lastSFWListUpdate, 0)).Minutes() > 60 {
+		// logging.Logf(1, "It's been longer than an hour after the last SFW list refresh. Refreshing the list first.")
+		globals.FrontendConfig.ContentRelations.SFWList.Refresh()
+		return
+	}
+	// logging.Logf(1, "The SFW list was refreshed recently. Skipping the refresh.")
+}
+
 func postRefresh() {
+	// ^^ As in after refresh, not refreshing posts.
 	clapiconsumer.DeliverAmbients()
 	clapiconsumer.PushLocalUserAmbient()
+	clapiconsumer.FrontendAmbientStatus.RefresherStatus = "Idle"
+	clapiconsumer.FrontendAmbientStatus.LastRefreshTimestamp = time.Now().Unix()
+	clapiconsumer.FrontendAmbientStatus.LastRefreshDurationSeconds = int32(LastRefreshDuration.Seconds())
+	clapiconsumer.SendFrontendAmbientStatus()
+	clapiconsumer.SendHomeView()
+	clapiconsumer.SendPopularView()
+	clapiconsumer.SendNotifications()
+	festructs.NotificationsSingleton.Save()
 }

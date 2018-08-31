@@ -20,7 +20,7 @@
           fields: [{
             id: "boardName",
             visibleName: "Community name",
-            description: "Short, sweet, preferably without spaces. It will be referred to as b/yourcommunity. This cannot be changed later.",
+            description: "Short, sweet, preferably without spaces. It will be referred to as <i>b/yourcommunity</i>. This cannot be changed later.",
             placeholder: "fightclub",
             maxCharCount: 32,
             heightRows: 1,
@@ -68,6 +68,9 @@
         fe.SendBoardContent('', board, function(resp: any) {
           console.log(resp.toObject())
         })
+        fe.SendModModeEnabledStatus(true, function() {
+          console.log("Mod mode is enabled due to creation of a board.")
+        })
       }
     }
   }
@@ -76,7 +79,7 @@
 <style lang="scss" scoped>
   .board-composer {
     padding: 0 50px;
-    padding-top: 20px;
+    padding-top: 25px;
   }
 </style>
 

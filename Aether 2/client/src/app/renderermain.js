@@ -9,9 +9,12 @@ This is the main entry point to the client app. See app.vue for the start logic,
   As a result, we start the frontend binary from the main side, but we establish the client gRPC server on the renderer side when it is time to connect to that server, since the data frontend provides needs to be delivered to the renderer, not the main process.
 */
 // Electron IPC setup before doing anything else
-var ipc = require('../../node_modules/electron-better-ipc');
+require('./services/eipc/eipc-renderer'); // Register IPC events
+var ipc = require('../../node_modules/electron-better-ipc'); // Register IPC caller
+// ^ Heads up, there are some IPC events registered in this renderermain, too.
 var clapiserver = require('./services/clapiserver/clapiserver');
 var feapiconsumer = require('./services/feapiconsumer/feapiconsumer');
+var globalMethods = require('./services/globals/methods');
 var clientAPIServerPort = clapiserver.StartClientAPIServer();
 console.log('renderer client api server port: ', clientAPIServerPort);
 ipc.callMain('SetClientAPIServerPort', clientAPIServerPort).then(function (feDaemonStarted) {
@@ -32,6 +35,7 @@ var ClickOutside = require('../../node_modules/v-click-outside');
 Vue.use(ClickOutside);
 /*----------  Third party dependencies  ----------*/
 var Mousetrap = require('../../node_modules/mousetrap');
+// var Spinner = require('../../node_modules/vue-simple-spinner')
 /*----------  Components  ----------*/
 // Global component declarations - do it here once.
 Vue.component('a-app', require('./components/a-app.vue').default);
@@ -54,26 +58,71 @@ Vue.component('a-hashimage', require('./components/a-hashimage.vue').default);
 Vue.component('a-no-content', require('./components/a-no-content.vue').default);
 Vue.component('a-markdown', require('./components/a-markdown.vue').default);
 Vue.component('a-avatar-block', require('./components/a-avatar-block.vue').default);
-// const tippy = require('../../node_modules/tippy.js/dist/tippy.js')
-// tippy('[tippytitle]')
+Vue.component('a-composer', require('./components/a-composer.vue').default);
+Vue.component('a-ballot', require('./components/a-ballot.vue').default);
+Vue.component('a-progress-bar', require('./components/a-progress-bar.vue').default);
+Vue.component('a-inflight-info', require('./components/a-inflight-info.vue').default);
+Vue.component('a-info-marker', require('./components/a-info-marker.vue').default);
+Vue.component('a-spinner', require('./components/a-spinner.vue').default);
+Vue.component('a-notfound', require('./components/a-notfound.vue').default);
+Vue.component('a-guidelight', require('./components/a-guidelight.vue').default);
+Vue.component('a-home-header', require('./components/a-home-header.vue').default);
+Vue.component('a-popular-header', require('./components/a-popular-header.vue').default);
+Vue.component('a-notifications-icon', require('./components/a-notifications-icon.vue').default);
+Vue.component('a-notification-entity', require('./components/a-notification-entity.vue').default);
+Vue.component('a-main-app-loader', require('./components/a-main-app-loader.vue').default);
+Vue.component('a-global-header', require('./components/a-global-header.vue').default);
+Vue.component('a-fin-puck', require('./components/a-fin-puck.vue').default);
+/*----------  Third party components  ----------*/
+Vue.component('vue-simple-spinner', require('../../node_modules/vue-simple-spinner'));
 /*----------  Places  ----------*/
 var Home = require('./components/locations/home.vue').default;
 var Popular = require('./components/locations/popular.vue').default;
+/*----------  Global scope (whole network, i.e. list of boards)  ----------*/
 var GlobalScope = require('./components/locations/globalscope.vue').default;
 var GlobalRoot = require('./components/locations/globalscope/globalroot.vue').default;
 var GlobalSubbed = require('./components/locations/globalscope/subbedroot.vue').default;
+/*----------  Board scope (board entity + list of threads)  ----------*/
+var NewBoard = require('./components/locations/globalscope/newboard.vue').default;
 var BoardScope = require('./components/locations/boardscope.vue').default;
 var BoardRoot = require('./components/locations/boardscope/boardroot.vue').default;
+var BoardInfo = require('./components/locations/boardscope/boardinfo.vue').default;
+var ModActivity = require('./components/locations/boardscope/modactivity.vue').default;
+var Elections = require('./components/locations/boardscope/elections.vue').default;
+var Reports = require('./components/locations/boardscope/reports.vue').default;
+/*----------  Thread scope (thread entity + list of posts)  ----------*/
+var NewThread = require('./components/locations/boardscope/newthread.vue').default;
 var ThreadScope = require('./components/locations/threadscope.vue').default;
+/*----------  Settings scope  ----------*/
 var SettingsScope = require('./components/locations/settingsscope.vue').default;
 var SettingsRoot = require('./components/locations/settingsscope/settingsroot.vue').default;
 var AdvancedSettings = require('./components/locations/settingsscope/advancedsettings.vue').default;
 var About = require('./components/locations/settingsscope/about.vue').default;
 var Membership = require('./components/locations/settingsscope/membership.vue').default;
 var Changelog = require('./components/locations/settingsscope/changelog.vue').default;
+var AdminsQuickstart = require('./components/locations/settingsscope/adminsquickstart.vue').default;
 var Intro = require('./components/locations/settingsscope/intro.vue').default;
+var NewUser = require('./components/locations/settingsscope/newuser.vue').default;
+var SFWList = require('./components/locations/settingsscope/sfwlist.vue').default;
+var Modship = require('./components/locations/settingsscope/modship.vue').default;
+/*----------  User scope  ----------*/
 var UserScope = require('./components/locations/userscope.vue').default;
 var UserRoot = require('./components/locations/userscope/userroot.vue').default;
+var UserBoards = require('./components/locations/userscope/userboards.vue').default;
+var UserThreads = require('./components/locations/userscope/userthreads.vue').default;
+var UserPosts = require('./components/locations/userscope/userposts.vue').default;
+var Notifications = require('./components/locations/userscope/notifications.vue').default;
+/*----------  Status scope  ----------*/
+var Status = require('./components/locations/status.vue').default;
+/*----------  Onboarding scope  ----------*/
+var OnboardScope = require('./components/locations/onboardscope.vue').default;
+var OnboardRoot = require('./components/locations/onboardscope/onboardroot.vue').default;
+var Onboard1 = require('./components/locations/onboardscope/onboard1.vue').default;
+var Onboard2 = require('./components/locations/onboardscope/onboard2.vue').default;
+var Onboard3 = require('./components/locations/onboardscope/onboard3.vue').default;
+var Onboard4 = require('./components/locations/onboardscope/onboard4.vue').default;
+var Onboard5 = require('./components/locations/onboardscope/onboard5.vue').default;
+var Onboard6 = require('./components/locations/onboardscope/onboard6.vue').default;
 /*----------  Routes  ----------*/
 var routes = [
     { path: '/', component: Home, name: 'Home', },
@@ -83,32 +132,71 @@ var routes = [
         children: [
             { path: '', component: GlobalRoot, name: 'Global', },
             { path: '/globalscope/subbed', component: GlobalSubbed, name: 'Global>Subbed', },
+            { path: '/globalscope/newboard', component: NewBoard, name: 'Global>NewBoard', },
         ]
     },
     {
         path: '/board/:boardfp', component: BoardScope,
         children: [
             { path: '', component: BoardRoot, name: 'Board', },
-            { path: '/board/:boardfp/thread/:threadfp', component: ThreadScope, name: 'Thread', },
-            { path: '*', redirect: '/board/:boardfp' }
+            { path: '/board/:boardfp/new', component: BoardRoot, name: 'Board>ThreadsNewList', },
+            { path: '/board/:boardfp/info', component: BoardInfo, name: 'Board>BoardInfo', },
+            { path: '/board/:boardfp/modactivity', component: ModActivity, name: 'Board>ModActivity', },
+            { path: '/board/:boardfp/elections', component: Elections, name: 'Board>Elections', },
+            { path: '/board/:boardfp/newthread', component: NewThread, name: 'Board>NewThread', },
+            { path: '/board/:boardfp/reports', component: Reports, name: 'Board>Reports', },
         ]
+    }, {
+        path: '/board/:boardfp/thread/:threadfp', component: ThreadScope, name: 'Thread', props: function (route) {
+            var highlightSelectors = [];
+            if (!globalMethods.IsUndefined(route.query.highlightSelectors) && route.query.highlightSelectors.length > 0) {
+                highlightSelectors = JSON.parse(route.query.highlightSelectors);
+            }
+            return {
+                route_focusSelector: route.query.focusSelector,
+                route_parentSelector: route.query.parentSelector,
+                route_highlightSelectors: highlightSelectors,
+            };
+        }
     },
     {
         path: '/settings', component: SettingsScope,
         children: [
-            { path: '/intro', component: Intro, name: 'Intro', },
             { path: '', component: SettingsRoot, name: 'Settings', },
             { path: '/settings/advanced', component: AdvancedSettings, name: 'Settings>Advanced', },
+            /*This is a little weird, these things are in settings scope but they're not in a settings path. That's because they exist in a router link that is in the settings structure. If you move this outside and try to use it, it uses the router link outside settings, which is the main main-block router link, which means the settings frame box won't be rendered. So this is not an oversight. */
+            { path: '/intro', component: Intro, name: 'Intro', },
             { path: '/about', component: About, name: 'About', },
             { path: '/membership', component: Membership, name: 'Membership', },
             { path: '/changelog', component: Changelog, name: 'Changelog', },
+            { path: '/adminsquickstart', component: AdminsQuickstart, name: 'AdminsQuickstart', },
+            { path: '/newuser', component: NewUser, name: 'NewUser', },
+            { path: '/sfwlist', component: SFWList, name: 'SFWList', },
+            { path: '/modship', component: Modship, name: 'Modship', },
         ]
     },
     {
         path: '/user/:userfp', component: UserScope,
         children: [
             { path: '', component: UserRoot, name: 'User' },
+            { path: '/user/:userfp/boards', component: UserBoards, name: 'User>Boards' },
+            { path: '/user/:userfp/threads', component: UserThreads, name: 'User>Threads' },
+            { path: '/user/:userfp/posts', component: UserPosts, name: 'User>Posts' },
+            { path: '/user/:userfp/notifications', component: Notifications, name: 'User>Notifications' },
             { path: '*', redirect: '/user/:userfp' }
+        ]
+    },
+    { path: '/status', component: Status, name: 'Status', },
+    {
+        path: '/onboard', components: { default: '', onboarding: OnboardScope },
+        children: [
+            { path: '', component: OnboardRoot, name: 'OnboardRoot', },
+            { path: '/onboard/1', component: Onboard1, name: 'Onboard1', },
+            { path: '/onboard/2', component: Onboard2, name: 'Onboard2', },
+            { path: '/onboard/3', component: Onboard3, name: 'Onboard3', },
+            { path: '/onboard/4', component: Onboard4, name: 'Onboard4', },
+            { path: '/onboard/5', component: Onboard5, name: 'Onboard5', },
+            { path: '/onboard/6', component: Onboard6, name: 'Onboard6', },
         ]
     },
     { path: '*', redirect: '/' }
@@ -117,14 +205,23 @@ var routes = [
 // { path: '/user/:userfp/threads', component: UserThreads, name: 'User>Threads', },
 /*----------  Plumbing  ----------*/
 var router = new VueRouter({
+    scrollBehavior: function () {
+        return { x: 0, y: 0 };
+    },
+    // ^ This does not work because we are using a fixed container and scroll inside it. Attempting to do it like this attempts to scroll the main container, which does not scroll. There is no way to specify which container needs to be scrolled, so we need to implement our own scroll behaviour.
     routes: routes,
 });
+// This keeps track of history, so we can appropriately disable back / forward buttons as needed.
+// router.afterEach(HistoryWriter)
 var Store = require('./store').default;
 new Vue({
     el: '#app',
     template: '<a-app></a-app>',
     router: router,
     store: Store,
+    mounted: function () {
+        ipc.callMain('SetRendererReady', true);
+    }
 });
 var Sync = require('../../node_modules/vuex-router-sync').sync;
 Sync(Store, router);
@@ -142,22 +239,26 @@ document.addEventListener('dragover', function (event) { event.preventDefault();
 // Cancelling drop prevents anything from being dropped into the container. This can be a mild security risk, if someone can convince you (or somehow automate dropping inside the app container), it can make the container ping a web address. This also assumes the container has the dropped remote address whitelisted, though, so it's a long shot. Still, defence in depth is preferable.
 document.addEventListener('drop', function (event) { event.preventDefault(); });
 /*----------  Some basic keyboard shortcuts  ----------*/
-// Backspace: go back (except when a text field or otherwise editable object is selected)
-// Some people just want to watch the world burn. ;)
-Mousetrap.bind('backspace', function (event) {
-    if (event.keyCode === 8 && event.target.nodeName.toLowerCase() !== 'textarea' && event.target.nodeName.toLowerCase() !== 'input' && event.target.contentEditable !== 'true') {
-        history.back();
-    }
+Mousetrap.bind('mod+,', function () {
+    history.back();
+    // if (event.target.nodeName.toLowerCase() !== 'textarea' && event.target.nodeName.toLowerCase() !== 'input' && event.target.contentEditable !== 'true') {
+    //   history.back()
+    // }
 });
-// Ctrl + Backspace: go forward (except when a text field or otherwise editable object is selected)
-Mousetrap.bind('ctrl+backspace', function (event) {
-    if (event.keyCode === 8 && event.target.nodeName.toLowerCase() !== 'textarea' && event.target.nodeName.toLowerCase() !== 'input' && event.target.contentEditable !== 'true') {
-        history.forward();
-    }
+Mousetrap.bind('mod+.', function () {
+    history.forward();
+    // if (event.target.nodeName.toLowerCase() !== 'textarea' && event.target.nodeName.toLowerCase() !== 'input' && event.target.contentEditable !== 'true') {
+    //   history.forward()
+    // }
 });
+/*----------  IPC maps  ----------*/
 /*
-  Why? This is an controlled environment, not a browser. All text field entries are saved to cache and cannot be lost. If for some reason you manage to back out of your compose screen, you can always forward or click again and it will be back into the exact same spot, with your inserted text still there.
-
-  The problem with backspace is caused by its propensity to cause data loss in a browser environment. When data loss is not possible, its potential harm is neutralised.
-*/ 
+These are here instead of eipc/eipc-renderer because they do require access to things that are instantiated here, such as router, and there is no way to get to them without importing the main. Importing main is not an option. So these should be here until I split the router into its own service file that is imported separately. That way, eipc import from there, and not from main.
+*/
+ipc.answerMain('RouteTo', function (route) {
+    router.push(route);
+    return 'heard ya';
+});
+/*----------  Exports  ----------*/
+module.exports = { router: router };
 //# sourceMappingURL=renderermain.js.map

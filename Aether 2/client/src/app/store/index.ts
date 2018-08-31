@@ -7,13 +7,13 @@ This data store does not hold any persistent data, nor does it cache it. The poi
 var Vue = require('../../../node_modules/vue/dist/vue.js')
 var Vuex = require('../../../node_modules/vuex').default
 Vue.use(Vuex)
-
 var fe = require('../services/feapiconsumer/feapiconsumer')
+var globalMethods = require('../services/globals/methods')
 
 let dataLoaders = require('./dataloaders').default
+let statusLights = require('./statuslights').default
 let contentRelations = require('./contentrelations')
 let crumbs = require('./crumbs')
-
 
 
 const dataLoaderPlugin = function(store: any) {
@@ -27,6 +27,13 @@ const dataLoaderPlugin = function(store: any) {
       fe.SendInflightsPruneRequest(function(resp: any) {
         console.log(resp)
       })
+      store.dispatch('registerNextMoveToHistoryCounter')
+      // Set history state for the back / forward buttons.
+      // store.dispatch('setHistoryHasForward', routerHistory.hasForward())
+      // store.dispatch('setHistoryHasPrevious', routerHistory.hasPrevious())
+
+      // Set the last load timestamp. We determine by looking at this the animation state some progress bar elements are in. (i.e. If it's a refresh or a return to a page, and we have a progress bar at 33% we don't want to animate from 0 to 33, just start it snapped there.)
+      store.dispatch('setLastPageLoadTimestamp')
       // First, check if we should refresh.
       if (oldValue === newValue && !store.state.frontendHasUpdates) {
         // if the values are the same, and frontend has no updates, bail.
@@ -39,12 +46,16 @@ const dataLoaderPlugin = function(store: any) {
         return
       }
 
-      if (store.state.route.name === "Board>NewThread") {
+      if (store.state.route.name === "Board>NewThread" || store.state.route.name === "Board>BoardInfo") {
         store.dispatch('loadBoardScopeData', routeParams.boardfp)
         return
       }
-      if (store.state.route.name === "Board>BoardInfo") {
+
+      if (store.state.route.name === "Board>Reports") {
+        store.dispatch('setCurrentBoardReportsArrived', false)
         store.dispatch('loadBoardScopeData', routeParams.boardfp)
+        store.dispatch('loadBoardReports', routeParams.boardfp)
+        // store.dispatch('setCurrentBoardReportsArrived', true)
         return
       }
 
@@ -61,7 +72,7 @@ const dataLoaderPlugin = function(store: any) {
         return
       }
 
-      if (store.state.route.name === "User" || store.state.route.name === 'User>Boards' || store.state.route.name === 'User>Threads' || store.state.route.name === 'User>Posts') {
+      if (store.state.route.name === "User" || store.state.route.name === 'User>Boards' || store.state.route.name === 'User>Threads' || store.state.route.name === 'User>Posts' || store.state.route.name === 'User>Notifications') {
         store.dispatch('loadUserScopeData', {
           fp: routeParams.userfp,
           userreq: true,
@@ -83,8 +94,8 @@ let actions = {
   /*
     These are smaller, less encompassing versions of the loaders, and they're meant to be used after the principal payload is brought in.
   */
-  refreshCurrentBoardAndThreads(context: any, boardfp: string) {
-    fe.GetBoardAndThreads(boardfp, function(resp: any) {
+  refreshCurrentBoardAndThreads(context: any, { boardfp, sortByNew }: { boardfp: string, sortByNew: boolean }) {
+    fe.GetBoardAndThreads(boardfp, sortByNew, function(resp: any) {
       actions.pruneInflights()
       context.commit('SET_CURRENT_BOARD', resp.board)
       context.commit('SET_CURRENT_BOARDS_THREADS', resp.threadsList)
@@ -114,19 +125,28 @@ let actions = {
   },
   setAmbientStatus(context: any, ambientStatus: any) {
     context.commit('SET_AMBIENT_STATUS', ambientStatus)
+    // If any of the items in the ambient status is a board that has just been created, add it to subscribed board.
+    for (let val of context.state.ambientStatus.inflights.boardsList) {
+      if (val.status.eventtype === "CREATE" && val.status.completionpercent === 100) {
+        actions.subToBoard(context, {
+          'fp': val.entity.provable.fingerprint,
+          'notify': true
+        })
+      }
+    }
+
+    // At every refresh, render these dot states.
+    actions.setDotStates(context, context.state.ambientStatus)
   },
   setAmbientLocalUserEntity(context: any, ambientLocalUserEntityPayload: any) {
     context.commit('SET_AMBIENT_LOCAL_USER_ENTITY', ambientLocalUserEntityPayload)
   },
   setCurrentBoardFp(context: any, fp: string) {
-    // This is a boardscope load. Retrieve board + its threads.
-    // if (context.state.currentBoardFp !== fp) {
-    //   context.dispatch('setCurrentBoardAndThreads', fp)
-    //   context.commit('SET_CURRENT_BOARD_FP', fp)
-    //   // Same scope, but fe has updated.
-    //   return
-    // }
-    context.dispatch('setCurrentBoardAndThreads', fp)
+    let sortByNew = false
+    if (context.state.route.name === 'Board>ThreadsNewList') {
+      sortByNew = true
+    }
+    context.dispatch('setCurrentBoardAndThreads', { boardfp: fp, sortByNew: sortByNew })
     context.commit('SET_CURRENT_BOARD_FP', fp)
     // // current board fp is the same as what we asked for, but FE has updates.
     // if (context.state.frontendHasUpdates) {
@@ -147,9 +167,9 @@ let actions = {
     //   context.commit('SET_CURRENT_THREAD_FP', threadfp)
     // }
   },
-  setCurrentBoardAndThreads(context: any, boardfp: string) {
+  setCurrentBoardAndThreads(context: any, { boardfp, sortByNew }: { boardfp: string, sortByNew: boolean }) {
     if (context.state.currentBoardFp === boardfp) {
-      fe.GetBoardAndThreads(boardfp, function(resp: any) {
+      fe.GetBoardAndThreads(boardfp, sortByNew, function(resp: any) {
         context.commit('SET_CURRENT_BOARD', resp.board)
         context.commit('SET_CURRENT_BOARDS_THREADS', resp.threadsList)
         context.commit('SET_CURRENT_BOARD_LOAD_COMPLETE', true)
@@ -159,7 +179,7 @@ let actions = {
       // If we're already here, update board but without false/true current board load complete flash.
     }
     context.commit('SET_CURRENT_BOARD_LOAD_COMPLETE', false)
-    fe.GetBoardAndThreads(boardfp, function(resp: any) {
+    fe.GetBoardAndThreads(boardfp, sortByNew, function(resp: any) {
       context.commit('SET_CURRENT_BOARD', resp.board)
       context.commit('SET_CURRENT_BOARDS_THREADS', resp.threadsList)
       context.commit('SET_CURRENT_BOARD_LOAD_COMPLETE', true)
@@ -168,10 +188,11 @@ let actions = {
     })
   },
   setCurrentThreadAndPosts(context: any, { boardfp, threadfp }: { boardfp: string, threadfp: string }) {
-    if (context.state.currentThreadFp === threadfp) {
-      context.dispatch('updateBreadcrumbs')
-      return
-    }
+    // if (context.state.currentThreadFp === threadfp) {
+    //   context.dispatch('updateBreadcrumbs')
+    //   return
+    // }
+    // ^ Nope, you're trying to be way too smart. The user might have updated the thread and if that's the case trying to do that will prevent that update from being visible. I tried doing it like above in boards where you load but without making it invisible, and what that does it creates a flash of old content. Not great. This is the best.
     context.commit('SET_CURRENT_THREAD_LOAD_COMPLETE', false)
     fe.GetThreadAndPosts(boardfp, threadfp, function(resp: any) {
       context.commit('SET_CURRENT_BOARD', resp.board)
@@ -181,6 +202,51 @@ let actions = {
       context.dispatch('updateBreadcrumbs')
     })
   },
+  setLastPageLoadTimestamp(context: any) {
+    context.commit('SET_LAST_PAGE_LOAD_TIMESTAMP', globalMethods.NowUnix())
+  },
+  /*----------  Views insertion  ----------*/
+  setHomeView(context: any, threads: any) {
+    context.commit('SET_HOME_VIEW', threads)
+
+  },
+  setPopularView(context: any, threads: any) {
+    context.commit('SET_POPULAR_VIEW', threads)
+  },
+  setNotifications(context: any, response: any) {
+    let payload = {
+      notifications: response.notificationsList,
+      unseenNotificationsPresent: false,
+    }
+    for (let val of payload.notifications) {
+      if (val.creationtimestamp > response.lastseen) {
+        payload.unseenNotificationsPresent = true
+        break
+      }
+    }
+    context.commit('SET_NOTIFICATIONS', payload)
+  },
+  setOnboardCompleteStatus(context: any, ocs: boolean) {
+    if (ocs === false) {
+      var router = require('../renderermain').router
+      router.push("/onboard")
+    }
+    context.commit('SET_ONBOARD_COMPLETE_STATUS', ocs)
+  },
+  setModModeEnabledStatus(context: any, modModeEnabled: boolean) {
+    context.commit('SET_MOD_MODE_ENABLED_STATUS', modModeEnabled)
+  },
+  /*----------  History state  ----------*/
+  registerNextActionIsHistoryMoveForward(context: any) {
+    context.commit('REGISTER_NEXT_ACTION_IS_HISTORY_MOVE_FORWARD')
+  },
+  registerNextActionIsHistoryMoveBack(context: any) {
+    context.commit('REGISTER_NEXT_ACTION_IS_HISTORY_MOVE_BACK')
+  },
+  registerNextMoveToHistoryCounter(context: any) {
+    context.commit('REGISTER_NEXT_MOVE_TO_HISTORY_COUNTER')
+  },
+  ...statusLights,
   ...dataLoaders,
   ...crumbs.crumbActions,
   ...contentRelations.actions,
@@ -193,9 +259,18 @@ let mutations = {
 
   SET_AMBIENT_BOARDS(state: any, ambientBoards: any) {
     state.ambientBoards = ambientBoards
+    state.ambientBoardsArrived = true
   },
   SET_AMBIENT_STATUS(state: any, ambientStatus: any) {
-    state.ambientStatus = ambientStatus
+    if (!globalMethods.IsUndefined(ambientStatus.frontendambientstatus)) {
+      state.ambientStatus.frontendambientstatus = ambientStatus.frontendambientstatus
+    }
+    if (!globalMethods.IsUndefined(ambientStatus.backendambientstatus)) {
+      state.ambientStatus.backendambientstatus = ambientStatus.backendambientstatus
+    }
+    if (!globalMethods.IsUndefined(ambientStatus.inflights)) {
+      state.ambientStatus.inflights = ambientStatus.inflights
+    }
   },
   SET_AMBIENT_LOCAL_USER_ENTITY(state: any, payload: any) {
     state.localUserArrived = true
@@ -256,7 +331,81 @@ let mutations = {
   SET_CURRENT_USER_LOAD_COMPLETE(state: any, loadComplete: boolean) {
     state.currentUserLoadComplete = loadComplete
   },
-}
+  SET_LAST_PAGE_LOAD_TIMESTAMP(state: any, lastPageLoadTimestamp: number) {
+    state.lastPageLoadTimestamp = lastPageLoadTimestamp
+  },
+  SET_DOT_STATES(state: any, dotStates: any) {
+    state.dotStates = dotStates
+  },
+  /*----------  Views insertion mutations  ----------*/
+  SET_HOME_VIEW(state: any, threads: any) {
+    state.homeViewThreads = threads
+    state.homeViewArrived = true
+  },
+  SET_POPULAR_VIEW(state: any, threads: any) {
+    state.popularViewThreads = threads
+    state.popularViewArrived = true
+  },
+  SET_NOTIFICATIONS(state: any, payload: any) {
+    state.notifications = payload.notifications
+    state.unseenNotificationsPresent = payload.unseenNotificationsPresent
+    state.notificationsArrived = true
+  },
+  SET_ONBOARD_COMPLETE_STATUS(state: any, ocs: boolean) {
+    state.onboardCompleteStatus = ocs
+    state.onboardCompleteStatusArrived = true
+  },
+  SET_MOD_MODE_ENABLED_STATUS(state: any, modModeEnabled: any) {
+    state.modModeEnabled = modModeEnabled
+    state.modModeEnabledArrived = true
+  },
+  REGISTER_NEXT_ACTION_IS_HISTORY_MOVE_FORWARD(state: any) {
+    state.historyNextActionType = "HISTORY_BUTTON_MOVE_FORWARD"
+  },
+  REGISTER_NEXT_ACTION_IS_HISTORY_MOVE_BACK(state: any) {
+    state.historyNextActionType = "HISTORY_BUTTON_MOVE_BACK"
+  },
+  REGISTER_NEXT_MOVE_TO_HISTORY_COUNTER(state: any) {
+    // Regular nav
+    if (state.historyNextActionType.length === 0) {
+      // We advance current history caret and set max to the same. If you go a few pages via the back button and now click something, then the forward stack is gone.
+      state.historyCurrentCaret++
+      state.historyMaxCaret = state.historyCurrentCaret
+      return
+    }
+    // History back button
+    if (state.historyNextActionType === "HISTORY_BUTTON_MOVE_BACK") {
+      // Only currentHistory caret moves back, max stays the same
+      state.historyNextActionType = ""
+      state.historyCurrentCaret > 0 ? state.historyCurrentCaret-- : state.historyCurrentCaret = 0
+      return
+    }
+    if (state.historyNextActionType === "HISTORY_BUTTON_MOVE_FORWARD") {
+      // Only currentHistory caret moves back, max stays the same
+      state.historyNextActionType = ""
+      state.historyCurrentCaret < state.historyMaxCaret ? state.historyCurrentCaret++ : state.historyCurrentCaret = state.historyMaxCaret
+    }
+  },
+  SET_CURRENT_BOARD_REPORTS(state: any, boardReports: any) {
+    state.currentBoardsReports = boardReports
+    state.currentBoardsReportsArrived = true
+  },
+  SET_CURRENT_BOARD_REPORTS_ARRIVED(state: any, arrived: boolean) {
+    state.currentBoardsReportsArrived = arrived
+  }
+}/*
+
+registerNextActionIsHistoryMoveForward(context: any) {
+  context.commit('REGISTER_NEXT_ACTION_IS_HISTORY_MOVE_FORWARD')
+},
+registerNextActionIsHistoryMovePrevious(context: any) {
+  context.commit('REGISTER_NEXT_ACTION_IS_HISTORY_MOVE_PREVIOUS')
+},
+registerNextMoveToHistoryCounter(context: any) {
+  context.commit('REGISTER_NEXT_MOVE_TO_HISTORY_COUNTER')
+},
+
+*/
 
 let st = new Vuex.Store({
   state: {
@@ -270,6 +419,8 @@ let st = new Vuex.Store({
     currentBoardLoadComplete: false,
     /*----------  Current board sub data  ----------*/
     currentBoardsThreads: [],
+    currentBoardsReports: [],
+    currentBoardsReportsArrived: false,
 
     /*----------  Current thread main  ----------*/
     currentThread: {}, // todo - insert 404 here
@@ -288,9 +439,41 @@ let st = new Vuex.Store({
 
     /*----------  Ambient data pushed in from frontend  ----------*/
     ambientBoards: {},
+    ambientBoardsArrived: false,
+
+    /*
+      It's quite important that the schema below is available in JS here, not just in protobuf. Because if it is not, it will not be reactive - Vue needs to know beforehand which items you want it to track.
+    */
     ambientStatus: {
-      backendambientstatus: {},
-      frontendambientstatus: {},
+      backendambientstatus: {
+        /*----------  Network  ----------*/
+        inboundscount15: 0,
+        lastinboundconntimestamp: 0,
+        lastoutboundconntimestamp: 0,
+        lastoutbounddurationseconds: 0,
+        outboundscount15: 0,
+        localnodeexternalip: "",
+        localnodeexternalport: 0,
+        upnpstatus: "",
+        /*----------  Database  ----------*/
+        databasestatus: "",
+        dbsizemb: 0,
+        lastdbinserttimestamp: 0,
+        lastinsertdurationseconds: 0,
+        maxdbsizemb: 0,
+        /*----------  Caching  ----------*/
+        cachingstatus: "",
+        lastcachegenerationdurationseconds: 0,
+        lastcachegenerationtimestamp: 0,
+        backendconfiglocation: "",
+      },
+      frontendambientstatus: {
+        lastrefreshdurationseconds: 0,
+        lastrefreshtimestamp: 0,
+        refresherstatus: "",
+        frontendconfiglocation: "",
+        sfwlistdisabled: false,
+      },
       inflights: {
         boardsList: [],
         threadsList: [],
@@ -300,20 +483,56 @@ let st = new Vuex.Store({
         truststatesList: []
       },
     },
+    // States for the status dots visible at the bottom of the sidebar and in the status page.
+    dotStates: {
+      /*----------  Main dot statuses  ----------*/
+      backendDotState: "status_section_unknown",
+      frontendDotState: "status_section_unknown",
+      /*----------  Sub dot states  ----------*/
+      refresherDotState: "status_subsection_unknown",
+      inflightsDotState: "status_subsection_unknown",
+      networkDotState: "status_subsection_unknown",
+      dbDotState: "status_subsection_unknown",
+      cachingDotState: "status_subsection_unknown",
+    },
 
     /*----------  Local user data  ----------*/
-
     localUser: {},
     localUserExists: false,
     localUserArrived: false,
     // ^ Did we ever get a payload from FE? Until this is true, you can hide unready parts.
 
-    /*----------  Misc  ----------*/
+    /*----------  Views payloads  ----------*/
+    homeViewThreads: {},
+    homeViewArrived: false,
+    popularViewThreads: {},
+    popularViewArrived: false,
+
+    /*----------  Notifications  ----------*/
+    notifications: [],
+    notificationsArrived: false,
+    unseenNotificationsPresent: false,
+
+    /*----------  Onboard status  ----------*/
+    onboardCompleteStatus: false,
+    onboardCompleteStatusArrived: false,
+
+    /*----------  Mod mode enabled status  ----------*/
+    modModeEnabled: false,
+    modModeEnabledArrived: false,
+
+    /*----------  History state  ----------*/
+    historyMaxCaret: 0,
+    historyCurrentCaret: 0,
+    historyNextActionType: "",
+
+    /* ----------  Misc  ----------*/
     frontendHasUpdates: true,
     frontendPort: 0,
     route: {},
     sidebarOpen: true,
     breadcrumbs: [],
+    lastPageLoadTimestamp: 0,
   },
   actions: actions,
   mutations: mutations,

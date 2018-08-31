@@ -12,8 +12,6 @@ It has these top-level messages:
 	FEReadyResponse
 	AmbientsRequest
 	AmbientsResponse
-	BackendAmbientStatus
-	FrontendAmbientStatus
 	InflightStatus
 	InflightBoard
 	InflightThread
@@ -26,6 +24,16 @@ It has these top-level messages:
 	AmbientStatusResponse
 	AmbientLocalUserEntityPayload
 	AmbientLocalUserEntityResponse
+	HomeViewPayload
+	HomeViewResponse
+	PopularViewPayload
+	PopularViewResponse
+	NotificationsPayload
+	NotificationsResponse
+	OnboardCompleteStatusPayload
+	OnboardCompleteStatusResponse
+	ModModeEnabledStatusPayload
+	ModModeEnabledStatusResponse
 */
 package clapi
 
@@ -108,24 +116,6 @@ func (m *AmbientsResponse) String() string            { return proto.CompactText
 func (*AmbientsResponse) ProtoMessage()               {}
 func (*AmbientsResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{3} }
 
-// This is the status of the backend and what it is doing
-type BackendAmbientStatus struct {
-}
-
-func (m *BackendAmbientStatus) Reset()                    { *m = BackendAmbientStatus{} }
-func (m *BackendAmbientStatus) String() string            { return proto.CompactTextString(m) }
-func (*BackendAmbientStatus) ProtoMessage()               {}
-func (*BackendAmbientStatus) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{4} }
-
-// General status of the frontend
-type FrontendAmbientStatus struct {
-}
-
-func (m *FrontendAmbientStatus) Reset()                    { *m = FrontendAmbientStatus{} }
-func (m *FrontendAmbientStatus) String() string            { return proto.CompactTextString(m) }
-func (*FrontendAmbientStatus) ProtoMessage()               {}
-func (*FrontendAmbientStatus) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{5} }
-
 type InflightStatus struct {
 	CompletionPercent   int32  `protobuf:"varint,1,opt,name=CompletionPercent" json:"CompletionPercent,omitempty"`
 	StatusText          string `protobuf:"bytes,2,opt,name=StatusText" json:"StatusText,omitempty"`
@@ -137,7 +127,7 @@ type InflightStatus struct {
 func (m *InflightStatus) Reset()                    { *m = InflightStatus{} }
 func (m *InflightStatus) String() string            { return proto.CompactTextString(m) }
 func (*InflightStatus) ProtoMessage()               {}
-func (*InflightStatus) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{6} }
+func (*InflightStatus) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{4} }
 
 func (m *InflightStatus) GetCompletionPercent() int32 {
 	if m != nil {
@@ -182,7 +172,7 @@ type InflightBoard struct {
 func (m *InflightBoard) Reset()                    { *m = InflightBoard{} }
 func (m *InflightBoard) String() string            { return proto.CompactTextString(m) }
 func (*InflightBoard) ProtoMessage()               {}
-func (*InflightBoard) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{7} }
+func (*InflightBoard) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{5} }
 
 func (m *InflightBoard) GetStatus() *InflightStatus {
 	if m != nil {
@@ -206,7 +196,7 @@ type InflightThread struct {
 func (m *InflightThread) Reset()                    { *m = InflightThread{} }
 func (m *InflightThread) String() string            { return proto.CompactTextString(m) }
 func (*InflightThread) ProtoMessage()               {}
-func (*InflightThread) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{8} }
+func (*InflightThread) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{6} }
 
 func (m *InflightThread) GetStatus() *InflightStatus {
 	if m != nil {
@@ -230,7 +220,7 @@ type InflightPost struct {
 func (m *InflightPost) Reset()                    { *m = InflightPost{} }
 func (m *InflightPost) String() string            { return proto.CompactTextString(m) }
 func (*InflightPost) ProtoMessage()               {}
-func (*InflightPost) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{9} }
+func (*InflightPost) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{7} }
 
 func (m *InflightPost) GetStatus() *InflightStatus {
 	if m != nil {
@@ -254,7 +244,7 @@ type InflightVote struct {
 func (m *InflightVote) Reset()                    { *m = InflightVote{} }
 func (m *InflightVote) String() string            { return proto.CompactTextString(m) }
 func (*InflightVote) ProtoMessage()               {}
-func (*InflightVote) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{10} }
+func (*InflightVote) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{8} }
 
 func (m *InflightVote) GetStatus() *InflightStatus {
 	if m != nil {
@@ -278,7 +268,7 @@ type InflightKey struct {
 func (m *InflightKey) Reset()                    { *m = InflightKey{} }
 func (m *InflightKey) String() string            { return proto.CompactTextString(m) }
 func (*InflightKey) ProtoMessage()               {}
-func (*InflightKey) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{11} }
+func (*InflightKey) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{9} }
 
 func (m *InflightKey) GetStatus() *InflightStatus {
 	if m != nil {
@@ -302,7 +292,7 @@ type InflightTruststate struct {
 func (m *InflightTruststate) Reset()                    { *m = InflightTruststate{} }
 func (m *InflightTruststate) String() string            { return proto.CompactTextString(m) }
 func (*InflightTruststate) ProtoMessage()               {}
-func (*InflightTruststate) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{12} }
+func (*InflightTruststate) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{10} }
 
 func (m *InflightTruststate) GetStatus() *InflightStatus {
 	if m != nil {
@@ -331,7 +321,7 @@ type Inflights struct {
 func (m *Inflights) Reset()                    { *m = Inflights{} }
 func (m *Inflights) String() string            { return proto.CompactTextString(m) }
 func (*Inflights) ProtoMessage()               {}
-func (*Inflights) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{13} }
+func (*Inflights) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{11} }
 
 func (m *Inflights) GetBoards() []*InflightBoard {
 	if m != nil {
@@ -377,9 +367,9 @@ func (m *Inflights) GetTruststates() []*InflightTruststate {
 
 type AmbientStatusPayload struct {
 	// Health data from the backend, only provided to its admin frontend
-	BackendAmbientStatus *BackendAmbientStatus `protobuf:"bytes,1,opt,name=BackendAmbientStatus" json:"BackendAmbientStatus,omitempty"`
+	BackendAmbientStatus *feobjects.BackendAmbientStatus `protobuf:"bytes,1,opt,name=BackendAmbientStatus" json:"BackendAmbientStatus,omitempty"`
 	// Health data from the frontend
-	FrontendAmbientStatus *FrontendAmbientStatus `protobuf:"bytes,2,opt,name=FrontendAmbientStatus" json:"FrontendAmbientStatus,omitempty"`
+	FrontendAmbientStatus *feobjects.FrontendAmbientStatus `protobuf:"bytes,2,opt,name=FrontendAmbientStatus" json:"FrontendAmbientStatus,omitempty"`
 	// Lisf ot items currently being processed
 	Inflights *Inflights `protobuf:"bytes,3,opt,name=Inflights" json:"Inflights,omitempty"`
 }
@@ -387,16 +377,16 @@ type AmbientStatusPayload struct {
 func (m *AmbientStatusPayload) Reset()                    { *m = AmbientStatusPayload{} }
 func (m *AmbientStatusPayload) String() string            { return proto.CompactTextString(m) }
 func (*AmbientStatusPayload) ProtoMessage()               {}
-func (*AmbientStatusPayload) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{14} }
+func (*AmbientStatusPayload) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{12} }
 
-func (m *AmbientStatusPayload) GetBackendAmbientStatus() *BackendAmbientStatus {
+func (m *AmbientStatusPayload) GetBackendAmbientStatus() *feobjects.BackendAmbientStatus {
 	if m != nil {
 		return m.BackendAmbientStatus
 	}
 	return nil
 }
 
-func (m *AmbientStatusPayload) GetFrontendAmbientStatus() *FrontendAmbientStatus {
+func (m *AmbientStatusPayload) GetFrontendAmbientStatus() *feobjects.FrontendAmbientStatus {
 	if m != nil {
 		return m.FrontendAmbientStatus
 	}
@@ -416,7 +406,7 @@ type AmbientStatusResponse struct {
 func (m *AmbientStatusResponse) Reset()                    { *m = AmbientStatusResponse{} }
 func (m *AmbientStatusResponse) String() string            { return proto.CompactTextString(m) }
 func (*AmbientStatusResponse) ProtoMessage()               {}
-func (*AmbientStatusResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{15} }
+func (*AmbientStatusResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{13} }
 
 type AmbientLocalUserEntityPayload struct {
 	LocalUserExists bool                          `protobuf:"varint,1,opt,name=LocalUserExists" json:"LocalUserExists,omitempty"`
@@ -426,7 +416,7 @@ type AmbientLocalUserEntityPayload struct {
 func (m *AmbientLocalUserEntityPayload) Reset()                    { *m = AmbientLocalUserEntityPayload{} }
 func (m *AmbientLocalUserEntityPayload) String() string            { return proto.CompactTextString(m) }
 func (*AmbientLocalUserEntityPayload) ProtoMessage()               {}
-func (*AmbientLocalUserEntityPayload) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{16} }
+func (*AmbientLocalUserEntityPayload) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{14} }
 
 func (m *AmbientLocalUserEntityPayload) GetLocalUserExists() bool {
 	if m != nil {
@@ -448,15 +438,141 @@ type AmbientLocalUserEntityResponse struct {
 func (m *AmbientLocalUserEntityResponse) Reset()                    { *m = AmbientLocalUserEntityResponse{} }
 func (m *AmbientLocalUserEntityResponse) String() string            { return proto.CompactTextString(m) }
 func (*AmbientLocalUserEntityResponse) ProtoMessage()               {}
-func (*AmbientLocalUserEntityResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{17} }
+func (*AmbientLocalUserEntityResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{15} }
+
+type HomeViewPayload struct {
+	Threads []*feobjects.CompiledThreadEntity `protobuf:"bytes,1,rep,name=Threads" json:"Threads,omitempty"`
+}
+
+func (m *HomeViewPayload) Reset()                    { *m = HomeViewPayload{} }
+func (m *HomeViewPayload) String() string            { return proto.CompactTextString(m) }
+func (*HomeViewPayload) ProtoMessage()               {}
+func (*HomeViewPayload) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{16} }
+
+func (m *HomeViewPayload) GetThreads() []*feobjects.CompiledThreadEntity {
+	if m != nil {
+		return m.Threads
+	}
+	return nil
+}
+
+type HomeViewResponse struct {
+}
+
+func (m *HomeViewResponse) Reset()                    { *m = HomeViewResponse{} }
+func (m *HomeViewResponse) String() string            { return proto.CompactTextString(m) }
+func (*HomeViewResponse) ProtoMessage()               {}
+func (*HomeViewResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{17} }
+
+type PopularViewPayload struct {
+	Threads []*feobjects.CompiledThreadEntity `protobuf:"bytes,1,rep,name=Threads" json:"Threads,omitempty"`
+}
+
+func (m *PopularViewPayload) Reset()                    { *m = PopularViewPayload{} }
+func (m *PopularViewPayload) String() string            { return proto.CompactTextString(m) }
+func (*PopularViewPayload) ProtoMessage()               {}
+func (*PopularViewPayload) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{18} }
+
+func (m *PopularViewPayload) GetThreads() []*feobjects.CompiledThreadEntity {
+	if m != nil {
+		return m.Threads
+	}
+	return nil
+}
+
+type PopularViewResponse struct {
+}
+
+func (m *PopularViewResponse) Reset()                    { *m = PopularViewResponse{} }
+func (m *PopularViewResponse) String() string            { return proto.CompactTextString(m) }
+func (*PopularViewResponse) ProtoMessage()               {}
+func (*PopularViewResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{19} }
+
+type NotificationsPayload struct {
+	Notifications []*feobjects.CompiledNotification `protobuf:"bytes,1,rep,name=Notifications" json:"Notifications,omitempty"`
+	LastSeen      int64                             `protobuf:"varint,2,opt,name=LastSeen" json:"LastSeen,omitempty"`
+}
+
+func (m *NotificationsPayload) Reset()                    { *m = NotificationsPayload{} }
+func (m *NotificationsPayload) String() string            { return proto.CompactTextString(m) }
+func (*NotificationsPayload) ProtoMessage()               {}
+func (*NotificationsPayload) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{20} }
+
+func (m *NotificationsPayload) GetNotifications() []*feobjects.CompiledNotification {
+	if m != nil {
+		return m.Notifications
+	}
+	return nil
+}
+
+func (m *NotificationsPayload) GetLastSeen() int64 {
+	if m != nil {
+		return m.LastSeen
+	}
+	return 0
+}
+
+type NotificationsResponse struct {
+}
+
+func (m *NotificationsResponse) Reset()                    { *m = NotificationsResponse{} }
+func (m *NotificationsResponse) String() string            { return proto.CompactTextString(m) }
+func (*NotificationsResponse) ProtoMessage()               {}
+func (*NotificationsResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{21} }
+
+type OnboardCompleteStatusPayload struct {
+	OnboardComplete bool `protobuf:"varint,1,opt,name=OnboardComplete" json:"OnboardComplete,omitempty"`
+}
+
+func (m *OnboardCompleteStatusPayload) Reset()                    { *m = OnboardCompleteStatusPayload{} }
+func (m *OnboardCompleteStatusPayload) String() string            { return proto.CompactTextString(m) }
+func (*OnboardCompleteStatusPayload) ProtoMessage()               {}
+func (*OnboardCompleteStatusPayload) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{22} }
+
+func (m *OnboardCompleteStatusPayload) GetOnboardComplete() bool {
+	if m != nil {
+		return m.OnboardComplete
+	}
+	return false
+}
+
+type OnboardCompleteStatusResponse struct {
+}
+
+func (m *OnboardCompleteStatusResponse) Reset()                    { *m = OnboardCompleteStatusResponse{} }
+func (m *OnboardCompleteStatusResponse) String() string            { return proto.CompactTextString(m) }
+func (*OnboardCompleteStatusResponse) ProtoMessage()               {}
+func (*OnboardCompleteStatusResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{23} }
+
+type ModModeEnabledStatusPayload struct {
+	ModModeEnabled bool `protobuf:"varint,1,opt,name=ModModeEnabled" json:"ModModeEnabled,omitempty"`
+}
+
+func (m *ModModeEnabledStatusPayload) Reset()                    { *m = ModModeEnabledStatusPayload{} }
+func (m *ModModeEnabledStatusPayload) String() string            { return proto.CompactTextString(m) }
+func (*ModModeEnabledStatusPayload) ProtoMessage()               {}
+func (*ModModeEnabledStatusPayload) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{24} }
+
+func (m *ModModeEnabledStatusPayload) GetModModeEnabled() bool {
+	if m != nil {
+		return m.ModModeEnabled
+	}
+	return false
+}
+
+type ModModeEnabledStatusResponse struct {
+}
+
+func (m *ModModeEnabledStatusResponse) Reset()                    { *m = ModModeEnabledStatusResponse{} }
+func (m *ModModeEnabledStatusResponse) String() string            { return proto.CompactTextString(m) }
+func (*ModModeEnabledStatusResponse) ProtoMessage()               {}
+func (*ModModeEnabledStatusResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{25} }
 
 func init() {
 	proto.RegisterType((*FEReadyRequest)(nil), "clapi.FEReadyRequest")
 	proto.RegisterType((*FEReadyResponse)(nil), "clapi.FEReadyResponse")
 	proto.RegisterType((*AmbientsRequest)(nil), "clapi.AmbientsRequest")
 	proto.RegisterType((*AmbientsResponse)(nil), "clapi.AmbientsResponse")
-	proto.RegisterType((*BackendAmbientStatus)(nil), "clapi.BackendAmbientStatus")
-	proto.RegisterType((*FrontendAmbientStatus)(nil), "clapi.FrontendAmbientStatus")
 	proto.RegisterType((*InflightStatus)(nil), "clapi.InflightStatus")
 	proto.RegisterType((*InflightBoard)(nil), "clapi.InflightBoard")
 	proto.RegisterType((*InflightThread)(nil), "clapi.InflightThread")
@@ -469,6 +585,16 @@ func init() {
 	proto.RegisterType((*AmbientStatusResponse)(nil), "clapi.AmbientStatusResponse")
 	proto.RegisterType((*AmbientLocalUserEntityPayload)(nil), "clapi.AmbientLocalUserEntityPayload")
 	proto.RegisterType((*AmbientLocalUserEntityResponse)(nil), "clapi.AmbientLocalUserEntityResponse")
+	proto.RegisterType((*HomeViewPayload)(nil), "clapi.HomeViewPayload")
+	proto.RegisterType((*HomeViewResponse)(nil), "clapi.HomeViewResponse")
+	proto.RegisterType((*PopularViewPayload)(nil), "clapi.PopularViewPayload")
+	proto.RegisterType((*PopularViewResponse)(nil), "clapi.PopularViewResponse")
+	proto.RegisterType((*NotificationsPayload)(nil), "clapi.NotificationsPayload")
+	proto.RegisterType((*NotificationsResponse)(nil), "clapi.NotificationsResponse")
+	proto.RegisterType((*OnboardCompleteStatusPayload)(nil), "clapi.OnboardCompleteStatusPayload")
+	proto.RegisterType((*OnboardCompleteStatusResponse)(nil), "clapi.OnboardCompleteStatusResponse")
+	proto.RegisterType((*ModModeEnabledStatusPayload)(nil), "clapi.ModModeEnabledStatusPayload")
+	proto.RegisterType((*ModModeEnabledStatusResponse)(nil), "clapi.ModModeEnabledStatusResponse")
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -482,10 +608,18 @@ const _ = grpc.SupportPackageIsVersion4
 // Client API for ClientAPI service
 
 type ClientAPIClient interface {
+	// ----------  Methods used by frontend  ----------
 	FrontendReady(ctx context.Context, in *FEReadyRequest, opts ...grpc.CallOption) (*FEReadyResponse, error)
 	DeliverAmbients(ctx context.Context, in *AmbientsRequest, opts ...grpc.CallOption) (*AmbientsResponse, error)
+	// ^ Ambient *entities*. This is poorly named, we should make it more specific
 	SendAmbientStatus(ctx context.Context, in *AmbientStatusPayload, opts ...grpc.CallOption) (*AmbientStatusResponse, error)
+	// ^ Ambient *status* (fe, be status)
 	SendAmbientLocalUserEntity(ctx context.Context, in *AmbientLocalUserEntityPayload, opts ...grpc.CallOption) (*AmbientLocalUserEntityResponse, error)
+	SendHomeView(ctx context.Context, in *HomeViewPayload, opts ...grpc.CallOption) (*HomeViewResponse, error)
+	SendPopularView(ctx context.Context, in *PopularViewPayload, opts ...grpc.CallOption) (*PopularViewResponse, error)
+	SendNotifications(ctx context.Context, in *NotificationsPayload, opts ...grpc.CallOption) (*NotificationsResponse, error)
+	SendOnboardCompleteStatus(ctx context.Context, in *OnboardCompleteStatusPayload, opts ...grpc.CallOption) (*OnboardCompleteStatusResponse, error)
+	SendModModeEnabledStatus(ctx context.Context, in *ModModeEnabledStatusPayload, opts ...grpc.CallOption) (*ModModeEnabledStatusResponse, error)
 }
 
 type clientAPIClient struct {
@@ -532,13 +666,66 @@ func (c *clientAPIClient) SendAmbientLocalUserEntity(ctx context.Context, in *Am
 	return out, nil
 }
 
+func (c *clientAPIClient) SendHomeView(ctx context.Context, in *HomeViewPayload, opts ...grpc.CallOption) (*HomeViewResponse, error) {
+	out := new(HomeViewResponse)
+	err := grpc.Invoke(ctx, "/clapi.ClientAPI/SendHomeView", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clientAPIClient) SendPopularView(ctx context.Context, in *PopularViewPayload, opts ...grpc.CallOption) (*PopularViewResponse, error) {
+	out := new(PopularViewResponse)
+	err := grpc.Invoke(ctx, "/clapi.ClientAPI/SendPopularView", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clientAPIClient) SendNotifications(ctx context.Context, in *NotificationsPayload, opts ...grpc.CallOption) (*NotificationsResponse, error) {
+	out := new(NotificationsResponse)
+	err := grpc.Invoke(ctx, "/clapi.ClientAPI/SendNotifications", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clientAPIClient) SendOnboardCompleteStatus(ctx context.Context, in *OnboardCompleteStatusPayload, opts ...grpc.CallOption) (*OnboardCompleteStatusResponse, error) {
+	out := new(OnboardCompleteStatusResponse)
+	err := grpc.Invoke(ctx, "/clapi.ClientAPI/SendOnboardCompleteStatus", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clientAPIClient) SendModModeEnabledStatus(ctx context.Context, in *ModModeEnabledStatusPayload, opts ...grpc.CallOption) (*ModModeEnabledStatusResponse, error) {
+	out := new(ModModeEnabledStatusResponse)
+	err := grpc.Invoke(ctx, "/clapi.ClientAPI/SendModModeEnabledStatus", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for ClientAPI service
 
 type ClientAPIServer interface {
+	// ----------  Methods used by frontend  ----------
 	FrontendReady(context.Context, *FEReadyRequest) (*FEReadyResponse, error)
 	DeliverAmbients(context.Context, *AmbientsRequest) (*AmbientsResponse, error)
+	// ^ Ambient *entities*. This is poorly named, we should make it more specific
 	SendAmbientStatus(context.Context, *AmbientStatusPayload) (*AmbientStatusResponse, error)
+	// ^ Ambient *status* (fe, be status)
 	SendAmbientLocalUserEntity(context.Context, *AmbientLocalUserEntityPayload) (*AmbientLocalUserEntityResponse, error)
+	SendHomeView(context.Context, *HomeViewPayload) (*HomeViewResponse, error)
+	SendPopularView(context.Context, *PopularViewPayload) (*PopularViewResponse, error)
+	SendNotifications(context.Context, *NotificationsPayload) (*NotificationsResponse, error)
+	SendOnboardCompleteStatus(context.Context, *OnboardCompleteStatusPayload) (*OnboardCompleteStatusResponse, error)
+	SendModModeEnabledStatus(context.Context, *ModModeEnabledStatusPayload) (*ModModeEnabledStatusResponse, error)
 }
 
 func RegisterClientAPIServer(s *grpc.Server, srv ClientAPIServer) {
@@ -617,6 +804,96 @@ func _ClientAPI_SendAmbientLocalUserEntity_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClientAPI_SendHomeView_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HomeViewPayload)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClientAPIServer).SendHomeView(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/clapi.ClientAPI/SendHomeView",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClientAPIServer).SendHomeView(ctx, req.(*HomeViewPayload))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClientAPI_SendPopularView_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PopularViewPayload)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClientAPIServer).SendPopularView(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/clapi.ClientAPI/SendPopularView",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClientAPIServer).SendPopularView(ctx, req.(*PopularViewPayload))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClientAPI_SendNotifications_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NotificationsPayload)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClientAPIServer).SendNotifications(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/clapi.ClientAPI/SendNotifications",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClientAPIServer).SendNotifications(ctx, req.(*NotificationsPayload))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClientAPI_SendOnboardCompleteStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OnboardCompleteStatusPayload)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClientAPIServer).SendOnboardCompleteStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/clapi.ClientAPI/SendOnboardCompleteStatus",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClientAPIServer).SendOnboardCompleteStatus(ctx, req.(*OnboardCompleteStatusPayload))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClientAPI_SendModModeEnabledStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModModeEnabledStatusPayload)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClientAPIServer).SendModModeEnabledStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/clapi.ClientAPI/SendModModeEnabledStatus",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClientAPIServer).SendModModeEnabledStatus(ctx, req.(*ModModeEnabledStatusPayload))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _ClientAPI_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "clapi.ClientAPI",
 	HandlerType: (*ClientAPIServer)(nil),
@@ -637,6 +914,26 @@ var _ClientAPI_serviceDesc = grpc.ServiceDesc{
 			MethodName: "SendAmbientLocalUserEntity",
 			Handler:    _ClientAPI_SendAmbientLocalUserEntity_Handler,
 		},
+		{
+			MethodName: "SendHomeView",
+			Handler:    _ClientAPI_SendHomeView_Handler,
+		},
+		{
+			MethodName: "SendPopularView",
+			Handler:    _ClientAPI_SendPopularView_Handler,
+		},
+		{
+			MethodName: "SendNotifications",
+			Handler:    _ClientAPI_SendNotifications_Handler,
+		},
+		{
+			MethodName: "SendOnboardCompleteStatus",
+			Handler:    _ClientAPI_SendOnboardCompleteStatus_Handler,
+		},
+		{
+			MethodName: "SendModModeEnabledStatus",
+			Handler:    _ClientAPI_SendModModeEnabledStatus_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "clapi/clapi.proto",
@@ -645,55 +942,70 @@ var _ClientAPI_serviceDesc = grpc.ServiceDesc{
 func init() { proto.RegisterFile("clapi/clapi.proto", fileDescriptor0) }
 
 var fileDescriptor0 = []byte{
-	// 792 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x56, 0xdb, 0x4e, 0xdb, 0x4a,
-	0x14, 0x3d, 0xb9, 0x72, 0xb2, 0x73, 0x20, 0x64, 0x08, 0x60, 0xcc, 0x45, 0x91, 0x75, 0x5a, 0x85,
-	0x16, 0x12, 0x94, 0xaa, 0x4f, 0x95, 0xaa, 0x72, 0x6d, 0x11, 0x48, 0x8d, 0x86, 0xb4, 0x0f, 0x7d,
-	0x33, 0xf6, 0x00, 0x2e, 0x8e, 0x9d, 0x7a, 0x26, 0x88, 0xfc, 0x46, 0xff, 0xa1, 0x3f, 0xd4, 0x0f,
-	0xe8, 0x0f, 0xf4, 0x27, 0x2a, 0x8f, 0x67, 0x7c, 0x99, 0xb8, 0x95, 0x22, 0xf5, 0x05, 0x79, 0x66,
-	0xaf, 0xbd, 0xd6, 0xbe, 0xb1, 0x27, 0xd0, 0xb4, 0x5c, 0x73, 0xec, 0xf4, 0xf8, 0xdf, 0xee, 0x38,
-	0xf0, 0x99, 0x8f, 0x2a, 0xfc, 0xa0, 0x6f, 0xdc, 0x10, 0xff, 0xfa, 0x33, 0xb1, 0x18, 0xed, 0xc5,
-	0x5f, 0x11, 0x42, 0xdf, 0x18, 0x39, 0xa3, 0xd0, 0x8b, 0xb2, 0x60, 0x62, 0x31, 0x7e, 0x27, 0x4c,
-	0xc6, 0x6b, 0x58, 0x3a, 0x3b, 0xc5, 0xc4, 0xb4, 0xa7, 0x98, 0x7c, 0x99, 0x10, 0xca, 0x90, 0x06,
-	0x0b, 0xa6, 0x6d, 0x07, 0x84, 0x52, 0xad, 0xd0, 0x2e, 0x74, 0x6a, 0x58, 0x1e, 0x11, 0x82, 0xf2,
-	0xd8, 0x0f, 0x98, 0x56, 0x6c, 0x17, 0x3a, 0x15, 0xcc, 0xbf, 0x8d, 0x26, 0x34, 0x62, 0x7f, 0x3a,
-	0xf6, 0x3d, 0x4a, 0x8c, 0x77, 0xd0, 0x38, 0x1c, 0x5d, 0x3b, 0xc4, 0x63, 0x54, 0x72, 0xbe, 0x84,
-	0xea, 0x91, 0x6f, 0x06, 0x76, 0x48, 0x59, 0xea, 0xd4, 0xfb, 0xdb, 0xdd, 0x24, 0x44, 0x81, 0xe5,
-	0xf6, 0x53, 0x8f, 0x39, 0x6c, 0x8a, 0x05, 0xd8, 0x40, 0xb0, 0x9c, 0x30, 0x09, 0xf6, 0x35, 0x68,
-	0x1d, 0x99, 0xd6, 0x3d, 0xf1, 0x6c, 0x61, 0xba, 0x62, 0x26, 0x9b, 0x50, 0x63, 0x1d, 0x56, 0xcf,
-	0x02, 0xdf, 0x63, 0x33, 0x86, 0x1f, 0x05, 0x58, 0x3a, 0xf7, 0x6e, 0x5c, 0xe7, 0xf6, 0x4e, 0x5c,
-	0xa1, 0x3d, 0x68, 0x1e, 0xfb, 0xa3, 0xb1, 0x4b, 0x98, 0xe3, 0x7b, 0x03, 0x12, 0x58, 0xc4, 0x63,
-	0x3c, 0xd9, 0x0a, 0x9e, 0x35, 0xa0, 0x1d, 0x80, 0xc8, 0x6f, 0x48, 0x1e, 0xa3, 0xe4, 0x6b, 0x38,
-	0x75, 0x83, 0xba, 0x80, 0x44, 0x9e, 0xc4, 0x1e, 0x3a, 0x23, 0x42, 0x99, 0x39, 0x1a, 0x6b, 0xe5,
-	0x76, 0xa1, 0x53, 0xc2, 0x39, 0x16, 0x74, 0x00, 0x2b, 0x97, 0x26, 0x65, 0x87, 0x56, 0x28, 0x92,
-	0x38, 0x54, 0xb8, 0x43, 0x9e, 0x09, 0x6d, 0x41, 0xed, 0xf4, 0x81, 0x78, 0x6c, 0x38, 0x1d, 0x13,
-	0xad, 0xca, 0x03, 0x48, 0x2e, 0x8c, 0x7b, 0x58, 0x94, 0xf9, 0xf1, 0xba, 0xa1, 0x7d, 0xa8, 0x46,
-	0xe1, 0xf1, 0x9c, 0xea, 0xfd, 0xd5, 0x6e, 0x34, 0x2e, 0xd9, 0x2a, 0x60, 0x01, 0x42, 0xcf, 0xa1,
-	0x1a, 0xd5, 0x9d, 0xe7, 0x56, 0xef, 0xaf, 0x74, 0x33, 0x73, 0xc2, 0x39, 0xb1, 0x80, 0x18, 0xa3,
-	0xa4, 0x98, 0xc3, 0xbb, 0x80, 0x98, 0x73, 0xab, 0xed, 0x29, 0x6a, 0xad, 0xac, 0x5a, 0x44, 0x1a,
-	0xcb, 0x39, 0xf0, 0x9f, 0xe4, 0x19, 0xf8, 0x94, 0xcd, 0x2b, 0xf6, 0x4c, 0x11, 0x43, 0x59, 0xb1,
-	0x90, 0x32, 0x4f, 0xea, 0xa3, 0xcf, 0xc8, 0x5f, 0x96, 0x0a, 0x29, 0x63, 0xa9, 0x5b, 0xa8, 0x4b,
-	0x96, 0x0b, 0x32, 0x9d, 0x57, 0x69, 0x57, 0x51, 0x6a, 0x66, 0x95, 0x2e, 0xc8, 0x34, 0x16, 0x9a,
-	0x00, 0x8a, 0xbb, 0x15, 0x4c, 0x28, 0xa3, 0xcc, 0x9c, 0x3f, 0xb3, 0x03, 0x45, 0x4f, 0x53, 0x3a,
-	0x16, 0x13, 0xc7, 0xb2, 0xdf, 0x8a, 0x50, 0x93, 0x64, 0xbc, 0xe3, 0x99, 0x7f, 0xfe, 0x96, 0x22,
-	0x27, 0x06, 0x2c, 0xc2, 0xa0, 0x1e, 0x2c, 0x44, 0x33, 0x40, 0xb5, 0x22, 0x87, 0xab, 0xd1, 0x89,
-	0x09, 0x91, 0x28, 0xb4, 0x0b, 0x95, 0xb0, 0x8f, 0x54, 0x2b, 0x71, 0xf8, 0x8a, 0x02, 0xe7, 0x3d,
-	0x8e, 0x10, 0x21, 0x34, 0xec, 0x03, 0xd5, 0xca, 0xb9, 0x50, 0xde, 0xa3, 0x08, 0x81, 0x9e, 0x42,
-	0xf9, 0x82, 0x4c, 0xa9, 0x56, 0xe1, 0x48, 0xa4, 0x20, 0xc3, 0x1a, 0x73, 0x3b, 0x7a, 0x05, 0xf5,
-	0xa4, 0x00, 0x54, 0xab, 0x72, 0xf8, 0x86, 0x1a, 0x72, 0x52, 0xa2, 0x34, 0xda, 0xf8, 0x59, 0x80,
-	0x56, 0x66, 0x59, 0x0d, 0xcc, 0xa9, 0xeb, 0x9b, 0x36, 0x7a, 0x9f, 0xbf, 0xe4, 0x44, 0xbf, 0x36,
-	0x05, 0x7d, 0x1e, 0x04, 0xe7, 0x3a, 0x22, 0xfc, 0x9b, 0xed, 0x28, 0x5a, 0xba, 0x25, 0x18, 0x73,
-	0x31, 0x38, 0xdf, 0x15, 0x75, 0x53, 0x4d, 0xd6, 0x4a, 0x9c, 0x67, 0x59, 0x49, 0x9c, 0xe2, 0x04,
-	0x12, 0x6e, 0xe8, 0x2c, 0xaf, 0x5c, 0xe9, 0x5f, 0x0b, 0xb0, 0x2d, 0x2c, 0x97, 0xbe, 0x65, 0xba,
-	0x1f, 0x28, 0x09, 0xa2, 0x49, 0x92, 0xf5, 0xe8, 0x40, 0x23, 0xb1, 0x3c, 0x3a, 0x61, 0xb7, 0xc3,
-	0x52, 0xfc, 0x8b, 0xd5, 0x6b, 0xf4, 0x36, 0x8d, 0x4c, 0x4f, 0x6d, 0xfa, 0xc9, 0x09, 0x77, 0xbc,
-	0xe3, 0x12, 0x3b, 0x01, 0x61, 0xd5, 0xcb, 0x68, 0xc3, 0x4e, 0x7e, 0x4c, 0x32, 0xec, 0xfe, 0xf7,
-	0x22, 0xd4, 0x8e, 0xdd, 0x10, 0x71, 0x38, 0x38, 0x47, 0x6f, 0x60, 0x51, 0x96, 0x89, 0x3f, 0x87,
-	0x48, 0xce, 0x6d, 0xf6, 0x79, 0xd5, 0xd7, 0xd4, 0x6b, 0x51, 0x84, 0x7f, 0xd0, 0x09, 0x34, 0x4e,
-	0x88, 0xeb, 0x3c, 0x90, 0x40, 0x3e, 0x7a, 0x48, 0x82, 0x95, 0xf7, 0x54, 0x5f, 0x9f, 0xb9, 0x8f,
-	0x59, 0x06, 0xd0, 0xbc, 0x9a, 0x69, 0xd5, 0x66, 0x16, 0x9f, 0x19, 0x36, 0x7d, 0x2b, 0xcf, 0x98,
-	0x62, 0xbc, 0x07, 0x3d, 0xc5, 0xa8, 0x54, 0x03, 0xfd, 0x9f, 0xf5, 0xce, 0x6f, 0xa0, 0xfe, 0xe4,
-	0x8f, 0xa8, 0x44, 0xec, 0x48, 0xff, 0xa4, 0x99, 0x84, 0xdd, 0x91, 0x60, 0xdf, 0xf2, 0x03, 0xd2,
-	0x8b, 0x76, 0x4c, 0xf4, 0x73, 0xe7, 0xba, 0xca, 0x4f, 0x2f, 0x7e, 0x05, 0x00, 0x00, 0xff, 0xff,
-	0xb6, 0xd6, 0x69, 0x8f, 0x04, 0x09, 0x00, 0x00,
+	// 1029 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x57, 0xdd, 0x6e, 0xdb, 0x36,
+	0x14, 0x8e, 0x93, 0xd8, 0xad, 0x8f, 0x9b, 0xb8, 0x66, 0x9c, 0x55, 0x51, 0xf3, 0x63, 0xa8, 0x5d,
+	0xe1, 0x6e, 0xad, 0x53, 0x64, 0xd8, 0xc5, 0x30, 0x60, 0x58, 0xd2, 0xba, 0x6b, 0x97, 0x74, 0x35,
+	0x94, 0x2c, 0x17, 0xbb, 0x93, 0xa5, 0x93, 0x46, 0x8b, 0x2c, 0x7a, 0x22, 0xdd, 0xd5, 0xf7, 0x7b,
+	0x82, 0xbd, 0xc3, 0x5e, 0x6b, 0x2f, 0xb1, 0x17, 0x18, 0x48, 0x89, 0x92, 0x48, 0x0b, 0x06, 0x02,
+	0xf4, 0x26, 0xb0, 0x78, 0xbe, 0xf3, 0x7d, 0x87, 0xe7, 0x87, 0x64, 0xa0, 0xe3, 0x47, 0xde, 0x34,
+	0x3c, 0x94, 0x7f, 0x07, 0xd3, 0x84, 0x72, 0x4a, 0xea, 0xf2, 0xc3, 0xde, 0xb9, 0x42, 0x3a, 0xfe,
+	0x1d, 0x7d, 0xce, 0x0e, 0xf3, 0x5f, 0x29, 0xc2, 0xde, 0x99, 0x84, 0x13, 0xe1, 0xc5, 0x78, 0x32,
+	0xf3, 0xb9, 0x5c, 0xcb, 0x4c, 0xce, 0x0f, 0xb0, 0xf9, 0x7a, 0xe8, 0xa2, 0x17, 0xcc, 0x5d, 0xfc,
+	0x63, 0x86, 0x8c, 0x13, 0x0b, 0xee, 0x78, 0x41, 0x90, 0x20, 0x63, 0x56, 0xad, 0x57, 0xeb, 0x37,
+	0x5d, 0xf5, 0x49, 0x08, 0xac, 0x4f, 0x69, 0xc2, 0xad, 0xd5, 0x5e, 0xad, 0x5f, 0x77, 0xe5, 0x6f,
+	0xa7, 0x03, 0xed, 0xdc, 0x9f, 0x4d, 0x69, 0xcc, 0xd0, 0x79, 0x03, 0xed, 0xe3, 0xc9, 0x38, 0xc4,
+	0x98, 0x33, 0xc5, 0xf9, 0x2d, 0x34, 0x4e, 0xa8, 0x97, 0x04, 0x82, 0x72, 0xad, 0xdf, 0x3a, 0xda,
+	0x1b, 0x14, 0x21, 0x66, 0x58, 0x69, 0x1f, 0xc6, 0x3c, 0xe4, 0x73, 0x37, 0x03, 0x3b, 0x04, 0xee,
+	0x17, 0x4c, 0x19, 0xfb, 0xbf, 0x35, 0xd8, 0x7c, 0x1b, 0x5f, 0x45, 0xe1, 0x87, 0x6b, 0x7e, 0xce,
+	0x3d, 0x3e, 0x63, 0xe4, 0x19, 0x74, 0x5e, 0xd2, 0xc9, 0x34, 0x42, 0x1e, 0xd2, 0x78, 0x84, 0x89,
+	0x8f, 0x31, 0x97, 0xb1, 0xd7, 0xdd, 0x45, 0x03, 0xd9, 0x07, 0x48, 0xfd, 0x2e, 0xf0, 0x53, 0xba,
+	0x97, 0xa6, 0x5b, 0x5a, 0x21, 0x03, 0x20, 0x59, 0xd8, 0x18, 0x5c, 0x84, 0x13, 0x64, 0xdc, 0x9b,
+	0x4c, 0xad, 0xf5, 0x5e, 0xad, 0xbf, 0xe6, 0x56, 0x58, 0xc8, 0x0b, 0xd8, 0x3a, 0xf3, 0x18, 0x3f,
+	0xf6, 0x85, 0x48, 0xe1, 0x50, 0x97, 0x0e, 0x55, 0x26, 0xb2, 0x0b, 0xcd, 0xe1, 0x47, 0x8c, 0xf9,
+	0xc5, 0x7c, 0x8a, 0x56, 0x43, 0x06, 0x50, 0x2c, 0x38, 0x37, 0xb0, 0xa1, 0xf6, 0x27, 0xd3, 0x40,
+	0x9e, 0x43, 0x23, 0x0d, 0x4f, 0xee, 0xa9, 0x75, 0xb4, 0x3d, 0x48, 0xab, 0xaf, 0x67, 0xc1, 0xcd,
+	0x40, 0xe4, 0x6b, 0x68, 0xa4, 0x69, 0x94, 0x7b, 0x6b, 0x1d, 0x6d, 0x0d, 0xb4, 0xb2, 0x4b, 0x4e,
+	0x37, 0x83, 0x38, 0x93, 0x22, 0x99, 0x17, 0xd7, 0x09, 0x7a, 0xb7, 0x56, 0x7b, 0x66, 0xa8, 0x75,
+	0x75, 0xb5, 0x94, 0x34, 0x97, 0x0b, 0xe1, 0x9e, 0xe2, 0x19, 0x51, 0xc6, 0x6f, 0x2b, 0xf6, 0x95,
+	0x21, 0x46, 0x74, 0x31, 0x41, 0x59, 0x25, 0x75, 0x49, 0x39, 0x7e, 0x66, 0x29, 0x41, 0x99, 0x4b,
+	0x7d, 0x80, 0x96, 0x62, 0x39, 0xc5, 0xf9, 0x6d, 0x95, 0x9e, 0x1a, 0x4a, 0x1d, 0x5d, 0xe9, 0x14,
+	0xe7, 0xb9, 0xd0, 0x0c, 0x48, 0x5e, 0xad, 0x64, 0xc6, 0x38, 0xe3, 0xde, 0xed, 0x77, 0xf6, 0xc2,
+	0xd0, 0xb3, 0x8c, 0x8a, 0xe5, 0xc4, 0xb9, 0xec, 0x3f, 0xab, 0xd0, 0x54, 0x64, 0xb2, 0xe2, 0xda,
+	0x2c, 0x77, 0x0d, 0xb9, 0xac, 0xc1, 0x52, 0x0c, 0x39, 0x84, 0x3b, 0x69, 0x0f, 0x30, 0x6b, 0x55,
+	0xc2, 0xcd, 0xe8, 0xb2, 0x0e, 0x51, 0x28, 0xf2, 0x14, 0xea, 0xa2, 0x8e, 0xcc, 0x5a, 0x93, 0xf0,
+	0x2d, 0x03, 0x2e, 0x6b, 0x9c, 0x22, 0x04, 0x54, 0xd4, 0x81, 0x59, 0xeb, 0x95, 0x50, 0x59, 0xa3,
+	0x14, 0x41, 0x9e, 0xc0, 0xfa, 0x29, 0xce, 0x99, 0x55, 0x97, 0x48, 0x62, 0x20, 0x45, 0x8e, 0xa5,
+	0x9d, 0x7c, 0x0f, 0xad, 0x22, 0x01, 0xcc, 0x6a, 0x48, 0xf8, 0x8e, 0x19, 0x72, 0x91, 0xa2, 0x32,
+	0xda, 0xf9, 0xaf, 0x06, 0xdd, 0xec, 0xbc, 0x4a, 0x73, 0x3d, 0xf2, 0xe6, 0x11, 0xf5, 0x02, 0x72,
+	0x0e, 0xdd, 0x13, 0xcf, 0xbf, 0xc1, 0x38, 0xd0, 0xcc, 0x59, 0xbd, 0x0e, 0x4a, 0x87, 0x61, 0x15,
+	0xcc, 0xad, 0x74, 0x26, 0x97, 0xb0, 0xfd, 0x3a, 0xa1, 0x31, 0x5f, 0x60, 0x4d, 0xcb, 0xda, 0x2b,
+	0xb1, 0x56, 0xe2, 0xdc, 0x6a, 0x77, 0x32, 0x28, 0x15, 0xdb, 0x5a, 0x93, 0x5c, 0xf7, 0x8d, 0x04,
+	0x30, 0xb7, 0x80, 0x38, 0x0f, 0x60, 0x5b, 0xe7, 0x55, 0x27, 0xf5, 0xdf, 0x35, 0xd8, 0xcb, 0x2c,
+	0x67, 0xd4, 0xf7, 0xa2, 0x5f, 0x19, 0x26, 0x69, 0x47, 0xa9, 0xbc, 0xf4, 0xa1, 0x5d, 0x58, 0x3e,
+	0x85, 0xa2, 0xea, 0x22, 0x25, 0x77, 0x5d, 0x73, 0x99, 0xfc, 0x54, 0x46, 0x96, 0xbb, 0xb7, 0x7c,
+	0x93, 0x88, 0xb3, 0x3e, 0x8c, 0x30, 0x28, 0x40, 0xae, 0xe9, 0xe5, 0xf4, 0x60, 0xbf, 0x3a, 0xa6,
+	0x3c, 0xec, 0x33, 0x68, 0xbf, 0xa1, 0x13, 0xbc, 0x0c, 0xf1, 0x4f, 0x15, 0xe7, 0x77, 0x45, 0x13,
+	0xa7, 0x3d, 0x7f, 0x50, 0xa1, 0x9a, 0x22, 0x32, 0x32, 0x85, 0x17, 0x57, 0x98, 0x62, 0xcb, 0x15,
+	0xde, 0x03, 0x19, 0xd1, 0xe9, 0x2c, 0xf2, 0x92, 0xcf, 0x24, 0xb2, 0x0d, 0x5b, 0x25, 0xc2, 0x5c,
+	0x67, 0x0e, 0xdd, 0x5f, 0x28, 0x0f, 0xaf, 0x42, 0xdf, 0x13, 0x17, 0x50, 0xde, 0x8e, 0x43, 0xd8,
+	0xd0, 0xd6, 0x97, 0xe8, 0x95, 0x71, 0xae, 0xee, 0x45, 0x6c, 0xb8, 0x2b, 0x6e, 0xb7, 0x73, 0xc4,
+	0x58, 0x16, 0x63, 0xcd, 0xcd, 0xbf, 0x45, 0x53, 0x68, 0xe0, 0xd2, 0xe3, 0x60, 0xf7, 0x7d, 0x3c,
+	0x16, 0x67, 0x43, 0x76, 0x33, 0xa3, 0x3e, 0x2a, 0x7d, 0x68, 0x1b, 0x76, 0xd5, 0x12, 0xc6, 0xb2,
+	0x73, 0x00, 0x7b, 0x95, 0x4c, 0xb9, 0xd4, 0x10, 0x1e, 0xbe, 0xa3, 0xc1, 0x3b, 0x1a, 0xe0, 0x30,
+	0xf6, 0xc6, 0x11, 0x06, 0xba, 0xd2, 0x13, 0xd8, 0xd4, 0xcd, 0x99, 0x90, 0xb1, 0xea, 0xec, 0xc3,
+	0x6e, 0x15, 0x8d, 0x92, 0x39, 0xfa, 0xab, 0x01, 0xcd, 0x97, 0x91, 0xe8, 0xa8, 0xe3, 0xd1, 0x5b,
+	0xf2, 0x23, 0x6c, 0xa8, 0xb1, 0x92, 0xaf, 0x22, 0xa2, 0xce, 0x3b, 0xfd, 0x95, 0x65, 0x7f, 0x61,
+	0x2e, 0x67, 0x41, 0xaf, 0x90, 0x57, 0xd0, 0x7e, 0x85, 0x51, 0xf8, 0x11, 0x13, 0xf5, 0xf6, 0x21,
+	0x0a, 0x6c, 0x3c, 0xab, 0xec, 0x07, 0x0b, 0xeb, 0x39, 0xcb, 0x08, 0x3a, 0xe7, 0x0b, 0xa3, 0xfd,
+	0x50, 0xc7, 0x6b, 0xf9, 0xb0, 0x77, 0xab, 0x8c, 0x25, 0xc6, 0x1b, 0xb0, 0x4b, 0x8c, 0xc6, 0xf4,
+	0x90, 0xc7, 0xba, 0x77, 0xf5, 0xc0, 0xdb, 0x5f, 0x2e, 0x45, 0x95, 0xc4, 0x8e, 0xe1, 0x9e, 0x10,
+	0x53, 0xa3, 0x93, 0x67, 0xc0, 0x98, 0xcc, 0x3c, 0x03, 0x0b, 0x33, 0xb6, 0x42, 0x7e, 0x86, 0xb6,
+	0xa0, 0x28, 0x0d, 0x06, 0x51, 0x07, 0xf9, 0xe2, 0xf4, 0xd9, 0xf6, 0xa2, 0x69, 0x31, 0x9b, 0x7a,
+	0xff, 0xab, 0x6c, 0x56, 0xcd, 0x58, 0x9e, 0xcd, 0xea, 0x29, 0x58, 0x21, 0xd7, 0xb0, 0x23, 0x18,
+	0x2b, 0x3b, 0x98, 0x3c, 0xca, 0x9c, 0x97, 0x4d, 0x8a, 0xfd, 0x78, 0x19, 0xa8, 0xa4, 0x84, 0x60,
+	0x09, 0xa5, 0xaa, 0x1e, 0x26, 0x4e, 0xc6, 0xb1, 0x64, 0x4e, 0xec, 0x47, 0x4b, 0x30, 0x85, 0xcc,
+	0x89, 0xfd, 0x9b, 0xe5, 0x21, 0xbf, 0xc6, 0xe4, 0xb9, 0x4f, 0x13, 0x3c, 0x4c, 0x5f, 0x13, 0xe9,
+	0xff, 0x29, 0xe3, 0x86, 0xfc, 0xfa, 0xe6, 0xff, 0x00, 0x00, 0x00, 0xff, 0xff, 0x3f, 0xbe, 0xc0,
+	0x3b, 0xbd, 0x0c, 0x00, 0x00,
 }

@@ -5,6 +5,7 @@ package dispatch
 
 import (
 	// "aether-core/backend/responsegenerator"
+	"aether-core/backend/feapiconsumer"
 	"aether-core/io/api"
 	"aether-core/io/persistence"
 	"aether-core/services/globals"
@@ -408,6 +409,13 @@ func Sync(a api.Address, lineup []string, reverseConn *net.Conn) error {
 		globals.BackendConfig.SetLastStaticAddressConnectionTimestamp(time.Now().Unix())
 	}
 	syncSuccessful = true
+
+	/*----------  Send sync metrics to frontend  ----------*/
+	feapiconsumer.BackendAmbientStatus.LastOutboundDurationSeconds = int32(time.Since(start).Seconds())
+	feapiconsumer.BackendAmbientStatus.LastOutboundConnTimestamp = time.Now().Unix()
+	feapiconsumer.SendBackendAmbientStatus()
+	/*----------  And all done!  ----------*/
+
 	return nil
 }
 

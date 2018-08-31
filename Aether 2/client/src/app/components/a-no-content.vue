@@ -42,14 +42,15 @@
   .no-content {
     font-family: "SCP Regular";
     display: flex;
-    border-radius: 1px;
+    border-radius: 3px;
     margin: 0 20px;
-    margin-top: 20px;
-    background-color: rgba(255, 255, 255, 0.05);
+    margin-top: 20px; // background-color: rgba(255, 255, 255, 0.05);
+    background-color: rgba(0, 0, 0, 0.25);
     .no-content-carrier {
       // font-family: "SSP Regular";
       padding: 15px 20px; // margin: auto;
-      width: 50%;
+      // width: 50%;
+      max-width: 750px;
     }
     .no-content-container {
       padding-bottom: 25px;
@@ -57,7 +58,7 @@
       color: $a-grey-800;
     }
     .quote-container {
-      color: $a-grey-500;
+      color: $a-grey-400;
       .quote-text {
         // font-family: "SSP Regular Italic";
       }

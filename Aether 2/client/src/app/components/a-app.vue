@@ -1,10 +1,17 @@
 <template>
   <div id="app">
-    <!-- <div class="side-block" v-show="$store.state.sidebarOpen">
-      <div class="side-content">
-        <a-sidebar></a-sidebar>
+    <transition name="component-fade" mode="out-in">
+      <div class="app-loader-container" v-show="!$store.state.onboardCompleteStatusArrived">
+        <transition name="fade" appear>
+          <a-main-app-loader v-show="!$store.state.onboardCompleteStatusArrived"></a-main-app-loader>
+        </transition>
       </div>
-    </div> -->
+    </transition>
+    <transition name="fade" appear>
+      <div class="onboard-route-container" v-if="$store.state.onboardCompleteStatusArrived && !$store.state.onboardCompleteStatus">
+        <router-view name="onboarding"></router-view>
+      </div>
+    </transition>
     <div class="main-top">
       <a-side-header></a-side-header>
       <a-header></a-header>
@@ -91,6 +98,10 @@
     }
   }
 
+  video::-webkit-media-controls-panel {
+    background-color: rgba(25, 25, 25, 0.9);
+  }
+
   html {
     height: 100%; // background-color: $dark-base;
     background-color: $mid-base;
@@ -98,6 +109,7 @@
     text-rendering: optimizeLegibility;
     text-size-adjust: 100%;
     -webkit-font-smoothing: antialiased;
+    overflow: hidden;
   }
 
   body {
@@ -142,8 +154,8 @@
 
   .main-block {
     flex: 1;
-    overflow-y: scroll;
-    box-shadow: $line-separator-shadow-castleft;
+    overflow-y: scroll; // box-shadow: $line-separator-shadow-castleft;
+    box-shadow: -2px 0 2px -1px rgba(0, 0, 0, 0.2);
     border-radius: 0 0 0 10px;
     background-color: $mid-base;
     height: 100%;
@@ -186,9 +198,41 @@
   // }
   .location {
     flex: 1;
-    width: 100%;
-    overflow-y: scroll;
+    width: 100%; // overflow-y: scroll;
     display: flex;
     flex-direction: column;
+  }
+
+  .app-loader-container {
+    // width: 100%;
+    // height: 100%;
+    display: flex;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 999;
+    background-color: $mid-base;
+  }
+
+  .onboard-route-container {
+    display: flex;
+    min-height: 100%;
+  }
+
+  .fade-enter-active,
+  .fade-leave-active {
+    transition-property: opacity;
+    transition-duration: .25s;
+  }
+
+  .fade-enter-active {
+    transition-delay: .25s;
+  }
+
+  .fade-enter,
+  .fade-leave-active {
+    opacity: 0
   }
 </style>

@@ -4,29 +4,33 @@
       <div class="thread-vote-count">
         <icon name="arrow-up"></icon> {{voteCount}}
       </div>
-      <div class="thread-comment-count">
+      <div class="thread-comment-count" v-show="commentCount !== -1">
         <icon name="comment-alt"></icon> {{commentCount}}
       </div>
     </div>
-    <div class="image-container" v-show="imageLoadedSuccessfully">
-      <div class="image-box" :style="'background-image: url('+ sanitisedLink +')'" @click="openLightbox">
+    <div class="image-container" v-show="imageLoadedSuccessfully || videoLoadedSuccessfully">
+      <div class="image-box" v-show="imageLoadedSuccessfully && !videoLoadedSuccessfully" :style="'background-image: url('+ sanitisedLink +')'" @click.prevent="openLightbox">
       </div>
-      <div class="lightbox" @click="closeLightbox" v-show="lightboxOpen">
-        <img :src="sanitisedLink" alt="" @load="handleImageLoadSuccess">
+      <video class="video-box" :src="sanitisedLink" preload="metadata" @click.prevent="openLightbox" v-show="videoLoadedSuccessfully && !imageLoadedSuccessfully" @loadeddata="handleVideoLoadSuccess"></video>
+      <div class="lightbox" @click.prevent="closeLightbox" v-show="lightboxOpen">
+        <img :src="sanitisedLink" alt="" @load="handleImageLoadSuccess" v-show="imageLoadedSuccessfully">
+        <video class="video-player" v-if="videoLoadedSuccessfully" preload="metadata" :src="sanitisedLink" muted="true" controls v-show="lightboxOpen"></video>
       </div>
     </div>
     <div class="main-data-container">
-      <div class="inflight-box" v-if="isInflightEntity">
-        <a-inflight-info :status="inflightStatus" :refresherFunc="refresh"></a-inflight-info>
-      </div>
-      <div class="thread-name">
-        {{thread.name}}
-      </div>
-      <div class="thread-link">
-        <a :href="sanitisedLink" @click.stop>{{sanitisedLink}}</a>
-      </div>
-      <div class="thread-body">
-        {{thread.body}}
+      <div class="thread-main-data-centerer">
+        <div class="inflight-box" v-if="isInflightEntity">
+          <a-inflight-info :status="inflightStatus" :refresherFunc="refresh"></a-inflight-info>
+        </div>
+        <div class="thread-name">
+          {{thread.name}}
+        </div>
+        <div class="thread-link" v-show="sanitisedLink.length > 0">
+          <a :href="sanitisedLink" @click.stop>{{sanitisedLink}}</a>
+        </div>
+        <div class="thread-body">
+          {{thread.body}}
+        </div>
       </div>
     </div>
     <a-ballot v-if="actionsVisible" :contentsignals="thread.compiledcontentsignals" :boardfp="thread.board" :threadfp="thread.fingerprint"></a-ballot>
@@ -36,6 +40,7 @@
 <script lang="ts">
   var vuexStore = require('../store/index').default
   var mixins = require('../mixins/mixins')
+  var globalMethods = require('../services/globals/methods')
   export default {
     name: 'a-thread-entity',
     mixins: [mixins.localUserMixin],
@@ -45,6 +50,7 @@
     data(this: any) {
       return {
         imageLoadedSuccessfully: false,
+        videoLoadedSuccessfully: false,
         lightboxOpen: false,
       }
     },
@@ -69,6 +75,12 @@
         return this.thread.postscount
       },
       sanitisedLink(this: any) {
+        if (this.thread.link.length === 0) {
+          return ''
+        }
+        if (typeof this.thread.link === 'undefined') {
+          return ""
+        }
         if (this.thread.link.substring(0, 8) === 'https://' ||
           this.thread.link.substring(0, 7) === 'http://') {
           return this.thread.link
@@ -94,17 +106,33 @@
     },
     methods: {
       openLightbox(this: any) {
+        let vid: any = this.$el.getElementsByClassName('video-player')[0]
         this.lightboxOpen = true
+        if (!globalMethods.IsUndefined(vid)) {
+          vid.play()
+        }
       },
       closeLightbox(this: any) {
-        console.log('close lightbox called')
+        let vid: any = this.$el.getElementsByClassName('video-player')[0]
         this.lightboxOpen = false
+        if (!globalMethods.IsUndefined(vid)) {
+          vid.pause()
+        }
       },
       handleImageLoadSuccess(this: any) {
+        // console.log('image loaded successfully')
         this.imageLoadedSuccessfully = true
       },
+      handleVideoLoadSuccess(this: any) {
+        // console.log('video loaded successfully')
+        this.videoLoadedSuccessfully = true
+      },
       refresh(this: any) {
-        vuexStore.dispatch('refreshCurrentBoardAndThreads', this.thread.board)
+        let sortByNew = false
+        if (this.$store.state.route.name === 'Board>ThreadsNewList') {
+          sortByNew = true
+        }
+        vuexStore.dispatch('refreshCurrentBoardAndThreads', { boardfp: this.thread.board, sortByNew: sortByNew })
       }
     },
     mounted(this: any) {
@@ -142,7 +170,8 @@
       right: 0;
       background-color: rgba(0, 0, 0, 0.5);
 
-      img {
+      img,
+      video {
         margin: auto;
         max-height: 90%;
         max-width: 90%;
@@ -220,6 +249,8 @@
         border-radius: 2px;
         background-size: cover;
         background-color: $a-cerulean;
+        background-size: cover;
+        background-position: center center;
         cursor: pointer;
 
         .thread-image {
@@ -227,11 +258,25 @@
           height: inherit;
         }
       }
+      .video-box {
+        max-height: 150px;
+        max-width: 100%;
+        overflow: hidden;
+        border-radius: 2px;
+        overflow: hidden;
+        cursor: pointer;
+      }
     }
 
     .main-data-container {
       flex: 1;
       padding-right: 15px;
+      display: flex;
+
+      .thread-main-data-centerer {
+        margin: auto 0;
+        flex: 1;
+      }
       .thread-name {
         font-size: 120%;
         cursor: pointer;
